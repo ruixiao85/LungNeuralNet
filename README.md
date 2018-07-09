@@ -5,6 +5,7 @@ Tensorflow Keras Lung
 
 ![alt text](pred/39_WT_FLU_2_04.jpg_pred.png?raw=true "Recognized as inflammation")
 
+'''
 Using TensorFlow backend.
 Scanning subfolders [/ori] and [/msk] of [.\LungNeuralNet]
 53 images and 60 masks found
@@ -119,3 +120,4 @@ Predicting masks on test data...
 Saving predicted masks to files...
 
 Process finished with exit code 0
+'''
