@@ -3,8 +3,7 @@ from __future__ import print_function
 import os
 import numpy as np
 from keras.models import Model
-from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, Conv2DTranspose, UpSampling2D, Cropping2D, \
-    ZeroPadding2D
+from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, ZeroPadding2D
 from keras import backend as KerasBackend
 
 KerasBackend.set_image_data_format('channels_last')

@@ -10,7 +10,7 @@ def standardize(preimg):
     mean = np.mean(preimg)
     std = np.std(preimg)
     preimg -= mean
-    preimg /= (3. * std)
+    preimg /= (2. * std)
     preimg = np.tanh(preimg)
     return preimg
 
@@ -70,7 +70,7 @@ def train_and_predict(contTrain=True):
     model_checkpoint = ModelCheckpoint(weightFile, monitor='val_loss', save_best_only=True)
 
     print('Fitting model...')
-    model.fit(img, msk, batch_size=4, nb_epoch=12, verbose=1, shuffle=True,
+    model.fit(img, msk, batch_size=4, epochs=12, verbose=1, shuffle=True,
               validation_split=0.2, callbacks=[model_checkpoint])
 
     print('Loading and preprocessing test data...')
