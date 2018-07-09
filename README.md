@@ -5,63 +5,14 @@ Tensorflow Keras Lung
 
 ![alt text](pred/39_WT_FLU_2_04.jpg_pred.png?raw=true "Recognized as inflammation")
 
-'''
+```
 Using TensorFlow backend.
 Scanning subfolders [/ori] and [/msk] of [.\LungNeuralNet]
 53 images and 60 masks found
 53 image-mask pairs accepted
 Done: 0/53 images
 Done: 1/53 images
-Done: 2/53 images
-Done: 3/53 images
-Done: 4/53 images
-Done: 5/53 images
-Done: 6/53 images
-Done: 7/53 images
-Done: 8/53 images
-Done: 9/53 images
-Done: 10/53 images
-Done: 11/53 images
-Done: 12/53 images
-Done: 13/53 images
-Done: 14/53 images
-Done: 15/53 images
-Done: 16/53 images
-Done: 17/53 images
-Done: 18/53 images
-Done: 19/53 images
-Done: 20/53 images
-Done: 21/53 images
-Done: 22/53 images
-Done: 23/53 images
-Done: 24/53 images
-Done: 25/53 images
-Done: 26/53 images
-Done: 27/53 images
-Done: 28/53 images
-Done: 29/53 images
-Done: 30/53 images
-Done: 31/53 images
-Done: 32/53 images
-Done: 33/53 images
-Done: 34/53 images
-Done: 35/53 images
-Done: 36/53 images
-Done: 37/53 images
-Done: 38/53 images
-Done: 39/53 images
-Done: 40/53 images
-Done: 41/53 images
-Done: 42/53 images
-Done: 43/53 images
-Done: 44/53 images
-Done: 45/53 images
-Done: 46/53 images
-Done: 47/53 images
-Done: 48/53 images
-Done: 49/53 images
-Done: 50/53 images
-Done: 51/53 images
+...
 Done: 52/53 images
 Creating model and checkpoint...
 Fitting model...
@@ -120,4 +71,4 @@ Predicting masks on test data...
 Saving predicted masks to files...
 
 Process finished with exit code 0
-'''
+```
