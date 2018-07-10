@@ -103,7 +103,7 @@ def predict(model, target):
         print("%s pixel sum: %.1f" % (name[i], np.sum(image[:, :, 0])))
         # image = (image[:, :, 0] * 255.).astype(np.uint8)  # pure BW
         # image = ((0.6 * image[:, :, 0] + 0.4 * (tst[i][:, :, 1] + 0.99)) * 127.).astype(np.uint8)  # gray mixed
-        tst[i][:, :, 2] += 0.49 * image[:, :, 0]
+        tst[i][:, :, 2] = np.tanh(tst[i][:, :, 2] + 0.6 * image[:, :, 0])
         target_file = os.path.join(target_dir, name[i]).replace(".jpg", ".png")
         target_dir = os.path.dirname(target_file)
         if (not os.path.exists(target_dir)):
