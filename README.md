@@ -1,5 +1,9 @@
 # LungNeuralNet
-Tensorflow Keras Lung
+
+The convolutional neural network architecture was based on U-Net, Convolutional Networks for Biomedical Image Segmentation.
+http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/
+
+After training on 14 image pairs, the neural net can identify lung parenchymal region, mild inflammation and severe inflammation in the lung from a new image.
 
 Original Image
 ![alt text](1_single_label_sigmoid/pred/Original/36_KO_FLU_1.jpg?raw=true "original Image")
@@ -13,11 +17,11 @@ Predicted to be mild inflammation in the lung
 Predicted to be severe inflammation in the lung
 ![alt text](1_single_label_sigmoid/pred/InflamSevere/36_KO_FLU_1.png?raw=true "severe inflammation in the lung")
 
-#training
+# Training
 ```
 Using TensorFlow backend.
-Found [14] file from subfolders [/Original] of [D:\Cel files\2018-07.08 Keras Tensorflow 2X IMAGES\LungNeuralNet\1_single_label_sigmoid\train]
-Found [15] file from subfolders [/InflamMild] of [D:\Cel files\2018-07.08 Keras Tensorflow 2X IMAGES\LungNeuralNet\1_single_label_sigmoid\train]
+Found [14] file from subfolders [/Original] of [.\LungNeuralNet\1_single_label_sigmoid\train]
+Found [15] file from subfolders [/InflamMild] of [.\LungNeuralNet\1_single_label_sigmoid\train]
 14 image-mask pairs accepted
 Done: 2/14 images [10%]
 Done: 3/14 images [20%]
@@ -45,9 +49,9 @@ Epoch 1/8
 ...
 ```
 
-#Prediction
+# Prediction
 ```
-Found [1] file from subfolders [/Original] of [D:\Cel files\2018-07.08 Keras Tensorflow 2X IMAGES\LungNeuralNet\1_single_label_sigmoid\pred]
+Found [1] file from subfolders [/Original] of [.\LungNeuralNet\1_single_label_sigmoid\pred]
   mean 0.70 std 0.16
 Done: 1/1 images [100%]
 Load weights and predicting ...
