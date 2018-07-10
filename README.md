@@ -5,6 +5,14 @@ http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/
 
 After training on 14 image pairs, the neural net can identify lung parenchymal region, mild inflammation and severe inflammation in the lung from a new image.
 
+<dl>
+  <dt>Definition list</dt>
+  <dd>Is something people use sometimes.</dd>
+
+  <dt>Markdown in HTML</dt>
+  <dd>Does *not* work **very** well. Use HTML <em>tags</em>.</dd>
+</dl>
+
 Original Image
 ![alt text](1_single_label_sigmoid/pred/Original/36_KO_FLU_1.jpg?raw=true "original Image")
 
