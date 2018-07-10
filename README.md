@@ -9,15 +9,15 @@ Original Image
 ![alt text](1_single_label_sigmoid/pred/Original/36_KO_FLU_1.jpg?raw=true "original Image")
 
 Predicted to be lung parenchymal region
-sum of pixels: 3342.6
+sum of pixels: 852367.1
 ![alt text](1_single_label_sigmoid/pred/Paren/36_KO_FLU_1.png?raw=true "lung parenchymal region")
 
 Predicted to be mild inflammation in the lung
-sum of pixels: 1755.9 (53% of the parechyma)
+sum of pixels: 447767.1 (53% of the parechyma)
 ![alt text](1_single_label_sigmoid/pred/InflamMild/36_KO_FLU_1.png?raw=true "mild inflammation in the lung")
 
 Predicted to be severe inflammation in the lung
-sum of pixels: 888.8 (27% of the parechyma)
+sum of pixels: 226655.1 (27% of the parechyma)
 ![alt text](1_single_label_sigmoid/pred/InflamSevere/36_KO_FLU_1.png?raw=true "severe inflammation in the lung")
 
 # Training

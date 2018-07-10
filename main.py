@@ -100,7 +100,7 @@ def predict(model, target):
     if not os.path.exists(target_dir):
         os.mkdir(target_dir)
     for i, image in enumerate(imgs_mask_test):
-        print("%s pixel sum: %.1f" % (name[i], np.sum(image[:, :, 0])/255.))
+        print("%s pixel sum: %.1f" % (name[i], np.sum(image[:, :, 0])))
         image = ((0.6 * image[:, :, 0] + 0.4 * (tst[i][:, :, 1] + 0.99)) * 127.).astype(np.uint8)  # mixed
         # image = (image[:, :, 0] * 255.).astype(np.uint8)  # pure BW
         imsave(os.path.join(target_dir, name[i]).replace(".jpg", ".png"), image)
