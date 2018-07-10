@@ -6,23 +6,29 @@ http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/
 After training on 14 image pairs, the neural net can identify lung parenchymal region, mild inflammation and severe inflammation in the lung from a new image.
 
 <dl>
-<dt>Original Image</dt>
+    <dt>Original Image</dt>
+</dl>
 ![alt text](1_single_label_sigmoid/pred/Original/36_KO_FLU_1.jpg?raw=true "original Image")
 
-<dt>Predicted to be lung parenchymal region</dt>
-<dd>sum of pixels: 852367.1</dd>
+<dl>
+    <dt>Predicted to be lung parenchymal region</dt>
+    <dd>sum of pixels: 852367.1</dd>
+</dl>
 ![alt text](1_single_label_sigmoid/pred/Paren/36_KO_FLU_1.png?raw=true "lung parenchymal region")
 
-<dt>Predicted to be mild inflammation in the lung</dt>
-<dd>sum of pixels: 447767.1 (53% of the parechyma)</dd>
+<dl>
+    <dt>Predicted to be mild inflammation in the lung</dt>
+    <dd>sum of pixels: 447767.1 (53% of the parechyma)</dd>
+</dl>
 ![alt text](1_single_label_sigmoid/pred/InflamMild/36_KO_FLU_1.png?raw=true "mild inflammation in the lung")
 
-<dt>Predicted to be severe inflammation in the lung</dt>
-<dd>sum of pixels: 226655.1 (27% of the parechyma)</dd>
+<dl>
+    <dt>Predicted to be severe inflammation in the lung</dt>
+    <dd>sum of pixels: 226655.1 (27% of the parechyma)</dd>
+</dl>
 ![alt text](1_single_label_sigmoid/pred/InflamSevere/36_KO_FLU_1.png?raw=true "severe inflammation in the lung")
 
 </dl>
-
 
 
 # Training
