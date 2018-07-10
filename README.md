@@ -7,28 +7,31 @@ After training on 14 image pairs, the neural net can identify lung parenchymal r
 
 <dl>
     <dt>Original Image</dt>
+    <dl></dl>
 </dl>
+
 ![alt text](1_single_label_sigmoid/pred/Original/36_KO_FLU_1.jpg?raw=true "original Image")
 
 <dl>
     <dt>Predicted to be lung parenchymal region</dt>
     <dd>sum of pixels: 852367.1</dd>
 </dl>
+
 ![alt text](1_single_label_sigmoid/pred/Paren/36_KO_FLU_1.png?raw=true "lung parenchymal region")
 
 <dl>
     <dt>Predicted to be mild inflammation in the lung</dt>
     <dd>sum of pixels: 447767.1 (53% of the parechyma)</dd>
 </dl>
+
 ![alt text](1_single_label_sigmoid/pred/InflamMild/36_KO_FLU_1.png?raw=true "mild inflammation in the lung")
 
 <dl>
     <dt>Predicted to be severe inflammation in the lung</dt>
     <dd>sum of pixels: 226655.1 (27% of the parechyma)</dd>
 </dl>
-![alt text](1_single_label_sigmoid/pred/InflamSevere/36_KO_FLU_1.png?raw=true "severe inflammation in the lung")
 
-</dl>
+![alt text](1_single_label_sigmoid/pred/InflamSevere/36_KO_FLU_1.png?raw=true "severe inflammation in the lung")
 
 
 # Training

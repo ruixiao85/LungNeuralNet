@@ -103,7 +103,7 @@ def predict(model, target):
         print("%s pixel sum: %.1f" % (name[i], np.sum(image[:, :, 0])))
         # image = (image[:, :, 0] * 255.).astype(np.uint8)  # pure BW
         # image = ((0.6 * image[:, :, 0] + 0.4 * (tst[i][:, :, 1] + 0.99)) * 127.).astype(np.uint8)  # gray mixed
-        tst[i][:, :, 2] += 0.8 * image[:, :, 0]
+        tst[i][:, :, 2] += 0.49 * image[:, :, 0]
         target_file = os.path.join(target_dir, name[i]).replace(".jpg", ".png")
         target_dir = os.path.dirname(target_file)
         if (not os.path.exists(target_dir)):
@@ -120,7 +120,7 @@ if __name__ == '__main__':
     model.compile(optimizer=Adam(lr=1e-5), loss=dice_coef_loss, metrics=[dice_coef])
     # optimizer=SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True),#
     for target in Targets:
-        # train(model, target, 8, True)
+        train(model, target, 8, True)
         predict(model, target)
 
     # # multi-label softmax function
