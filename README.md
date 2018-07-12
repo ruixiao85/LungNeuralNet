@@ -33,6 +33,13 @@ After training on 14 image pairs, the neural net can identify lung parenchymal r
 
 ![alt text](1_single_label_sigmoid/pred/InflamSevere/36_KO_FLU_1.png?raw=true "severe inflammation in the lung")
 
+<dl>
+    <dt>Exported results</dt>    
+</dl>
+
+|   | Paren  | InflamMild | InflamSevere |
+|---|---|---|---|
+| 36_KO_FLU_1.jpg | 860713.25 | 560280.8125 | 256274.0313 |
 
 # Training
 ```
