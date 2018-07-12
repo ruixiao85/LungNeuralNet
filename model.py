@@ -9,16 +9,15 @@ from keras import backend as KerasBackend
 KerasBackend.set_image_data_format('channels_last')
 concat_axis = 3
 
-
 def dice_coef(y_true, y_pred):
-    Smooth = 0.05
+    Smooth = .1
     y_true_f = KerasBackend.flatten(y_true)
     y_pred_f = KerasBackend.flatten(y_pred)
     intersection = KerasBackend.sum(y_true_f * y_pred_f)
     return (2. * intersection + Smooth) / (KerasBackend.sum(y_true_f) + KerasBackend.sum(y_pred_f) + Smooth)
 
 def dice_coef_loss(y_true, y_pred):
-    return - dice_coef(y_true, y_pred)
+    return 1 - dice_coef(y_true, y_pred)
 
 def get_crop_shape(target, refer):
     cw = (target.get_shape()[2] - refer.get_shape()[2]).value  # width, the 3rd dimension
@@ -36,10 +35,10 @@ def get_crop_shape(target, refer):
     return (ch1, ch2), (cw1, cw2)
 
 
-def get_unet3(img_rows, img_cols, dim_in, dim_out, act_fun='sigmoid'):
+def get_unet3(img_rows, img_cols, dim_in, dim_out, act_fun):
     inputs = Input((img_rows, img_cols, dim_in))
 
-    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same', name='conv1_1')(inputs)
+    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
     conv1 = Conv2D(32, (3, 3), activation='relu', padding='same')(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
     conv2 = Conv2D(64, (3, 3), activation='relu', padding='same')(pool1)
@@ -68,10 +67,10 @@ def get_unet3(img_rows, img_cols, dim_in, dim_out, act_fun='sigmoid'):
     return Model(inputs=inputs, outputs=outputs)
 
 
-def get_unet4(img_rows, img_cols, dim_in, dim_out, act_fun='sigmoid'):
+def get_unet4(img_rows, img_cols, dim_in, dim_out, act_fun):
     inputs = Input((img_rows, img_cols, dim_in))
 
-    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same', name='conv1_1')(inputs)
+    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
     conv1 = Conv2D(32, (3, 3), activation='relu', padding='same')(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
     conv2 = Conv2D(64, (3, 3), activation='relu', padding='same')(pool1)
@@ -110,10 +109,10 @@ def get_unet4(img_rows, img_cols, dim_in, dim_out, act_fun='sigmoid'):
     return Model(inputs=inputs, outputs=outputs)
 
 
-def get_unet5(img_rows, img_cols, dim_in, dim_out, act_fun='sigmoid'):
+def get_unet5(img_rows, img_cols, dim_in, dim_out, act_fun):
     inputs = Input((img_rows, img_cols, dim_in))
 
-    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same', name='conv1_1')(inputs)
+    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
     conv1 = Conv2D(32, (3, 3), activation='relu', padding='same')(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
     conv2 = Conv2D(64, (3, 3), activation='relu', padding='same')(pool1)
@@ -161,10 +160,10 @@ def get_unet5(img_rows, img_cols, dim_in, dim_out, act_fun='sigmoid'):
     return Model(inputs=inputs, outputs=outputs)
 
 
-def get_unet6(img_rows, img_cols, dim_in, dim_out, act_fun='sigmoid'):
+def get_unet6(img_rows, img_cols, dim_in, dim_out, act_fun):
     inputs = Input((img_rows, img_cols, dim_in))
 
-    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same', name='conv1_1')(inputs)
+    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
     conv1 = Conv2D(32, (3, 3), activation='relu', padding='same')(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
     conv2 = Conv2D(64, (3, 3), activation='relu', padding='same')(pool1)

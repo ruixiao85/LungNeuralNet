@@ -14,21 +14,21 @@ After training on 14 image pairs, the neural net can identify lung parenchymal r
 
 <dl>
     <dt>Predicted to be lung parenchymal region</dt>
-    <dd>sum of pixels: 852367.1</dd>
+    <dd>sum of pixels: 860713.25</dd>
 </dl>
 
 ![alt text](1_single_label_sigmoid/pred/Paren/36_KO_FLU_1.png?raw=true "lung parenchymal region")
 
 <dl>
     <dt>Predicted to be mild inflammation in the lung</dt>
-    <dd>sum of pixels: 447767.1 (53% of the parechyma)</dd>
+    <dd>sum of pixels: 560280.81 (65% of the parechyma)</dd>
 </dl>
 
 ![alt text](1_single_label_sigmoid/pred/InflamMild/36_KO_FLU_1.png?raw=true "mild inflammation in the lung")
 
 <dl>
     <dt>Predicted to be severe inflammation in the lung</dt>
-    <dd>sum of pixels: 226655.1 (27% of the parechyma)</dd>
+    <dd>sum of pixels: 256274.03 (30% of the parechyma)</dd>
 </dl>
 
 ![alt text](1_single_label_sigmoid/pred/InflamSevere/36_KO_FLU_1.png?raw=true "severe inflammation in the lung")
@@ -70,10 +70,20 @@ Epoch 1/8
 ```
 Found [1] file from subfolders [/Original] of [.\LungNeuralNet\1_single_label_sigmoid\pred]
   mean 0.70 std 0.16
-Done: 1/1 images [100%]
+Leading 1 / 1 images [100%]
 Load weights and predicting ...
 
-1/1 [==============================] - 0s 147ms/step
+1/1 [==============================] - 2s 2s/step
+Saving predicted results [Paren] to files...
+36_KO_FLU_1.jpg pixel sum: 860713.2
+Load weights and predicting ...
+
+1/1 [==============================] - 0s 153ms/step
 Saving predicted results [InflamMild] to files...
-36_KO_FLU_1.jpg pixel sum: 1755.9
+36_KO_FLU_1.jpg pixel sum: 560280.8
+Load weights and predicting ...
+
+1/1 [==============================] - 0s 149ms/step
+Saving predicted results [InflamSevere] to files...
+36_KO_FLU_1.jpg pixel sum: 256274.0
 ```
