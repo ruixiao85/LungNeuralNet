@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
+from keras.engine.saving import model_from_json
 from skimage.io import imsave, imread
 from model import dice_coef, dice_coef_loss, get_unet3, get_unet4, get_unet5, get_unet6
 from keras.callbacks import ModelCheckpoint
@@ -113,6 +114,11 @@ if __name__ == '__main__':
     Original = "Original"
     Targets = ["Paren", "InflamMild", "InflamSevere"]  #
     model = get_unet5(image_rows, image_cols, 3, 1, 'sigmoid')
+    # model_json = "Unet5.json"
+    # with open(model_json, "w") as json_file:
+    #     json_file.write(model.to_json())
+    # with open(model_json, 'r') as json_file:
+    #     model = model_from_json(json_file.read())
     model.compile(optimizer=Adam(lr=1e-6), loss=dice_coef_loss, metrics=[dice_coef])
     # optimizer=SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True),#
     for target in Targets:
