@@ -58,11 +58,27 @@ def get_data_pair(sub_dir, dir_in, dir_out, rows, cols, tgt_ch):
     _img = np.ndarray((total, rows, cols, 3), dtype=np.float32)
 
     for i, image_name in enumerate(images):
+        # my_matrix = imread(os.path.join(wd, dir_in, image_name))
+        # imsave('split0.jpg', np.hsplit(np.vsplit(my_matrix, 2)[0], 2)[0])
+        # NofImage, NofRow, NofCol, NofCh = 5, 4, 6, 3
+        # my_matrix = np.arange(360).reshape(NofImage, NofRow, NofCol, NofCh)
+        # my_matrix.reshape(NofImage * 4, NofRow / 2, NofCol / 2, NofCh)
+        # new_matrix = np.zeros(NofImage * 4, NofRow / 2, NofCol / 2, NofCh)
+        # for l in my_matrix:
+        #     upper_half = np.hsplit(np.vsplit(my_matrix, 2)[0], 2)
+        #     lower_half = np.hsplit(np.vsplit(my_matrix, 2)[1], 2)
+        #
+        # upper_left = upper_half[0]
+        # upper_right = upper_half[1]
+        # lower_left = lower_half[0]
+        # lower_right = lower_half[1]
+        # C = np.vstack([np.hstack([c11, c12]), np.hstack([c21, c22])])
+
         _img[i] = preprocess_color(imread(os.path.join(wd, dir_in, image_name)) / 255., True)
         if dir_out != '':
             _tgt[i] = preprocess_channel(imread(os.path.join(wd, dir_out, image_name)) / 255., tgt_ch)
         if int(10. * (i + 1) / total) > int(10. * i / total):
-            print('Leading %d / %d images [%.0f%%]' % (i + 1, total, 10 * int(10. * (i + 1) / total)))
+            print('Loading %d / %d images [%.0f%%]' % (i + 1, total, 10 * int(10. * (i + 1) / total)))
     return _img, _tgt
 
 
