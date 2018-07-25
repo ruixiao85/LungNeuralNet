@@ -2,11 +2,9 @@ import os
 import numpy as np
 import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
-from keras.engine.saving import model_from_json
 from skimage.io import imsave, imread
-from model import dice_coef, dice_coef_loss, get_unet3, get_unet4, get_unet5, get_unet6
+from model.unet import get_unet
 from keras.callbacks import ModelCheckpoint
-from keras.optimizers import Adam, SGD, RMSprop
 import argparse
 
 
@@ -58,25 +56,45 @@ def get_data_pair(sub_dir, dir_in, dir_out, rows, cols, tgt_ch):
     _img = np.ndarray((total, rows, cols, 3), dtype=np.float32)
 
     for i, image_name in enumerate(images):
-        # my_matrix = imread(os.path.join(wd, dir_in, image_name))
-        # imsave('split0.jpg', np.hsplit(np.vsplit(my_matrix, 2)[0], 2)[0])
-        # NofImage, NofRow, NofCol, NofCh = 5, 4, 6, 3
-        # my_matrix = np.arange(360).reshape(NofImage, NofRow, NofCol, NofCh)
-        # my_matrix.reshape(NofImage * 4, NofRow / 2, NofCol / 2, NofCh)
-        # new_matrix = np.zeros(NofImage * 4, NofRow / 2, NofCol / 2, NofCh)
-        # for l in my_matrix:
-        #     upper_half = np.hsplit(np.vsplit(my_matrix, 2)[0], 2)
-        #     lower_half = np.hsplit(np.vsplit(my_matrix, 2)[1], 2)
-        #
-        # upper_left = upper_half[0]
-        # upper_right = upper_half[1]
-        # lower_left = lower_half[0]
-        # lower_right = lower_half[1]
-        # C = np.vstack([np.hstack([c11, c12]), np.hstack([c21, c22])])
-
         _img[i] = preprocess_color(imread(os.path.join(wd, dir_in, image_name)) / 255., True)
         if dir_out != '':
             _tgt[i] = preprocess_channel(imread(os.path.join(wd, dir_out, image_name)) / 255., tgt_ch)
+        if int(10. * (i + 1) / total) > int(10. * i / total):
+            print('Loading %d / %d images [%.0f%%]' % (i + 1, total, 10 * int(10. * (i + 1) / total)))
+    return _img, _tgt
+
+def get_data_pair_slice(sub_dir, dir_in, dir_out, rows, cols, tgt_ch):
+    def slice_2x2(my_matrix):
+        upper_half = np.hsplit(np.vsplit(my_matrix, 2)[0], 2)
+        lower_half = np.hsplit(np.vsplit(my_matrix, 2)[1], 2)
+        return upper_half[0], upper_half[1], lower_half[0], lower_half[1]
+
+    wd = os.path.join(os.getcwd(), sub_dir)
+    images = get_recursive_rel_path(os.path.join(wd, dir_in))
+    total = len(images)
+    print("Found [%d] file from subfolders [/%s] of [%s]" % (total, dir_in, wd))
+    multi = 4
+    rows /= 2
+    cols / 2
+
+    if dir_out != '':
+        tgts = get_recursive_rel_path(os.path.join(wd, dir_out))
+        print("Found [%d] file from subfolders [/%s] of [%s]" % (len(tgts), dir_out, wd))
+
+        images = list(set(images).intersection(tgts))  # image-target pairs only
+        total = len(images)  # update # of files
+        print("%d image-mask pairs accepted" % total)
+        _tgt = np.ndarray((total * multi, rows, cols, 1), dtype=np.float32)
+    else:
+        _tgt = images
+    _img = np.ndarray((total * multi, rows, cols, 3), dtype=np.float32)
+
+    for i, image_name in enumerate(images):
+        _img[4 * i], _img[4 * i + 1], _img[4 * i + 2], _img[4 * i + 3] = slice_2x2(
+            preprocess_color(imread(os.path.join(wd, dir_in, image_name)) / 255., True))
+        if dir_out != '':
+            _tgt[4 * i], _tgt[4 * i + 1], _tgt[4 * i + 2], _tgt[4 * i + 3] = slice_2x2(
+                preprocess_channel(imread(os.path.join(wd, dir_out, image_name)) / 255., tgt_ch))
         if int(10. * (i + 1) / total) > int(10. * i / total):
             print('Loading %d / %d images [%.0f%%]' % (i + 1, total, 10 * int(10. * (i + 1) / total)))
     return _img, _tgt
@@ -150,15 +168,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     os.chdir(os.getcwd() if (args.dir == '') else args.dir)
+    os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     targets = args.output.split(',')
-    model = get_unet5(args.height, args.width, 3, 1, 'sigmoid')
+    model=get_unet(args.height, args.width, 3, 1, 'sigmoid')
     # model_json = "unet5.json"
     # with open(model_json, "w") as json_file:
     #     json_file.write(model.to_json())
     # with open(model_json, 'r') as json_file:
     #     model = model_from_json(json_file.read())
-    model.compile(optimizer=Adam(lr=1e-6), loss=dice_coef_loss, metrics=[dice_coef])
-    # optimizer=SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True),#
 
     mode = args.mode[0].lower()
     if mode != 'p':

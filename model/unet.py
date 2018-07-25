@@ -4,17 +4,18 @@ import os
 import numpy as np
 from keras.models import Model
 from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, ZeroPadding2D
-from keras import backend as KerasBackend
+from keras import backend as K
+from keras.optimizers import Adam
 
-KerasBackend.set_image_data_format('channels_last')
+K.set_image_data_format('channels_last')
 concat_axis = 3
 
 def dice_coef(y_true, y_pred):
     Smooth = .1
-    y_true_f = KerasBackend.flatten(y_true)
-    y_pred_f = KerasBackend.flatten(y_pred)
-    intersection = KerasBackend.sum(y_true_f * y_pred_f)
-    return (2. * intersection + Smooth) / (KerasBackend.sum(y_true_f) + KerasBackend.sum(y_pred_f) + Smooth)
+    y_true_f = K.flatten(y_true)
+    y_pred_f = K.flatten(y_pred)
+    intersection = K.sum(y_true_f * y_pred_f)
+    return (2. * intersection + Smooth) / (K.sum(y_true_f) + K.sum(y_pred_f) + Smooth)
 
 def dice_coef_loss(y_true, y_pred):
     return 1 - dice_coef(y_true, y_pred)
@@ -34,6 +35,10 @@ def get_crop_shape(target, refer):
         ch1, ch2 = int(ch / 2), int(ch / 2)
     return (ch1, ch2), (cw1, cw2)
 
+def get_unet():
+    model=get_unet5()
+    model.compile(optimizer=Adam(lr=1e-6), loss=dice_coef_loss, metrics=[dice_coef])
+    # optimizer=SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True),#
 
 def get_unet3(img_rows, img_cols, dim_in, dim_out, act_fun):
     inputs = Input((img_rows, img_cols, dim_in))
