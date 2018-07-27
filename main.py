@@ -193,8 +193,9 @@ if __name__ == '__main__':
     #     json_file.write(model.to_json())
     # with open(model_json, 'r') as json_file:
     #     model = model_from_json(json_file.read())
-    from model.unet_upsample import get_unet4_up, get_unet5_up, get_unet6_up, get_unet_up_compiled
-    from model.unet_transpose import  get_unet5_trans, get_unet7_trans, get_unet_trans_compiled
+    from model.unet_upsample import get_unet4_up, get_unet5_up, get_unet6_up, get_unet7_up
+    from model.unet_transpose import  get_unet5_trans,get_unet6_trans, get_unet7_trans
+    from model.unet import get_unet_compiled
     models=[
         # get_unet4_up,
         get_unet5_up,
@@ -205,11 +206,11 @@ if __name__ == '__main__':
     mode = args.mode[0].lower()
     if mode != 'p':
         for mod in models:
+            model,nn=get_unet_compiled(mod, args.height, args.width, 3, 1)
             for target in targets:
-                model,nn=get_unet_up_compiled(mod, args.height, args.width, 3, 1)
                 img, msk = get_data_pair(args.train_dir, args.input, target, args.height, args.width, 2)  # Blue
                 # img, msk = get_data_pair_slice(args.train_dir, args.input, target, args.height, args.width, 2)  # Blue
-                train(target+nn, 12, True)
+                train(target+nn, 20, True)
 
     if mode != 't':
         tst, name = get_data_pair(args.pred_dir, args.input, '', args.height, args.width, 1)
