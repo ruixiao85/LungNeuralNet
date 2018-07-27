@@ -26,14 +26,15 @@ import keras.layers as KL
 import keras.initializers as KI
 import keras.engine as KE
 import keras.models as KM
-
-import maskRCNN_utils as utils
+import model.maskRCNN_utils as utils
 
 # Requires TensorFlow 1.3+ and Keras 2.0.8+.
 from distutils.version import LooseVersion
 assert LooseVersion(tf.__version__) >= LooseVersion("1.3")
 assert LooseVersion(keras.__version__) >= LooseVersion('2.0.8')
 
+def get_MaskRCNN():
+    return MaskRCNN(mode="training")
 
 ############################################################
 #  Utility Functions
