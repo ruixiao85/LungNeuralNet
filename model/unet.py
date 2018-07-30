@@ -55,14 +55,14 @@ def loss_bce_dice(y_true, y_pred):
 def loss_jaccard_dice(y_true, y_pred):
     return loss_jaccard(y_true, y_pred) + loss_dice(y_true, y_pred)
 
-def get_unet_compiled(func, img_rows, img_cols, dim_in, dim_out, act_fun='elu', out_fun='sigmoid'):
-    model,name=func(img_rows, img_cols,dim_in,dim_out,act_fun,out_fun)
+def get_unet_compiled(func, img_rows, img_cols, dim_in, dim_out, ratio=1, act_fun='elu', out_fun='sigmoid'):
+    model,name=func(img_rows, img_cols,dim_in,dim_out,ratio,act_fun,out_fun)
     from keras.optimizers import Adam
-    from model.unet import loss_dice, loss_jaccard, loss_bce,jaccard_coef, jaccard_coef_int, dice_coef_flat, dice_coef_flat_int
     model.compile(optimizer=Adam(1e-5),
                   # loss=[loss_bce],  # 'binary_crossentropy' "bcedice"
                   # loss=[loss_jaccard],  # 'binary_crossentropy' "bcedice"
-                  loss=[loss_dice],  # 'binary_crossentropy' "bcedice"
-                  # loss=[loss_bce_dice],  # 'binary_crossentropy' "bcedice"
+                  # loss=[loss_dice],  # 'binary_crossentropy' "bcedice"
+                  loss=[loss_bce_dice],  # 'binary_crossentropy' "bcedice"
                   metrics=[jaccard_coef_int, dice_coef_flat_int])  #
+    model.summary()
     return model,name

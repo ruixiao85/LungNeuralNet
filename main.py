@@ -1,4 +1,6 @@
 import os
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
@@ -9,11 +11,16 @@ import argparse
 
 
 def standardize(preimg):
-    mean, std = np.mean(preimg), np.std(preimg)
+    mean = np.mean(preimg)
+    std = np.std(preimg)
+    # mean_per_channel = preimg.mean(axis=(0, 1), keepdims=True)
     print("  mean %.2f std %.2f" % (mean, std))
-    preimg -= mean
-    preimg /= (2.5 * std)
-    preimg = np.tanh(preimg)
+    # mean=(mean+0.6)*0.5  # less extreme
+    # std=(std+0.15)*0.5  # less extreme
+    preimg -= ((mean + 0.6) / 2.0)
+    # preimg /= (5. * std)
+    # preimg = np.tanh(preimg)
+    # preimg /= preimg.std(axis=(0, 1), keepdims=True)
     return preimg
 
 
@@ -110,6 +117,7 @@ def train( _target, num_epoch=12, cont_train=True):
     weight_file = _target + ".h5"
 
     if cont_train and os.path.exists(weight_file):
+        print("Continue from previous weights")
         model.load_weights(weight_file)
 
     print('Creating model and checkpoint...')
@@ -117,14 +125,14 @@ def train( _target, num_epoch=12, cont_train=True):
     # tb_callback = TensorBoard(log_dir="tensorboard", histogram_freq=0, # batch_size=config.BATCH_SIZE,
     #                           write_graph=True, write_grads=False, write_images=True,
     #                           embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)
-    early_stop = EarlyStopping(monitor='val_loss', patience=2, verbose=0, mode='auto')
+    early_stop = EarlyStopping(monitor='val_loss', patience=2, verbose=1, mode='auto')
 
     print('Fitting model...')
     history_callback=model.fit(img, msk, batch_size=1, epochs=num_epoch, shuffle=True, validation_split=0.3,
               callbacks=[model_checkpoint, early_stop])  # ,tb_callback
-    loss_history = history_callback.history["loss"]
-    np.savetxt("loss_history"+_target+".txt", np.array(loss_history), delimiter=",")
-
+    with open(_target+".csv", "a") as log:
+        log.write("\n"+datetime.now().strftime("%Y-%m-%d %H:%M")+" train history:\n")
+    pd.DataFrame(history_callback.history).to_csv(_target+".csv", mode="a")
 
 
 def predict(_name, _target, vec, ch):
@@ -193,32 +201,39 @@ if __name__ == '__main__':
     #     json_file.write(model.to_json())
     # with open(model_json, 'r') as json_file:
     #     model = model_from_json(json_file.read())
-    from model.unet_upsample import get_unet4_up, get_unet5_up, get_unet6_up, get_unet7_up
-    from model.unet_transpose import  get_unet5_trans,get_unet6_trans, get_unet7_trans
+    from model.unet_pool_upsample import unet_pool_up_4, unet_pool_up_5, unet_pool_up_6, unet_pool_up_7
+    from model.unet_pool_transpose import  unet_pool_trans_5,unet_pool_trans_6, unet_pool_trans_7
+    from model.unet_conv_transpose import unet_conv_trans_5, unet_conv_trans_6, unet_conv_trans_7
+    # from model.unet_pool_upsample_dure import unet_pool_up_5_dure
+    from model.unet_ave_ind_pool import unet_pool_up_5_ave
     from model.unet import get_unet_compiled
     models=[
-        # get_unet4_up,
-        get_unet5_up,
-        get_unet6_up,
-        get_unet5_trans,
-        get_unet7_trans,
+        # unet_pool_up_5,
+        # unet_pool_up_7,
+        # unet_pool_trans_5,
+        # unet_pool_trans_7,
+        # unet_conv_trans_5,
+        # unet_conv_trans_7,
+        # unet_pool_up_5_dure
+        unet_pool_up_5_ave
     ]
     mode = args.mode[0].lower()
     if mode != 'p':
         for mod in models:
-            model,nn=get_unet_compiled(mod, args.height, args.width, 3, 1)
-            for target in targets:
-                img, msk = get_data_pair(args.train_dir, args.input, target, args.height, args.width, 2)  # Blue
-                # img, msk = get_data_pair_slice(args.train_dir, args.input, target, args.height, args.width, 2)  # Blue
-                train(target+nn, 20, True)
+            for r in [1]:
+                model,nn=get_unet_compiled(mod, args.height, args.width, 3, 1, r)
+                for target in targets:
+                    img, msk = get_data_pair(args.train_dir, args.input, target, args.height, args.width, 2)  # Blue
+                    # img, msk = get_data_pair_slice(args.train_dir, args.input, target, args.height, args.width, 2)  # Blue
+                    train(target+nn, 18, True)
 
     if mode != 't':
         tst, name = get_data_pair(args.pred_dir, args.input, '', args.height, args.width, 1)
         for mod in models:
-            model, nn = get_unet_up_compiled(mod, args.height, args.width, 3, 1)
+            model, nn = get_unet_compiled(mod, args.height, args.width, 3, 1)
             res = np.zeros((len(name), len(targets)), np.float32)
             for x, target in enumerate(targets):
                 predict(name, target+nn, res[:, x], 2)
             res_df = pd.DataFrame(res, name, targets)
-            # res_df.to_csv("result"+target+nn+".csv")
-            res_df.to_excel("result"+target+nn+".xlsx")
+            # res_df.to_csv("result_"+args.pred_dir+"_"+nn+".xlsx")
+            res_df.to_excel("result_"+args.pred_dir+"_"+nn+".xlsx")
