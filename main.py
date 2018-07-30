@@ -6,7 +6,7 @@ import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
 from skimage.io import imsave, imread
 
-from keras.callbacks import ModelCheckpoint, TensorBoard, EarlyStopping
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 import argparse
 
 
@@ -18,7 +18,7 @@ def get_recursive_rel_path(fp, ext='*.jpg'):
     return images
 
 
-def get_data_pair(sub_dir, dir_in, dir_out, data_mode):
+def get_data_pair(sub_dir, dir_in, dir_out, cfg, aug):
     wd = os.path.join(os.getcwd(), sub_dir)
     images = get_recursive_rel_path(os.path.join(wd, dir_in))
     total = len(images)
@@ -44,11 +44,11 @@ def get_data_pair(sub_dir, dir_in, dir_out, data_mode):
         if int(10. * (i + 1) / total) > int(10. * i / total):
             print('Loading %d / %d images [%.0f%%]' % (i + 1, total, 10 * int(10. * (i + 1) / total)))
     if dir_out != '':
-        return preprocess_train(_img,_tgt)
+        return preprocess_train(_img, _tgt, _aug=aug, _out=cfg.dep_out)
     else:
-        return preprocess_predict(_img,_tgt)
+        return preprocess_predict(_img, _tgt)
 
-def train( _target, num_epoch=12, cont_train=True):
+def train(_target, num_epoch=12, cont_train=True):
     weight_file = _target + ".h5"
 
     if cont_train and os.path.exists(weight_file):
@@ -70,7 +70,7 @@ def train( _target, num_epoch=12, cont_train=True):
     pd.DataFrame(history_callback.history).to_csv(_target+".csv", mode="a")
 
 
-def predict(_name, _target, vec, ch):
+def predict(_name, _target, vec, cfg):
     print('Load weights and predicting ...')
     model.load_weights(_target + ".h5")
     imgs_mask_test = model.predict(tst, verbose=1, batch_size=1)
@@ -85,11 +85,12 @@ def predict(_name, _target, vec, ch):
         target_new_dir = os.path.dirname(target_file)
         if not os.path.exists(target_new_dir):
             os.mkdir(target_new_dir)
-        vec[i] = float(np.sum(image[:, :, 0]))
+        vec[i] = (np.sum(image[:, :, 0])).astype(np.float16)
         print("%s pixel sum: %.1f" % (_name[i], vec[i]))
         # image = (image[:, :, 0] * 255.).astype(np.uint8)  # pure BW
         # image = ((0.6 * image[:, :, 0] + 0.4 * (tst[i, :, :, 1] + 0.99)) * 127.).astype(np.uint8)  # gray mixed
         mix = tst[i].copy()
+        ch=cfg.overlay_channel
         for c in range(3):
             if c != ch:
                 mix[:, :, c] = np.tanh(mix[:, :, c] - 0.4 * image[:, :, 0])
@@ -126,7 +127,6 @@ if __name__ == '__main__':
     os.chdir(os.getcwd() if (args.dir == '') else args.dir)
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     rows, cols = args.height, args.width
-    dep_in, dep_out = 3, 2  # 3-RGB, 2-[0~1,1~0], 1-[0~1]
     targets = args.output.split(',')
 
     # model_json = "unet5.json"
@@ -134,38 +134,42 @@ if __name__ == '__main__':
     #     json_file.write(model.to_json())
     # with open(model_json, 'r') as json_file:
     #     model = model_from_json(json_file.read())
-    from model.unet_pool_upsample import unet_pool_up_4, unet_pool_up_5, unet_pool_up_6, unet_pool_up_7
-    from model.unet_pool_transpose import  unet_pool_trans_5,unet_pool_trans_6, unet_pool_trans_7
-    from model.unet_conv_transpose import unet_conv_trans_5, unet_conv_trans_6, unet_conv_trans_7
-    # from model.unet_pool_upsample_dure import unet_pool_up_5_dure
-    from model.unet_ave_ind_pool import unet_pool_up_5_ave
-    from model.unet import get_unet_compiled
+    from unet import compile_unet
+    from model.unet_pool_up import unet_pool_up_5
+    from model.unet_pool_trans import unet_pool_trans_5
+    from model.unet_conv_trans import unet_conv_trans_5
+    from model.unet_pool_up_31 import unet_pool_up_5_dure
     models=[
-        # unet_pool_up_5,
+        unet_pool_up_5,
         # unet_pool_up_7,
-        # unet_pool_trans_5,
+        unet_pool_trans_5,
         # unet_pool_trans_7,
-        # unet_conv_trans_5,
+        unet_conv_trans_5,
         # unet_conv_trans_7,
-        # unet_pool_up_5_dure
-        unet_pool_up_5_ave
+        unet_pool_up_5_dure,
+        # unet_pool_up_7_dure,
     ]
+    from model_config import config
     mode = args.mode[0].lower()
-    if mode != 'p':
-        for mod in models:
-            for r in [1]:
-                model,nn=get_unet_compiled(mod, rows, cols, 3, 2, r)
-                for target in targets:
-                    img, msk = get_data_pair(args.train_dir, args.input, target, 't')
-                    train(target+nn, 18, True)
+    for cfg in [config(3,1,'elu','sigmoid'), config(3,2,'elu','softmax')]:
+        if mode != 'p':
+            for mod in models:
+                    model,nn=compile_unet(mod, rows, cols, cfg)
+                    print("Using "+nn)
+                    for target in targets:
+                        n_repeats=5
+                        for r in range(n_repeats):  # repeat imgaug and train
+                            print("Repeating training %d/%d for %s" % (r + 1, n_repeats, target))
+                            img, msk = get_data_pair(args.train_dir, args.input, target, cfg, aug=True)
+                            train(target+nn, 18, True)
 
-    if mode != 't':
-        tst, name = get_data_pair(args.pred_dir, args.input, '', 'p')
-        for mod in models:
-            model, nn = get_unet_compiled(mod, rows, cols, 3, 2)
-            res = np.zeros((len(name), len(targets)), np.float32)
-            for x, target in enumerate(targets):
-                predict(name, target+nn, res[:, x], 2)
-            res_df = pd.DataFrame(res, name, targets)
-            # res_df.to_csv("result_"+args.pred_dir+"_"+nn+".xlsx")
-            res_df.to_excel("result_"+args.pred_dir+"_"+nn+".xlsx")
+        if mode != 't':
+            tst, name = get_data_pair(args.pred_dir, args.input, '', cfg, aug=False)
+            for mod in models:
+                model, nn = compile_unet(mod, rows, cols, cfg)
+                res = np.zeros((len(name), len(targets)), np.float16)
+                for x, target in enumerate(targets):
+                    predict(name, target+nn, res[:, x], cfg)
+                res_df = pd.DataFrame(res, name, targets)
+                # res_df.to_csv("result_"+args.pred_dir+"_"+nn+".xlsx")
+                res_df.to_excel("result_"+args.pred_dir+"_"+nn+".xlsx")

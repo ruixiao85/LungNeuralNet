@@ -1,5 +1,6 @@
 from keras import backend as K
 from keras.backend.tensorflow_backend import _to_tensor
+from model_config import config
 
 sum_axis=[0,-1,-2]
 SMOOTH_LOSS = 1e-5
@@ -55,14 +56,33 @@ def loss_bce_dice(y_true, y_pred):
 def loss_jaccard_dice(y_true, y_pred):
     return loss_jaccard(y_true, y_pred) + loss_dice(y_true, y_pred)
 
-def get_unet_compiled(func, img_rows, img_cols, dim_in, dim_out, ratio=1, act_fun='elu', out_fun='sigmoid'):
-    model,name=func(img_rows, img_cols,dim_in,dim_out,ratio,act_fun,out_fun)
+def compile_unet(func, img_rows, img_cols, cfg):
+    # 'relu6'  # min(max(features, 0), 6)
+    # 'crelu'  # Concatenates ReLU (only positive part) with ReLU (only the negative part). Note that this non-linearity doubles the depth of the activations
+    # 'elu'  # Exponential Linear Units exp(features)-1, if <0, features
+    # 'selu'  # Scaled Exponential Linear Rectifier: scale * alpha * (exp(features) - 1) if < 0, scale * features otherwise.
+    # 'softplus'  # log(exp(features)+1)
+    # 'softsign' features / (abs(features) + 1)
+
+    # 'mean_squared_error' 'mean_absolute_error'
+    # 'binary_crossentropy'
+    # 'sparse_categorical_crossentropy' 'categorical_crossentropy'
+
+    # if dim_out>1:
+    #     out_fun = 'softmax'
+    #     loss_fun='categorical_crossentropy'
+    # else:
+    #     out_fun='sigmoid'
+    #     loss_fun=[loss_bce_dice]
+    #     # loss_fun=[loss_bce],  # 'binary_crossentropy' "bcedice"
+    #     # loss_fun=[loss_jaccard],  # 'binary_crossentropy' "bcedice"
+    #     # loss_fun=[loss_dice],  # 'binary_crossentropy' "bcedice"
+    if cfg.loss_fun is None:
+        cfg.loss_fun=[loss_bce_dice] if cfg.dep_out<=1 else 'categorical_crossentropy'
+    model,name=func(img_rows, img_cols, cfg)
     from keras.optimizers import Adam
     model.compile(optimizer=Adam(1e-5),
-                  # loss=[loss_bce],  # 'binary_crossentropy' "bcedice"
-                  # loss=[loss_jaccard],  # 'binary_crossentropy' "bcedice"
-                  # loss=[loss_dice],  # 'binary_crossentropy' "bcedice"
-                  loss=[loss_bce_dice],  # 'binary_crossentropy' "bcedice"
-                  metrics=[jaccard_coef_int, dice_coef_flat_int])  #
+                  loss=cfg.loss_fun,
+                  metrics=[jaccard_coef_int, dice_coef_flat_int,'accuracy'])
     model.summary()
-    return model,name
+    return model, name

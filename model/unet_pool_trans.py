@@ -10,9 +10,12 @@ from keras import backend as K
 K.set_image_data_format("channels_last")
 #K.set_image_dim_ordering("th")
 concat_axis = 3
+init='he_normal'
 
-def unet_pool_trans_5(img_rows, img_cols, dim_in, dim_out, act_fun='elu', out_fun='sigmoid', init='he_normal'):
-    name="_unet_pool_trans_5"
+def unet_pool_trans_5(img_rows, img_cols, cfg):
+    act_fun, out_fun = cfg.act_fun, cfg.out_fun
+    dim_in, dim_out = cfg.dep_in, cfg.dep_out
+    name="_unet_pool_trans_5_"+str(cfg)
     f1, f2, f3, f4, f5 = 64, 96, 128, 192, 256
     # f1, f2, f3, f4, f5 = 96, 128, 192, 256, 384 # s
     # f1, f2, f3, f4, f5 = 32, 64, 128, 256, 512
@@ -50,8 +53,10 @@ def unet_pool_trans_5(img_rows, img_cols, dim_in, dim_out, act_fun='elu', out_fu
     decon1 = Conv2D(dim_out, (1, 1), activation=out_fun)(decon1)
     return Model(img_input, decon1), name
 
-def unet_pool_trans_6(img_rows, img_cols, dim_in, dim_out, act_fun='elu', out_fun='sigmoid', init='he_normal'):
-    name="_unet_pool_trans_6"
+def unet_pool_trans_6(img_rows, img_cols, cfg):
+    act_fun, out_fun = cfg.act_fun, cfg.out_fun
+    dim_in, dim_out = cfg.dep_in, cfg.dep_out
+    name="_unet_pool_trans_6_"+str(cfg)
     # f1, f2, f3, f4, f5, f6 = 32, 64, 96, 128, 192, 256
     f1, f2, f3, f4, f5, f6 = 64, 96, 128, 192, 256, 384
     # img_input = Input((None, None, dim_in))  # r,c,3
@@ -94,8 +99,10 @@ def unet_pool_trans_6(img_rows, img_cols, dim_in, dim_out, act_fun='elu', out_fu
     decon1 = Conv2D(dim_out, (1, 1), activation=out_fun)(decon1)
     return Model(img_input, decon1), name
 
-def unet_pool_trans_7(img_rows, img_cols, dim_in, dim_out, act_fun='elu', out_fun='sigmoid', init='he_normal'):
-    name="_unet_pool_trans_7"
+def unet_pool_trans_7(img_rows, img_cols, cfg):
+    act_fun, out_fun = cfg.act_fun, cfg.out_fun
+    dim_in, dim_out = cfg.dep_in, cfg.dep_out
+    name="_unet_pool_trans_7_"+str(cfg)
     # f1, f2, f3, f4, f5, f6, f7 = 32, 64, 96, 128, 192, 256, 384
     f1, f2, f3, f4, f5, f6, f7 = 64, 96, 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
