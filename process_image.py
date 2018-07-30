@@ -24,10 +24,10 @@ def standardize(preimg):
     return preimg
 
 def scale_input(_array):
-    return _array.astype(np.float16) / 127.5 - 1.0
+    return _array.astype(np.float32) / 127.5 - 1.0
 
 def scale_output(_array, _depth_out):
-    _array = _array.astype(np.float16) / 255.0
+    _array = _array.astype(np.float32) / 255.0
     if _depth_out==1:
         return _array[...,2][...,np.newaxis]  # blue channel to only channel
     else:
@@ -51,12 +51,12 @@ def preprocess_train(_img, _tgt, _aug, _out):
             )),
             iaa.Sometimes(0.7,
                 iaa.OneOf([
-                    iaa.GaussianBlur((0, 1.5)), # blur sigma
+                    iaa.GaussianBlur((0, 2.0)), # blur sigma
                     iaa.AverageBlur(k=(1, 5)),  # blur image using local means with kernel sizes between 2 and 7
                     iaa.Sharpen((0,1.0), lightness=(0.8,1.3))  # sharpen
                 ]),
             ),
-            # iaa.ContrastNormalization((0.75, 1.25), per_channel=0.5),  # improve or worsen the contrast
+            iaa.ContrastNormalization((0.75, 1.25), per_channel=0.5),  # improve or worsen the contrast
             # iaa.OneOf([
             #     iaa.Dropout((0.01, 0.1), per_channel=0.5),  # randomly remove up to 10% of the pixels
             #     iaa.CoarseDropout((0.03, 0.15), size_percent=(0.02, 0.05), per_channel=0.2),

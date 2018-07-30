@@ -1,52 +1,53 @@
 import os
 from datetime import datetime
-
 import numpy as np
 import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
 from skimage.io import imsave, imread
-
-from keras.callbacks import ModelCheckpoint, EarlyStopping
+from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
+from process_image import fit, preprocess_train, preprocess_predict
 import argparse
 
 
-def get_recursive_rel_path(fp, ext='*.jpg'):
+def get_recursive_rel_path(_wd, _sf, ext='*.jpg'):
+    _path = os.path.join(_wd, _sf)
     from glob import glob
-    images = [path for fn in os.walk(fp) for path in glob(os.path.join(fn[0], ext))]
-    for i in range(len(images)):
-        images[i] = os.path.relpath(images[i], fp)
-    return images
-
-
-def get_data_pair(sub_dir, dir_in, dir_out, cfg, aug):
-    wd = os.path.join(os.getcwd(), sub_dir)
-    images = get_recursive_rel_path(os.path.join(wd, dir_in))
+    images = [path for fn in os.walk(_path) for path in glob(os.path.join(fn[0], ext))]
     total = len(images)
-    print("Found [%d] file from subfolders [/%s] of [%s]" % (total, dir_in, wd))
+    print("Found [%d] file from subfolders [/%s] of [%s]" % (total, _sf, _wd))
+    for i in range(total):
+        images[i] = os.path.relpath(images[i], _path)
+    return images, total
 
-    if dir_out != '':
-        tgts = get_recursive_rel_path(os.path.join(wd, dir_out))
-        print("Found [%d] file from subfolders [/%s] of [%s]" % (len(tgts), dir_out, wd))
 
-        images = list(set(images).intersection(tgts))  # image-target pairs only
-        total = len(images)  # update # of files
-        print("%d image-mask pairs accepted" % total)
-        _tgt = np.ndarray((total, rows, cols, 3), dtype=np.uint8)
-    else:
-        _tgt = images
+def get_train_data(sub_dir, dir_in, dir_out, _cfg, _aug):
+    wd = os.path.join(os.getcwd(), sub_dir)
+    images, total = get_recursive_rel_path(wd, dir_in)
+    tgts, _ = get_recursive_rel_path(wd, dir_out)
+
+    images = list(set(images).intersection(tgts))  # image-target pairs only
+    total = len(images)  # update # of files
+    print("%d image-mask pairs accepted" % total)
     _img = np.ndarray((total, rows, cols, 3), dtype=np.uint8)
+    _tgt = np.ndarray((total, rows, cols, 3), dtype=np.uint8)
 
-    from process_image import fit, preprocess_train, preprocess_predict
     for i, image_name in enumerate(images):
         _img[i] = fit(imread(os.path.join(wd, dir_in, image_name)),rows,cols)
-        if dir_out != '':
-            _tgt[i] = fit(imread(os.path.join(wd, dir_out, image_name)),rows,cols)
+        _tgt[i] = fit(imread(os.path.join(wd, dir_out, image_name)),rows,cols)
         if int(10. * (i + 1) / total) > int(10. * i / total):
             print('Loading %d / %d images [%.0f%%]' % (i + 1, total, 10 * int(10. * (i + 1) / total)))
-    if dir_out != '':
-        return preprocess_train(_img, _tgt, _aug=aug, _out=cfg.dep_out)
-    else:
-        return preprocess_predict(_img, _tgt)
+    return preprocess_train(_img, _tgt, _aug=_aug, _out=_cfg.dep_out)
+
+def get_predict_data(sub_dir, dir_in):
+    wd = os.path.join(os.getcwd(), sub_dir)
+    images, total = get_recursive_rel_path(wd, dir_in)
+    _img = np.ndarray((total, rows, cols, 3), dtype=np.uint8)
+
+    for i, image_name in enumerate(images):
+        _img[i] = fit(imread(os.path.join(wd, dir_in, image_name)),rows,cols)
+        if int(10. * (i + 1) / total) > int(10. * i / total):
+            print('Loading %d / %d images [%.0f%%]' % (i + 1, total, 10 * int(10. * (i + 1) / total)))
+    return preprocess_predict(_img, images)
 
 def train(_target, num_epoch=12, cont_train=True):
     weight_file = _target + ".h5"
@@ -57,20 +58,20 @@ def train(_target, num_epoch=12, cont_train=True):
 
     print('Creating model and checkpoint...')
     model_checkpoint = ModelCheckpoint(weight_file, monitor='val_loss', save_best_only=True)  # monitor='loss'
-    # tb_callback = TensorBoard(log_dir="tensorboard", histogram_freq=0, # batch_size=config.BATCH_SIZE,
-    #                           write_graph=True, write_grads=False, write_images=True,
-    #                           embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)
-    early_stop = EarlyStopping(monitor='val_loss', patience=2, verbose=1, mode='auto')
-
+    early_stop = EarlyStopping(monitor='val_loss', patience=0, verbose=1, mode='auto')
+    tensorboard = TensorBoard(log_dir="logs/"+datetime.now().strftime("%Y-%m-%d"), histogram_freq=0, # batch_size=config.BATCH_SIZE,
+                              write_graph=True, write_grads=False, write_images=True,
+                              embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)
+    # model.fit(x_train, y_train, epochs=10, validation_data=(x_test, y_test), callbacks=[TrainValTensorBoard(write_graph=False)])
     print('Fitting model...')
-    history_callback=model.fit(img, msk, batch_size=1, epochs=num_epoch, shuffle=True, validation_split=0.3,
-              callbacks=[model_checkpoint, early_stop])  # ,tb_callback
+    history=model.fit(img, msk, batch_size=1, epochs=num_epoch, shuffle=True, validation_split=0.3,
+              callbacks=[model_checkpoint, early_stop, tensorboard]).history
     with open(_target+".csv", "a") as log:
         log.write("\n"+datetime.now().strftime("%Y-%m-%d %H:%M")+" train history:\n")
-    pd.DataFrame(history_callback.history).to_csv(_target+".csv", mode="a")
+    pd.DataFrame(history).to_csv(_target+".csv", mode="a")
 
 
-def predict(_name, _target, vec, cfg):
+def predict(_name, _target, _vec, _cfg):
     print('Load weights and predicting ...')
     model.load_weights(_target + ".h5")
     imgs_mask_test = model.predict(tst, verbose=1, batch_size=1)
@@ -85,18 +86,22 @@ def predict(_name, _target, vec, cfg):
         target_new_dir = os.path.dirname(target_file)
         if not os.path.exists(target_new_dir):
             os.mkdir(target_new_dir)
-        vec[i] = (np.sum(image[:, :, 0])).astype(np.float16)
-        print("%s pixel sum: %.1f" % (_name[i], vec[i]))
+        image = np.rint(image)
+        _vec[i] = int(np.sum(image[..., 0]))
+        print("%s pixel sum: %.1f" % (_name[i], _vec[i]))
         # image = (image[:, :, 0] * 255.).astype(np.uint8)  # pure BW
         # image = ((0.6 * image[:, :, 0] + 0.4 * (tst[i, :, :, 1] + 0.99)) * 127.).astype(np.uint8)  # gray mixed
         mix = tst[i].copy()
-        ch=cfg.overlay_channel
+        ch=_cfg.overlay_channel
+        op=_cfg.overlay_opacity
         for c in range(3):
-            if c != ch:
-                mix[:, :, c] = np.tanh(mix[:, :, c] - 0.4 * image[:, :, 0])
+            if c == ch:
+                mix[:, :, c] = np.tanh(mix[:, :, c] + op * image[:, :, 0])
+            else:
+                mix[:, :, c] = np.tanh(mix[:, :, c] - op * image[:, :, 0])
         mix = Image.fromarray(((mix + 1.) * 127.).astype(np.uint8), 'RGB')
         draw = ImageDraw.Draw(mix)
-        draw.text((0, 0), " Pixels: %.0f / %.0f \n Percentage: %.0f%%" % (vec[i], image_sum, 100. * vec[i] / image_sum),
+        draw.text((0, 0), " Pixels: %.0f / %.0f \n Percentage: %.0f%%" % (_vec[i], image_sum, 100. * _vec[i] / image_sum),
                   (255 if ch == 0 else 10, 255 if ch == 1 else 10, 255 if ch == 2 else 10),
                   ImageFont.truetype("arial.ttf", 36))  # font type size)
         imsave(target_file, mix)
@@ -138,38 +143,48 @@ if __name__ == '__main__':
     from model.unet_pool_up import unet_pool_up_5
     from model.unet_pool_trans import unet_pool_trans_5
     from model.unet_conv_trans import unet_conv_trans_5
-    from model.unet_pool_up_31 import unet_pool_up_5_dure
-    models=[
-        unet_pool_up_5,
+    from model.unet_pool_up_31 import unet_pool_up_5_dure, unet_pool_up_6_dure, unet_pool_up_7_dure
+    models = [
+        # unet_pool_up_5,
         # unet_pool_up_7,
-        unet_pool_trans_5,
+        # unet_pool_trans_5,
         # unet_pool_trans_7,
-        unet_conv_trans_5,
+        # unet_conv_trans_5,
         # unet_conv_trans_7,
         unet_pool_up_5_dure,
-        # unet_pool_up_7_dure,
+        unet_pool_up_7_dure,
     ]
     from model_config import config
+    configs = [
+        # config(3, 1, 'elu', 'sigmoid'),
+        # config(3, 2, 'relu', 'softmax', 'categorical_crossentropy'),
+        config(3, 2, 'elu', 'softmax', 'categorical_crossentropy'),
+        # config(3, 2, 'tanh', 'softmax', 'categorical_crossentropy'),
+        # config(3, 2, 'softsign', 'softmax', 'categorical_crossentropy'),  # trouble
+        # config(3, 2, 'selu', 'softmax', 'categorical_crossentropy'),  # trouble
+        # config(3, 2, 'softplus', 'softmax', 'categorical_crossentropy'), # trouble
+    ]
     mode = args.mode[0].lower()
-    for cfg in [config(3,1,'elu','sigmoid'), config(3,2,'elu','softmax')]:
-        if mode != 'p':
-            for mod in models:
-                    model,nn=compile_unet(mod, rows, cols, cfg)
-                    print("Using "+nn)
-                    for target in targets:
-                        n_repeats=5
-                        for r in range(n_repeats):  # repeat imgaug and train
-                            print("Repeating training %d/%d for %s" % (r + 1, n_repeats, target))
-                            img, msk = get_data_pair(args.train_dir, args.input, target, cfg, aug=True)
-                            train(target+nn, 18, True)
-
-        if mode != 't':
-            tst, name = get_data_pair(args.pred_dir, args.input, '', cfg, aug=False)
+    if mode != 'p':
+        for cfg in configs:
             for mod in models:
                 model, nn = compile_unet(mod, rows, cols, cfg)
-                res = np.zeros((len(name), len(targets)), np.float16)
+                print("Network specifications: " + nn.replace("_", " "))
+                for target in targets:
+                    n_repeats = 5
+                    for r in range(n_repeats):  # repeat imgaug and train
+                        print("Repeating training %d/%d for %s" % (r + 1, n_repeats, target))
+                        img, msk = get_train_data(args.train_dir, args.input, target, cfg, _aug=True)
+                        train(target + nn, 20, True)
+
+    if mode != 't':
+        tst, name = get_predict_data(args.pred_dir, args.input)
+        for cfg in configs:
+            for mod in models:
+                model, nn = compile_unet(mod, rows, cols, cfg)
+                res = np.zeros((len(name), len(targets)), np.float32)
                 for x, target in enumerate(targets):
-                    predict(name, target+nn, res[:, x], cfg)
+                    predict(name, target + nn, res[:, x], cfg)
                 res_df = pd.DataFrame(res, name, targets)
                 # res_df.to_csv("result_"+args.pred_dir+"_"+nn+".xlsx")
-                res_df.to_excel("result_"+args.pred_dir+"_"+nn+".xlsx")
+                res_df.to_excel("result_" + args.pred_dir + "_" + nn + ".xlsx")

@@ -78,7 +78,7 @@ def compile_unet(func, img_rows, img_cols, cfg):
     #     # loss_fun=[loss_jaccard],  # 'binary_crossentropy' "bcedice"
     #     # loss_fun=[loss_dice],  # 'binary_crossentropy' "bcedice"
     if cfg.loss_fun is None:
-        cfg.loss_fun=[loss_bce_dice] if cfg.dep_out<=1 else 'categorical_crossentropy'
+        cfg.loss_fun=loss_bce_dice if cfg.dep_out<=1 else 'categorical_crossentropy'
     model,name=func(img_rows, img_cols, cfg)
     from keras.optimizers import Adam
     model.compile(optimizer=Adam(1e-5),
