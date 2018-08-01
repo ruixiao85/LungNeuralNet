@@ -10,21 +10,15 @@ def fit(_img, _r, _c):
     # ci = 0 if ci < 0 else ci
     return _img[ri:ri+_r,ci:ci+_c,...]
 
-def standardize(preimg):
-    mean = np.mean(preimg)
-    std = np.std(preimg)
-    # mean_per_channel = preimg.mean(axis=(0, 1), keepdims=True)
-    print("  mean %.2f std %.2f" % (mean, std))
-    # mean=(mean+0.6)*0.5  # less extreme
-    # std=(std+0.15)*0.5  # less extreme
-    preimg -= ((mean + 0.6) / 2.0)
-    # preimg /= (5. * std)
-    # preimg = np.tanh(preimg)
-    # preimg /= preimg.std(axis=(0, 1), keepdims=True)
-    return preimg
-
 def scale_input(_array):
     return _array.astype(np.float32) / 127.5 - 1.0
+    # mean = np.mean(_array)
+    # std = np.std(_array)
+    # mean_per_channel = _array.mean(axis=(0, 1), keepdims=True)
+    # print("  mean %.2f std %.2f" % (mean, std))
+    # _array -= ((mean + 0.6) / 2.0)
+    # _array /= _array.std(axis=(0, 1), keepdims=True)
+    # return _array
 
 def scale_output(_array, _depth_out):
     _array = _array.astype(np.float32) / 255.0

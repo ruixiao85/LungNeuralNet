@@ -1,12 +1,13 @@
 import os
-from datetime import datetime
+import argparse
 import numpy as np
 import pandas as pd
+from datetime import datetime
 from PIL import ImageDraw, Image, ImageFont
 from skimage.io import imsave, imread
 from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
 from process_image import fit, preprocess_train, preprocess_predict
-import argparse
+from tensorboard_train_val import TensorBoardTrainVal
 
 
 def get_recursive_rel_path(_wd, _sf, ext='*.jpg'):
@@ -20,7 +21,7 @@ def get_recursive_rel_path(_wd, _sf, ext='*.jpg'):
     return images, total
 
 
-def get_train_data(sub_dir, dir_in, dir_out, _cfg, _aug):
+def get_train_data(sub_dir, dir_in, dir_out, _cfg):
     wd = os.path.join(os.getcwd(), sub_dir)
     images, total = get_recursive_rel_path(wd, dir_in)
     tgts, _ = get_recursive_rel_path(wd, dir_out)
@@ -36,7 +37,7 @@ def get_train_data(sub_dir, dir_in, dir_out, _cfg, _aug):
         _tgt[i] = fit(imread(os.path.join(wd, dir_out, image_name)),rows,cols)
         if int(10. * (i + 1) / total) > int(10. * i / total):
             print('Loading %d / %d images [%.0f%%]' % (i + 1, total, 10 * int(10. * (i + 1) / total)))
-    return preprocess_train(_img, _tgt, _aug=_aug, _out=_cfg.dep_out)
+    return preprocess_train(_img, _tgt, _aug=_cfg.aug, _out=_cfg.dep_out)
 
 def get_predict_data(sub_dir, dir_in):
     wd = os.path.join(os.getcwd(), sub_dir)
@@ -57,15 +58,16 @@ def train(_target, num_epoch=12, cont_train=True):
         model.load_weights(weight_file)
 
     print('Creating model and checkpoint...')
-    model_checkpoint = ModelCheckpoint(weight_file, monitor='val_loss', save_best_only=True)  # monitor='loss'
-    early_stop = EarlyStopping(monitor='val_loss', patience=0, verbose=1, mode='auto')
-    tensorboard = TensorBoard(log_dir="logs/"+datetime.now().strftime("%Y-%m-%d"), histogram_freq=0, # batch_size=config.BATCH_SIZE,
-                              write_graph=True, write_grads=False, write_images=True,
-                              embeddings_freq=0, embeddings_layer_names=None, embeddings_metadata=None)
+    # key_metrics = 'val_loss'
+    key_metrics = 'dice_coef_flat_int'
     # model.fit(x_train, y_train, epochs=10, validation_data=(x_test, y_test), callbacks=[TrainValTensorBoard(write_graph=False)])
     print('Fitting model...')
-    history=model.fit(img, msk, batch_size=1, epochs=num_epoch, shuffle=True, validation_split=0.3,
-              callbacks=[model_checkpoint, early_stop, tensorboard]).history
+    history=model.fit(img, msk, batch_size=1, epochs=num_epoch, shuffle=True, validation_split=0.25,
+          callbacks=[
+              ModelCheckpoint(weight_file, monitor=key_metrics, save_best_only=True),
+              EarlyStopping(monitor=key_metrics, patience=0, verbose=1, mode='auto'),
+              TensorBoardTrainVal(log_dir=os.path.join("log", _target), write_graph=True, write_grads=False, write_images=True),
+          ]).history
     with open(_target+".csv", "a") as log:
         log.write("\n"+datetime.now().strftime("%Y-%m-%d %H:%M")+" train history:\n")
     pd.DataFrame(history).to_csv(_target+".csv", mode="a")
@@ -86,7 +88,10 @@ def predict(_name, _target, _vec, _cfg):
         target_new_dir = os.path.dirname(target_file)
         if not os.path.exists(target_new_dir):
             os.mkdir(target_new_dir)
-        image = np.rint(image)
+        if _cfg.call_hardness==1:  # hard sign
+            image = np.rint(image)
+        elif 0<_cfg.call_hardness<1:
+            image=(image+np.rint(image)*_cfg.call_hardness)/(1.0+_cfg.call_hardness)  # mixed
         _vec[i] = int(np.sum(image[..., 0]))
         print("%s pixel sum: %.1f" % (_name[i], _vec[i]))
         # image = (image[:, :, 0] * 255.).astype(np.uint8)  # pure BW
@@ -140,25 +145,27 @@ if __name__ == '__main__':
     # with open(model_json, 'r') as json_file:
     #     model = model_from_json(json_file.read())
     from unet import compile_unet
-    from model.unet_pool_up import unet_pool_up_5
-    from model.unet_pool_trans import unet_pool_trans_5
-    from model.unet_conv_trans import unet_conv_trans_5
+    from model.unet_pool_trans import unet_pool_trans_5,unet_pool_trans_6,unet_pool_trans_7
+    from model.unet_conv_trans import unet_conv_trans_5, unet_conv_trans_6,unet_conv_trans_7
+    from model.unet_pool_up import unet_pool_up_5, unet_pool_up_6, unet_pool_up_7
     from model.unet_pool_up_31 import unet_pool_up_5_dure, unet_pool_up_6_dure, unet_pool_up_7_dure
+    from model.unet_vgg import unet_vgg_7conv
     models = [
-        # unet_pool_up_5,
-        # unet_pool_up_7,
         # unet_pool_trans_5,
         # unet_pool_trans_7,
         # unet_conv_trans_5,
         # unet_conv_trans_7,
+        # unet_pool_up_5,
+        # unet_pool_up_7,
         unet_pool_up_5_dure,
-        unet_pool_up_7_dure,
+        # unet_pool_up_7_dure,
+        # unet_vgg_7conv,
     ]
     from model_config import config
     configs = [
         # config(3, 1, 'elu', 'sigmoid'),
         # config(3, 2, 'relu', 'softmax', 'categorical_crossentropy'),
-        config(3, 2, 'elu', 'softmax', 'categorical_crossentropy'),
+        config(3, 2, 'elu', 'softmax'),
         # config(3, 2, 'tanh', 'softmax', 'categorical_crossentropy'),
         # config(3, 2, 'softsign', 'softmax', 'categorical_crossentropy'),  # trouble
         # config(3, 2, 'selu', 'softmax', 'categorical_crossentropy'),  # trouble
@@ -171,10 +178,10 @@ if __name__ == '__main__':
                 model, nn = compile_unet(mod, rows, cols, cfg)
                 print("Network specifications: " + nn.replace("_", " "))
                 for target in targets:
-                    n_repeats = 5
+                    n_repeats = 3
                     for r in range(n_repeats):  # repeat imgaug and train
                         print("Repeating training %d/%d for %s" % (r + 1, n_repeats, target))
-                        img, msk = get_train_data(args.train_dir, args.input, target, cfg, _aug=True)
+                        img, msk = get_train_data(args.train_dir, args.input, target, cfg)
                         train(target + nn, 20, True)
 
     if mode != 't':
@@ -186,5 +193,5 @@ if __name__ == '__main__':
                 for x, target in enumerate(targets):
                     predict(name, target + nn, res[:, x], cfg)
                 res_df = pd.DataFrame(res, name, targets)
-                # res_df.to_csv("result_"+args.pred_dir+"_"+nn+".xlsx")
+                # res_df.to_csv("result_" + args.pred_dir + "_" + nn + ".csv")
                 res_df.to_excel("result_" + args.pred_dir + "_" + nn + ".xlsx")

@@ -46,7 +46,7 @@ def unet_conv_trans_5(img_rows, img_cols, cfg):
         f1, (3, 3), activation=act_fun, kernel_initializer=init, strides=(2, 2), padding='same')(decon2)], axis=concat_axis)
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, kernel_initializer=init, padding='same')(up1)
     # decon1 = BatchNormalization(mode=0, axis=1)(decon1)
-    decon1 = Conv2D(dim_out, (1, 1), activation=out_fun)(decon1)
+    decon1 = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(img_input, decon1), name
 
 def unet_conv_trans_6(img_rows, img_cols, cfg):
@@ -87,7 +87,7 @@ def unet_conv_trans_6(img_rows, img_cols, cfg):
         f1, (3, 3), activation=act_fun, kernel_initializer=init, strides=(2, 2), padding='same')(decon2)], axis=concat_axis)
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, kernel_initializer=init, padding='same')(up1)
     # decon1 = BatchNormalization(mode=0, axis=1)(decon1)
-    decon1 = Conv2D(dim_out, (1, 1), activation=out_fun)(decon1)
+    decon1 = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(img_input, decon1), name
 
 def unet_conv_trans_7(img_rows, img_cols, cfg):
@@ -133,5 +133,5 @@ def unet_conv_trans_7(img_rows, img_cols, cfg):
         f1, (3, 3), activation=act_fun, kernel_initializer=init, strides=(2, 2), padding='same')(decon2)], axis=concat_axis)
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, kernel_initializer=init, padding='same')(up1)
     # decon1 = BatchNormalization(mode=0, axis=1)(decon1)
-    decon1 = Conv2D(dim_out, (1, 1), activation=out_fun)(decon1)
+    decon1 = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(img_input, decon1), name

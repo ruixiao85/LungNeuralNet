@@ -60,7 +60,7 @@ def unet_pool_up_4(img_rows, img_cols, cfg):
     ch, cw = get_crop_shape(img_input, decon1)
     decon1 = ZeroPadding2D(padding=((ch[0], ch[1]), (cw[0], cw[1])))(decon1)
     # decon1 = BatchNormalization(mode=0, axis=concat_axis)(decon1)  # Batch normalization
-    outputs = Conv2D(dim_out, (1, 1), activation=out_fun)(decon1)
+    outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name
 
 def unet_pool_up_5(img_rows, img_cols, cfg):
@@ -107,7 +107,7 @@ def unet_pool_up_5(img_rows, img_cols, cfg):
     ch, cw = get_crop_shape(img_input, decon1)
     decon1 = ZeroPadding2D(padding=((ch[0], ch[1]), (cw[0], cw[1])))(decon1)
     # decon1 = BatchNormalization(mode=0, axis=concat_axis)(decon1)  # Batch normalization
-    outputs = Conv2D(dim_out, (1, 1), activation=out_fun)(decon1)
+    outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name
 
 def unet_pool_up_6(img_rows, img_cols, cfg):
@@ -160,7 +160,7 @@ def unet_pool_up_6(img_rows, img_cols, cfg):
     ch, cw = get_crop_shape(img_input, decon1)
     decon1 = ZeroPadding2D(padding=((ch[0], ch[1]), (cw[0], cw[1])))(decon1)
     # decon1 = BatchNormalization(mode=0, axis=concat_axis)(decon1)  # Batch normalization
-    outputs = Conv2D(dim_out, (1, 1), activation=out_fun)(decon1)
+    outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name
 
 def unet_pool_up_7(img_rows, img_cols, cfg):
@@ -220,5 +220,5 @@ def unet_pool_up_7(img_rows, img_cols, cfg):
     ch, cw = get_crop_shape(img_input, decon1)
     decon1 = ZeroPadding2D(padding=((ch[0], ch[1]), (cw[0], cw[1])))(decon1)
     # decon1 = BatchNormalization(mode=0, axis=concat_axis)(decon1)  # Batch normalization
-    outputs = Conv2D(dim_out, (1, 1), activation=out_fun)(decon1)
+    outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name

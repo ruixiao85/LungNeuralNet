@@ -6,19 +6,21 @@ import os
 import tensorflow as tf
 from keras.callbacks import TensorBoard
 
-class TrainValTensorBoard(TensorBoard):
+class TensorBoardTrainVal(TensorBoard):
     def __init__(self, log_dir='./logs', **kwargs):
         # Make the original `TensorBoard` log to a subdirectory 'training'
         training_log_dir = os.path.join(log_dir, 'training')
-        super(TrainValTensorBoard, self).__init__(training_log_dir, **kwargs)
+        super(TensorBoardTrainVal, self).__init__(training_log_dir, **kwargs)
 
         # Log the validation metrics to a separate subdirectory
         self.val_log_dir = os.path.join(log_dir, 'validation')
+        # if not os.path.exists(self.val_log_dir):
+        #     os.mkdir(self.val_log_dir)
 
     def set_model(self, model):
         # Setup writer for validation metrics
         self.val_writer = tf.summary.FileWriter(self.val_log_dir)
-        super(TrainValTensorBoard, self).set_model(model)
+        super(TensorBoardTrainVal, self).set_model(model)
 
     def on_epoch_end(self, epoch, logs=None):
         # Pop the validation logs and handle them separately with
@@ -36,8 +38,8 @@ class TrainValTensorBoard(TensorBoard):
 
         # Pass the remaining logs to `TensorBoard.on_epoch_end`
         logs = {k: v for k, v in logs.items() if not k.startswith('val_')}
-        super(TrainValTensorBoard, self).on_epoch_end(epoch, logs)
+        super(TensorBoardTrainVal, self).on_epoch_end(epoch, logs)
 
     def on_train_end(self, logs=None):
-        super(TrainValTensorBoard, self).on_train_end(logs)
+        super(TensorBoardTrainVal, self).on_train_end(logs)
         self.val_writer.close()
