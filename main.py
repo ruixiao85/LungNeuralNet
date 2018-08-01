@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 from PIL import ImageDraw, Image, ImageFont
 from skimage.io import imsave, imread
-from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
+from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard, ReduceLROnPlateau
 from process_image import fit, preprocess_train, preprocess_predict
 from tensorboard_train_val import TensorBoardTrainVal
 
@@ -58,14 +58,15 @@ def train(_target, num_epoch=12, cont_train=True):
         model.load_weights(weight_file)
 
     print('Creating model and checkpoint...')
-    # key_metrics = 'val_loss'
-    key_metrics = 'dice_coef_flat_int'
-    # model.fit(x_train, y_train, epochs=10, validation_data=(x_test, y_test), callbacks=[TrainValTensorBoard(write_graph=False)])
+    # indicator, trend = 'val_loss', 'min'
+    indicator, trend = 'val_dice_coef_flat_int', 'max'
     print('Fitting model...')
+    # model.fit(x_train, y_train, epochs=10, validation_data=(x_test, y_test), callbacks=[TrainValTensorBoard(write_graph=False)])
     history=model.fit(img, msk, batch_size=1, epochs=num_epoch, shuffle=True, validation_split=0.25,
           callbacks=[
-              ModelCheckpoint(weight_file, monitor=key_metrics, save_best_only=True),
-              EarlyStopping(monitor=key_metrics, patience=0, verbose=1, mode='auto'),
+              ModelCheckpoint(weight_file, monitor=indicator, mode=trend, save_best_only=True),
+              ReduceLROnPlateau(monitor=indicator, mode=trend, factor=0.1, patience=10, verbose=0, min_delta=0.0001, cooldown=0, min_lr=0),
+              EarlyStopping(monitor=indicator, mode=trend, patience=0, verbose=1),
               TensorBoardTrainVal(log_dir=os.path.join("log", _target), write_graph=True, write_grads=False, write_images=True),
           ]).history
     with open(_target+".csv", "a") as log:
@@ -94,16 +95,16 @@ def predict(_name, _target, _vec, _cfg):
             image=(image+np.rint(image)*_cfg.call_hardness)/(1.0+_cfg.call_hardness)  # mixed
         _vec[i] = int(np.sum(image[..., 0]))
         print("%s pixel sum: %.1f" % (_name[i], _vec[i]))
-        # image = (image[:, :, 0] * 255.).astype(np.uint8)  # pure BW
-        # image = ((0.6 * image[:, :, 0] + 0.4 * (tst[i, :, :, 1] + 0.99)) * 127.).astype(np.uint8)  # gray mixed
+        # image = (image[..., 0] * 255.).astype(np.uint8)  # pure BW
+        # image = ((0.6 * image[..., 0] + 0.4 * (tst[i, ..., 1] + 0.99)) * 127.).astype(np.uint8)  # gray mixed
         mix = tst[i].copy()
         ch=_cfg.overlay_channel
         op=_cfg.overlay_opacity
         for c in range(3):
             if c == ch:
-                mix[:, :, c] = np.tanh(mix[:, :, c] + op * image[:, :, 0])
+                mix[..., c] = np.tanh(mix[..., c] + op * image[..., 0])
             else:
-                mix[:, :, c] = np.tanh(mix[:, :, c] - op * image[:, :, 0])
+                mix[..., c] = np.tanh(mix[..., c] - op * image[..., 0])
         mix = Image.fromarray(((mix + 1.) * 127.).astype(np.uint8), 'RGB')
         draw = ImageDraw.Draw(mix)
         draw.text((0, 0), " Pixels: %.0f / %.0f \n Percentage: %.0f%%" % (_vec[i], image_sum, 100. * _vec[i] / image_sum),
@@ -139,12 +140,7 @@ if __name__ == '__main__':
     rows, cols = args.height, args.width
     targets = args.output.split(',')
 
-    # model_json = "unet5.json"
-    # with open(model_json, "w") as json_file:
-    #     json_file.write(model.to_json())
-    # with open(model_json, 'r') as json_file:
-    #     model = model_from_json(json_file.read())
-    from unet import compile_unet
+    from unet import build_compile
     from model.unet_pool_trans import unet_pool_trans_5,unet_pool_trans_6,unet_pool_trans_7
     from model.unet_conv_trans import unet_conv_trans_5, unet_conv_trans_6,unet_conv_trans_7
     from model.unet_pool_up import unet_pool_up_5, unet_pool_up_6, unet_pool_up_7
@@ -163,7 +159,7 @@ if __name__ == '__main__':
     ]
     from model_config import config
     configs = [
-        # config(3, 1, 'elu', 'sigmoid'),
+        config(3, 1, 'elu', 'sigmoid'),
         # config(3, 2, 'relu', 'softmax', 'categorical_crossentropy'),
         config(3, 2, 'elu', 'softmax'),
         # config(3, 2, 'tanh', 'softmax', 'categorical_crossentropy'),
@@ -175,20 +171,20 @@ if __name__ == '__main__':
     if mode != 'p':
         for cfg in configs:
             for mod in models:
-                model, nn = compile_unet(mod, rows, cols, cfg)
+                model, nn = build_compile(mod, rows, cols, cfg, write=False)
                 print("Network specifications: " + nn.replace("_", " "))
                 for target in targets:
                     n_repeats = 3
                     for r in range(n_repeats):  # repeat imgaug and train
                         print("Repeating training %d/%d for %s" % (r + 1, n_repeats, target))
                         img, msk = get_train_data(args.train_dir, args.input, target, cfg)
-                        train(target + nn, 20, True)
+                        train(target + nn, 20, cont_train=True)
 
     if mode != 't':
         tst, name = get_predict_data(args.pred_dir, args.input)
         for cfg in configs:
             for mod in models:
-                model, nn = compile_unet(mod, rows, cols, cfg)
+                model, nn = build_compile(mod, rows, cols, cfg)
                 res = np.zeros((len(name), len(targets)), np.float32)
                 for x, target in enumerate(targets):
                     predict(name, target + nn, res[:, x], cfg)

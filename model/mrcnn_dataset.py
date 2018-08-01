@@ -1,8 +1,8 @@
-import utils
+import mrcnn_utils as utils
 import os
 import cv2
 import numpy as np
-from mrcnn_config import inputConfig
+from mrcnn_input_config import inputConfig
 ###
 def generate_mask_path(mask_dir, filename):
     fn_img, ext = os.path.splitext(os.path.basename(filename))

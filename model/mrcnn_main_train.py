@@ -8,34 +8,34 @@ import pickle
 import argparse
 import time
 
-from mrcnn_config import modelConfig as MrcnnConfig
-from mrcnn_config import inputConfig, modelConfig
+from mrcnn_input_config import modelConfig as MrcnnConfig
+from mrcnn_input_config import inputConfig, modelConfig
 from mrcnn_dataset import LolDataset 
 import model as modellib
 
 parser = argparse.ArgumentParser(description='mask RCNN')
-parser.add_argument('--train', help='the directory of the training jpg dataset')
-parser.add_argument('--valid', help='the directory of the validation jpg dataset')
-parser.add_argument('--hill', help='boolean parameter for loading hillshade data or not')
-parser.add_argument('--epoch', type=int, help='the number of epoches')
-parser.add_argument('--output', help='the direcotry to store object detection results')
+parser.add_argument('--train', default='both', help='the directory of the training jpg dataset')
+parser.add_argument('--valid', default='both', help='the directory of the validation jpg dataset')
+parser.add_argument('--hill', default='both', help='boolean parameter for loading hillshade data or not')
+parser.add_argument('--epoch', default='both', type=int, help='the number of epoches')
+parser.add_argument('--output', default='both', help='the directory to store object detection results')
 
 args = parser.parse_args()
 
 if not args.train:
-	raise ImportError('The --data parameter needs to be provided (directory to test dataset)')
+    raise ImportError('The --data parameter needs to be provided (directory to test dataset)')
 else:
-	train_dir = args.train
+    train_dir = args.train
 
 if not args.valid:
-	raise ImportError('The --data parameter needs to be provided (directory to test dataset)')
+    raise ImportError('The --data parameter needs to be provided (directory to test dataset)')
 else:
-	val_dir = args.valid
+    val_dir = args.valid
 
 if not args.hill:
-	raise ImportError('The --hill parameter needs to be provided (dataset to use)')
+    raise ImportError('The --hill parameter needs to be provided (dataset to use)')
 else:
-	hill = args.hill
+    hill = args.hill
 
 if not args.output:
     print ('the output will be saved in the folder %s under current directory'% inputConfig.OUTPUT_DIR)
@@ -43,10 +43,10 @@ if not args.output:
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok = True)
 else:
-	output_dir = args.output
+    output_dir = args.output
 
 if not args.epoch:
-	raise ImportError('The --epoch parameter needs to be provided')
+    raise ImportError('The --epoch parameter needs to be provided')
 else:
     EPOCHES = args.epoch
 
@@ -72,8 +72,7 @@ dataset_val.load_LOL(val_dir, hill=='True')
 dataset_val.prepare()
 
 # Create model in training mode# Create 
-model = modellib.MaskRCNN(mode="training", config=modelConfig(),
-                          model_dir=MODEL_DIR)
+model = modellib.MaskRCNN(mode="training", config=modelConfig(), model_dir=MODEL_DIR)
 
 # Which weights to start with?
 init_with = "coco"  # imagenet, coco, or last
@@ -95,7 +94,4 @@ elif init_with == "last":
 # Passing layers="heads" freezes all layers except the head
 # layers. You can also pass a regular expression to select
 # which layers to train by name pattern.
-model.train(dataset_train, dataset_val, 
-            learning_rate=0.01, 
-            epochs=EPOCHES, 
-            layers='all')
+model.train(dataset_train, dataset_val,  learning_rate=0.01,  epochs=EPOCHES,  layers='all')

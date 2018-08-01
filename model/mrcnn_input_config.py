@@ -1,4 +1,4 @@
-from config import Config
+from mrcnn_config import Config
 
 class inputConfig():
     NUM_CLASSES = 4
