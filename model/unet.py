@@ -1,44 +1,43 @@
+
 from keras import backend as K
 from keras.backend.tensorflow_backend import _to_tensor
 from keras.engine.saving import model_from_json
 
-from model_config import config
-
 sum_axis=[0,-1,-2]
 SMOOTH_LOSS = 1e-5
 
-def jaccard_coef_flat(y_true, y_pred):
+def jaccard_flat(y_true, y_pred):
     y_true_f, y_pred_f = K.flatten(y_true), K.flatten(y_pred)
     intersection = K.sum(y_true_f * y_pred_f)
     return (intersection + SMOOTH_LOSS) / (K.sum(y_true_f + y_pred_f) - intersection + SMOOTH_LOSS)
 
-def jaccard_coef_flat_int(y_true, y_pred):
-    return jaccard_coef_flat(y_true, K.round(K.clip(y_pred, 0, 1)))
+def jaccard_flat_int(y_true, y_pred):
+    return jaccard_flat(y_true, K.round(K.clip(y_pred, 0, 1)))
 
-def jaccard_coef(y_true, y_pred):
+def jaccard(y_true, y_pred):
     intersection = K.sum(y_true * y_pred, axis=sum_axis)
     sum_ = K.sum(y_true + y_pred, axis=sum_axis)
     jac = (intersection + SMOOTH_LOSS) / (sum_ - intersection + SMOOTH_LOSS)
     return K.mean(jac)
 
-def jaccard_coef_int(y_true, y_pred):
-    return jaccard_coef(y_true, K.round(K.clip(y_pred, 0, 1)))
+def jaccard_int(y_true, y_pred):
+    return jaccard(y_true, K.round(K.clip(y_pred, 0, 1)))
 
-def dice_coef_flat(y_true, y_pred):
+def dice_flat(y_true, y_pred):
     y_true_f, y_pred_f = K.flatten(y_true), K.flatten(y_pred)
     intersection = K.sum(y_true_f * y_pred_f)
     return (2. * intersection + SMOOTH_LOSS) / (K.sum(y_true_f) + K.sum(y_pred_f) + SMOOTH_LOSS)
 
-def dice_coef_flat_int(y_true, y_pred):
-    return dice_coef_flat(y_true, K.round(K.clip(y_pred, 0, 1)))
+def dice_flat_int(y_true, y_pred):
+    return dice_flat(y_true, K.round(K.clip(y_pred, 0, 1)))
 
-def dice_coef_flat_0(y_true, y_pred):
+def dice_flat_0(y_true, y_pred):
     y_true_f, y_pred_f = K.flatten(y_true[...,0]), K.flatten(y_pred[...,0])
     intersection = K.sum(y_true_f * y_pred_f)
     return (2. * intersection + SMOOTH_LOSS) / (K.sum(y_true_f) + K.sum(y_pred_f) + SMOOTH_LOSS)
 
-def dice_coef_flat_int_0(y_true, y_pred):
-    return dice_coef_flat_0(y_true, K.round(K.clip(y_pred, 0, 1)))
+def dice_flat_int_0(y_true, y_pred):
+    return dice_flat_0(y_true, K.round(K.clip(y_pred, 0, 1)))
 
 def loss_bce(y_true, y_pred, bootstrap_type='hard', alpha=0.95):  # bootstrapped binary cross entropy
     target_tensor = y_true
@@ -55,10 +54,10 @@ def loss_bce(y_true, y_pred, bootstrap_type='hard', alpha=0.95):  # bootstrapped
     return K.mean(K.tf.nn.sigmoid_cross_entropy_with_logits(labels=bootstrap_target_tensor, logits=prediction_tensor))
 
 def loss_jaccard(y_true, y_pred):
-    return 1. - jaccard_coef(y_true, y_pred)
+    return 1. - jaccard(y_true, y_pred)
 
 def loss_dice(y_true, y_pred):
-    return 1. - dice_coef_flat(y_true, y_pred)
+    return 1. - dice_flat(y_true, y_pred)
 
 def loss_bce_dice(y_true, y_pred):
     return 0.5 * (loss_bce(y_true, y_pred) + loss_dice(y_true, y_pred))
@@ -66,7 +65,7 @@ def loss_bce_dice(y_true, y_pred):
 def loss_jaccard_dice(y_true, y_pred):
     return loss_jaccard(y_true, y_pred) + loss_dice(y_true, y_pred)
 
-def build_compile(func, img_rows, img_cols, cfg, write=False):
+def build_compile(func, cfg, write=False):
     # 'relu6'  # min(max(features, 0), 6)
     # 'crelu'  # Concatenates ReLU (only positive part) with ReLU (only the negative part). Note that this non-linearity doubles the depth of the activations
     # 'elu'  # Exponential Linear Units exp(features)-1, if <0, features
@@ -92,12 +91,12 @@ def build_compile(func, img_rows, img_cols, cfg, write=False):
     if cfg.out_fun is None:
         cfg.out_fun='sigmoid' if cfg.dep_out<=1 else 'softmax'
     if cfg.loss_fun is None:
-        cfg.loss_fun=loss_bce_dice if cfg.dep_out<=1 else 'categorical_crossentropy'
-    model,name=func(img_rows, img_cols, cfg)
+        cfg.loss_fun='binary_crossentropy' if cfg.dep_out<=1 else 'categorical_crossentropy'
+    model,name=func(cfg)
     from keras.optimizers import Adam
     model.compile(optimizer=Adam(1e-4),
                   loss=cfg.loss_fun,
-                  metrics=[jaccard_coef_int, dice_coef_flat_int, dice_coef_flat_int_0, 'accuracy'])
+                  metrics=[jaccard_int, dice_flat_int, dice_flat_int_0])
     model.summary()
     if write:
         model_json = name+".json"
@@ -112,6 +111,6 @@ def load_compile(name, cfg):
     from keras.optimizers import Adam
     model.compile(optimizer=Adam(1e-4),
                   loss=cfg.loss_fun,
-                  metrics=[jaccard_coef_int, dice_coef_flat_int, dice_coef_flat_int_0, 'accuracy'])
+                  metrics=[jaccard_int, dice_flat_int, dice_flat_int_0])
     model.summary()
     return model

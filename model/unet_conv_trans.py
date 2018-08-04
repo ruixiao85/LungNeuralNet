@@ -12,7 +12,7 @@ K.set_image_data_format("channels_last")
 concat_axis = 3
 init='he_normal'
 
-def unet_conv_trans_5(img_rows, img_cols, cfg):
+def unet_conv_trans_5(cfg):
     act_fun, out_fun=cfg.act_fun, cfg.out_fun
     dim_in, dim_out=cfg.dep_in, cfg.dep_out
     name="_unet_conv_trans_5_"+str(cfg)
@@ -20,7 +20,7 @@ def unet_conv_trans_5(img_rows, img_cols, cfg):
     # f1, f2, f3, f4, f5 = 96, 128, 192, 256, 384 # s
     # f1, f2, f3, f4, f5 = 32, 64, 128, 256, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((img_rows, img_cols, dim_in))  # r,c,3
+    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     pool1 = Conv2D(f1, (3, 3), activation=act_fun, strides=(2, 2), padding='same', kernel_initializer=init)(conv1)
@@ -49,14 +49,14 @@ def unet_conv_trans_5(img_rows, img_cols, cfg):
     decon1 = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(img_input, decon1), name
 
-def unet_conv_trans_6(img_rows, img_cols, cfg):
+def unet_conv_trans_6(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
     name="_unet_trans_6_"+str(cfg)
     # f1, f2, f3, f4, f5, f6 = 32, 64, 96, 128, 192, 256
     f1, f2, f3, f4, f5, f6 = 64, 96, 128, 192, 256, 384
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((img_rows, img_cols, dim_in))  # r,c,3
+    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     pool1 = Conv2D(f1, (3, 3), activation=act_fun, strides=(2, 2), padding='same', kernel_initializer=init)(conv1)
@@ -90,14 +90,14 @@ def unet_conv_trans_6(img_rows, img_cols, cfg):
     decon1 = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(img_input, decon1), name
 
-def unet_conv_trans_7(img_rows, img_cols, cfg):
+def unet_conv_trans_7(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
     name="_unet_conv_trans_7_"+str(cfg)
     # f1, f2, f3, f4, f5, f6, f7 = 32, 64, 96, 128, 192, 256, 384
     f1, f2, f3, f4, f5, f6, f7 = 64, 96, 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((img_rows, img_cols, dim_in))  # r,c,3
+    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     pool1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', strides=(2, 2), kernel_initializer=init)(conv1)

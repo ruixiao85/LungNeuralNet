@@ -11,7 +11,7 @@ import time
 # import maskRCNN utils
 from mrcnn_input_config import modelConfig as MrcnnConfig
 from mrcnn_input_config import inputConfig, inferenceConfig
-from mrcnn_dataset import LolDataset 
+from dataset import LolDataset
 import model as modellib
 
 parser = argparse.ArgumentParser(description='mask RCNN')

@@ -23,14 +23,14 @@ def get_crop_shape(target, refer):
         ch1, ch2 = int(ch / 2), int(ch / 2)
     return (ch1, ch2), (cw1, cw2)
 
-def unet_pool_up_4(img_rows, img_cols, cfg):
+def unet_pool_up_4(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
     name="_unet_pool_up_4_"+cfg
     f1, f2, f3, f4 = 32, 64, 128, 256
     # f1, f2, f3, f4 = 64, 128, 256, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((img_rows, img_cols, dim_in))  # r,c,3
+    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(conv1)
@@ -63,14 +63,14 @@ def unet_pool_up_4(img_rows, img_cols, cfg):
     outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name
 
-def unet_pool_up_5(img_rows, img_cols, cfg):
+def unet_pool_up_5(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
     name="_unet_pool_up_5_"+str(cfg)
     f1, f2, f3, f4, f5 = 64, 96, 128, 192, 256
     # f1, f2, f3, f4, f5 = 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((img_rows, img_cols, dim_in))  # r,c,3
+    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(conv1)
@@ -110,14 +110,14 @@ def unet_pool_up_5(img_rows, img_cols, cfg):
     outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name
 
-def unet_pool_up_6(img_rows, img_cols, cfg):
+def unet_pool_up_6(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
     name="_unet_pool_up_6_"+str(cfg)
     f1, f2, f3, f4, f5, f6 = 64, 96, 128, 192, 256, 384
     # f1, f2, f3, f4, f5, f6 = 96, 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((img_rows, img_cols, dim_in))  # r,c,3
+    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(conv1)
@@ -163,13 +163,13 @@ def unet_pool_up_6(img_rows, img_cols, cfg):
     outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name
 
-def unet_pool_up_7(img_rows, img_cols, cfg):
+def unet_pool_up_7(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
     name="_unet_pool_up_7_"+str(cfg)
     f1, f2, f3, f4, f5, f6, f7 = 64, 96, 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((img_rows, img_cols, dim_in))  # r,c,3
+    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(conv1)

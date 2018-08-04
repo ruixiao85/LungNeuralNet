@@ -1,7 +1,7 @@
 from __future__ import print_function
 
 from keras.models import Model
-from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, ZeroPadding2D
+from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, ZeroPadding2D, Dense
 from keras import backend as K
 
 K.set_image_data_format('channels_last')
@@ -23,14 +23,14 @@ def get_crop_shape(target, refer):
         ch1, ch2 = int(ch / 2), int(ch / 2)
     return (ch1, ch2), (cw1, cw2)
 
-def unet_pool_up_4_dure(img_rows, img_cols, cfg):
+def unet_pool_up_4_dure(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
     name="_unet_pool_up_4_dure_"+str(cfg)
     f1, f2, f3, f4 = 32, 64, 128, 256
     # f1, f2, f3, f4 = 64, 128, 256, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((img_rows, img_cols, dim_in))  # r,c,3
+    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (1, 1), activation=act_fun, padding='same', kernel_initializer=init)(conv1)
@@ -63,16 +63,15 @@ def unet_pool_up_4_dure(img_rows, img_cols, cfg):
     outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name
 
-def unet_pool_up_5_dure(img_rows, img_cols, cfg):
+def unet_pool_up_5_dure(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
-    name="_unet_pool_up_5_dure_"+str(cfg)
-    # f1, f2, f3, f4, f5 = 48, 64, 96, 128, 192
+    name="_unet_pool_up_5_duref_"+str(cfg)
+    # f1, f2, f3, f4, f5 = 32, 48, 64, 96, 128
     f1, f2, f3, f4, f5 = 64, 96, 128, 192, 256 # standard
     # f1, f2, f3, f4, f5 = 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((img_rows, img_cols, dim_in))  # r,c,3
-
+    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (1, 1), activation=act_fun, padding='same', kernel_initializer=init)(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
@@ -105,20 +104,20 @@ def unet_pool_up_5_dure(img_rows, img_cols, cfg):
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(up1)
     decon1 = Conv2D(f1, (1, 1), activation=act_fun, padding='same', kernel_initializer=init)(decon1)
 
-    ch, cw = get_crop_shape(img_input, decon1)
-    decon1 = ZeroPadding2D(padding=((ch[0], ch[1]), (cw[0], cw[1])))(decon1)
+    decon1 = ZeroPadding2D(padding=(get_crop_shape(img_input, decon1)))(decon1)
     # decon1 = BatchNormalization(mode=0, axis=concat_axis)(decon1)  # Batch normalization
     outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name
 
-def unet_pool_up_6_dure(img_rows, img_cols, cfg):
+def unet_pool_up_6_dure(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
-    name="_unet_pool_up_6_dure_"+str(cfg)
-    f1, f2, f3, f4, f5, f6 = 64, 96, 128, 192, 256, 384
+    name="_unet_pool_up_6_dure2_"+str(cfg)
+    # f1, f2, f3, f4, f5, f6 = 64, 96, 128, 192, 256, 384
+    f1, f2, f3, f4, f5, f6 = 32,48, 64, 96, 128, 192
     # f1, f2, f3, f4, f5, f6 = 96, 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((img_rows, img_cols, dim_in))  # r,c,3
+    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (1, 1), activation=act_fun, padding='same', kernel_initializer=init)(conv1)
@@ -164,13 +163,14 @@ def unet_pool_up_6_dure(img_rows, img_cols, cfg):
     outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name
 
-def unet_pool_up_7_dure(img_rows, img_cols, cfg):
+def unet_pool_up_7_dure(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
     name="_unet_pool_up_7_dure_"+str(cfg)
-    f1, f2, f3, f4, f5, f6, f7 = 64, 96, 128, 192, 256, 384, 512
+    f1, f2, f3, f4, f5, f6, f7 = 48, 64, 96, 128, 192, 256, 384
+    # f1, f2, f3, f4, f5, f6, f7 = 64, 96, 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((img_rows, img_cols, dim_in))  # r,c,3
+    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (1, 1), activation=act_fun, padding='same', kernel_initializer=init)(conv1)
