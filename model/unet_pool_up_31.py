@@ -66,7 +66,7 @@ def unet_pool_up_4_dure(cfg):
 def unet_pool_up_5_dure(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
-    name="_unet_pool_up_5_duref_"+str(cfg)
+    name="_unet_pool_up_5_dure_"+str(cfg)
     # f1, f2, f3, f4, f5 = 32, 48, 64, 96, 128
     f1, f2, f3, f4, f5 = 64, 96, 128, 192, 256 # standard
     # f1, f2, f3, f4, f5 = 128, 192, 256, 384, 512

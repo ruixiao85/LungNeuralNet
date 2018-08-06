@@ -20,17 +20,14 @@ def scale_input(_array):
     # _array /= _array.std(axis=(0, 1), keepdims=True)
     # return _array
 
-def scale_output(_array, _depth_out):
+def scale_output(_array, _cfg):
     _array = _array.astype(np.float32) / 255.0
-    if _depth_out==1:
+    if _cfg.dep_out==1:
         return _array[...,2][...,np.newaxis]  # blue channel to only channel
     else:
         _array[..., 0] = _array[..., 2]
         _array[..., 1] = 1.0 - _array[..., 2]
         return _array[..., 0:2]  # blue first, reverse second
-
-def preprocess_train(_img, _tgt, _out):
-    return scale_input(_img), scale_output(_tgt,_out)
 
 def augment_image_pair(_img, _tgt):
     seq = iaa.Sequential([

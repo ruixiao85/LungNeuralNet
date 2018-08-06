@@ -24,13 +24,16 @@ class config:
         self.overlay_channel, self.overlay_opacity = over_ch, over_op
         self.call_hardness = call_hard
 
+    def sum(self):
+        return self.row*self.col
 
     def __str__(self):
         return '_'.join([
+            "%d" % int(0.5*(self.row+self.col)),
             # "%d_%d"% (self.row, self.col),
             # "%d_%d"% (self.dep_in, self.dep_out),
             "%.1f" % self.resize,
-            "%d" % self.pad,
+            # "%d" % self.pad,
             # "%r" % self.full,  # not suitable for model saving
              # self.act_fun, self.out_fun, self.loss_fun if isinstance(self.loss_fun, str) else self.loss_fun.__name__,
             # "%d_%.1f_%.1f" %  (self.overlay_channel, self.overlay_opacity, self.call_hardness)

@@ -8,8 +8,8 @@ from PIL import ImageDraw, Image, ImageFont
 from skimage.io import imsave, imread
 from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard, ReduceLROnPlateau
 
-from meta_image import Meta_Image
-from process_image import fit, scale_input, augment_image_pair, scale_output
+from meta_image import MetaImage
+from process_image import scale_input, augment_image_pair, scale_output
 from tensorboard_train_val import TensorBoardTrainVal
 from model_config import config
 
@@ -36,32 +36,35 @@ def get_train_data(sub_dir, dir_in, dir_out, split_div=4): # index % sp_div==0 t
     n_train=total-n_val
     print("Split by division of %d: validation size=%d; train size=%d" % (split_div,n_val,n_train))
     # assert(n_val>0 and n_train>0)
-    _val_img = np.empty((0, cfg.row, cfg.col, 3), dtype=np.uint8)
-    _val_tgt = np.empty((0, cfg.row, cfg.col, 3), dtype=np.uint8)
-    _tr_img = np.empty((0, cfg.row, cfg.col, 3), dtype=np.uint8)
-    _tr_tgt = np.empty((0, cfg.row, cfg.col, 3), dtype=np.uint8)
+    _val_img = np.zeros((0, cfg.row, cfg.col, 3), dtype=np.uint8)
+    _val_tgt = np.zeros((0, cfg.row, cfg.col, 3), dtype=np.uint8)
+    _tr_img = np.zeros((0, cfg.row, cfg.col, 3), dtype=np.uint8)
+    _tr_tgt = np.zeros((0, cfg.row, cfg.col, 3), dtype=np.uint8)
     vi, ti =0, 0
     print(_val_img.shape)
+    cfg.full=False # avoid similar images
     for i, image_name in enumerate(images):
         if i % split_div == 0:
-            _val_img = np.append(_val_img, Meta_Image(image_name, imread(os.path.join(wd, dir_in, image_name)),cfg).tiles, axis=0)
-            _val_tgt = np.append(_val_tgt, Meta_Image(image_name, imread(os.path.join(wd, dir_out, image_name)),cfg).tiles, axis=0)
+            _val_img = np.append(_val_img, MetaImage(image_name, imread(os.path.join(wd, dir_in, image_name)), cfg).tiles, axis=0)
+            _val_tgt = np.append(_val_tgt, MetaImage(image_name, imread(os.path.join(wd, dir_out, image_name)), cfg).tiles, axis=0)
             vi += 1
         else:
-            _tr_img = np.append(_tr_img, Meta_Image(image_name, imread(os.path.join(wd, dir_in, image_name)),cfg).tiles, axis=0)
-            _tr_tgt = np.append(_tr_tgt, Meta_Image(image_name, imread(os.path.join(wd, dir_out, image_name)),cfg).tiles, axis=0)
-            ti+=1
+            _tr_img = np.append(_tr_img, MetaImage(image_name, imread(os.path.join(wd, dir_in, image_name)), cfg).tiles, axis=0)
+            _tr_tgt = np.append(_tr_tgt, MetaImage(image_name, imread(os.path.join(wd, dir_out, image_name)), cfg).tiles, axis=0)
+            ti += 1
         if int(10. * (i + 1) / total) > int(10. * i / total):
             print('Loading %d / %d images [%.0f%%]' % (i + 1, total, 10 * int(10. * (i + 1) / total)))
+    print("Successfully added %d for validation and %d for training" % (vi,ti))
     return _tr_img, _tr_tgt, _val_img, _val_tgt
 
 def get_predict_data(sub_dir, dir_in):
     wd = os.path.join(os.getcwd(), sub_dir)
     images, total = get_recursive_rel_path(wd, dir_in)
-    _img = np.empty((0, cfg.row, cfg.col, 3), dtype=np.uint8)
+    _img = np.zeros((0, cfg.row, cfg.col, 3), dtype=np.uint8)
     _meta = []
+    cfg.full=True # insure coverage
     for i, image_name in enumerate(images):
-        this_item=Meta_Image(image_name, imread(os.path.join(wd, dir_in, image_name)), cfg)
+        this_item=MetaImage(image_name, imread(os.path.join(wd, dir_in, image_name)), cfg)
         _img = np.append(_img, this_item.tiles, axis=0)
         _meta.extend(this_item.meta)
         if int(10. * (i + 1) / total) > int(10. * i / total):
@@ -82,12 +85,11 @@ def train(_target, num_rep=3, num_batch=1, num_epoch=12, cont_train=True):
     for r in range(num_rep):
         print("Training %d/%d for %s" % (r + 1, num_rep, _target))
         _tr_img, _tr_tgt = augment_image_pair(tr_img, tr_tgt)
-
-        history = model.fit(scale_input(_tr_img), scale_output(_tr_tgt, cfg.dep_out),
-              validation_data=(scale_input(val_img),scale_output(val_tgt, cfg.dep_out)), batch_size=num_batch, epochs=num_epoch, shuffle=True,
+        history = model.fit(scale_input(_tr_img), scale_output(_tr_tgt, cfg),
+              validation_data=(scale_input(val_img),scale_output(val_tgt, cfg)), batch_size=num_batch, epochs=num_epoch, shuffle=True,
               callbacks=[
                   ModelCheckpoint(weight_file, monitor=indicator, mode=trend, save_best_only=True),
-                  ReduceLROnPlateau(monitor=indicator, mode=trend, factor=0.1, patience=10, verbose=0, min_delta=0.0001, cooldown=0, min_lr=0),
+                  ReduceLROnPlateau(monitor=indicator, mode=trend, factor=0.1, patience=10, verbose=0, min_delta=1e-5, cooldown=0, min_lr=0),
                   EarlyStopping(monitor=indicator, mode=trend, patience=0, verbose=1),
                   TensorBoardTrainVal(log_dir=os.path.join("log", _target), write_graph=True, write_grads=False, write_images=True),
               ]).history
@@ -96,8 +98,8 @@ def train(_target, num_rep=3, num_batch=1, num_epoch=12, cont_train=True):
         pd.DataFrame(history).to_csv(_target+".csv", mode="a")
 
 
-def predict(_meta, _target, _vec):
-    oc, op, ch, i_sum = cfg.overlay_channel, cfg.overlay_opacity, cfg.call_hardness, cfg.row * cfg.col
+def predict(_target, _vec, w_whole=True, w_ind=False):
+    oc, op, ch, pad, i_sum = cfg.overlay_channel, cfg.overlay_opacity, cfg.call_hardness, cfg.pad, cfg.sum()
     print('Load weights and predicting ...')
     model.load_weights(_target + ".h5")
     _tst=scale_input(tst)
@@ -105,40 +107,67 @@ def predict(_meta, _target, _vec):
 
     target_dir = os.path.join(args.pred_dir, _target)
     print('Saving predicted results [%s] to files...' % _target)
-    if not os.path.exists(target_dir):
-        os.mkdir(target_dir)
-    target_file, _mix, _sum = None, None, 0
-    merge = True # T: large F: small
+    mk_dir_if_nonexist(target_dir)
+    ind_file, whole_file, _ind, _whole, _val, _sum = None, None, None, None, 0, 0
     for i, image in enumerate(imgs_mask_test):
-        new_target = os.path.join(target_dir, _meta[i].file_name.replace(".jpg", ".png" if merge else ("_%d.png" % _meta[i].pic_index)))
-        if target_file is not None and new_target!=target_file: # export target_file
-            target_new_dir = os.path.dirname(target_file)
-            if not os.path.exists(target_new_dir):
-                os.mkdir(target_new_dir)
-            print("%s_%d pixel sum: %.1f" % (_meta[i].file_name, _meta[i].pic_index, _vec[i]))
-            _mix = Image.fromarray(((_mix + 1.) * 127.).astype(np.uint8), 'RGB')
-            draw = ImageDraw.Draw(_mix)
-            draw.text((0, 0), " Pixels: %.0f / %.0f \n Percentage: %.0f%%" % (_vec[i], _sum, 100. * _vec[i] / _sum),
-                      (255 if oc == 0 else 10, 255 if oc == 1 else 10, 255 if oc == 2 else 10),
-                      ImageFont.truetype("arial.ttf", 36))  # font type size)
-            imsave(target_file, _mix)
-            _mix, _sum = None, 0
-        target_file=new_target # switch target, add entry either new or continued
+        new_whole_file = os.path.join(target_dir, meta[i].file_name.replace(".jpg", ".png"))
+        if whole_file is not None and new_whole_file!=whole_file: # export whole_file
+            text="%s \n Pixels: %.0f / %.0f Percentage: %.0f%%" % (whole_file, _val, _sum, 100. * _val / _sum)
+            print(text)
+            if w_whole:  # write wholes image
+                _whole = Image.fromarray(((_whole + 1.0) * 127.).astype(np.uint8), 'RGB')
+                draw = ImageDraw.Draw(_whole)
+                draw.text((0, 0), text,
+                          (255 if oc == 0 else 10, 255 if oc == 1 else 10, 255 if oc == 2 else 10),
+                          ImageFont.truetype("arial.ttf", 24))  # font type size)
+                mk_dir_if_nonexist(os.path.dirname(whole_file))
+                imsave(whole_file, _whole)
+            _whole, _val, _sum = None, 0, 0
+        whole_file = os.path.join(target_dir, meta[i].file_name.replace(".jpg", ".png"))
+        ind_file = os.path.join(target_dir, meta[i].file_name.replace(".jpg", "_s%d.png" %meta[i].pic_index))
         if ch==1:  # hard sign
             image = np.rint(image)
         elif 0<ch<1:
             image=(image+np.rint(image)*ch)/(1.0+ch)  # mixed
-        _vec[i] += int(np.sum(image[..., 0]))
+        i_val=int(np.sum(image[..., 0]))
+        _vec[i]=i_val
+        _val += i_val
         _sum += i_sum
-        if _mix is None:
-            _mix=np.zeros((_meta[i].origin_row,_meta[i].origin_col,_meta[i].origin_dep),dtype=np.float32)
-        patch=_tst[i]
+        text="%s Pixels: %.0f / %.0f Percentage: %.0f%%" % (ind_file, i_val, i_sum, 100. * i_val / i_sum)
+        print(text)
+
+        if _whole is None:
+            _whole=np.zeros((meta[i].origin_row,meta[i].origin_col,meta[i].origin_dep),dtype=np.float32)
+        _ind=_tst[i]
         for c in range(3):
             if c == oc:
-                patch[..., c] = np.tanh(patch[..., c] + op * image[..., 0])
+                _ind[..., c] = np.tanh(_ind[..., c] + op * image[..., 0])
             else:
-                patch[..., c] = np.tanh(patch[..., c] - op * image[..., 0])
-        _mix[_meta[i].row_start:_meta[i].row_end, _meta[i].col_start:_meta[i].col_end, ...] =patch
+                _ind[..., c] = np.tanh(_ind[..., c] - op * image[..., 0])
+        _whole[meta[i].row_start:meta[i].row_end, meta[i].col_start:meta[i].col_end, ...] = _ind
+        if w_ind:  # write individual image
+            _ind = Image.fromarray(((_ind + 1.0) * 127.).astype(np.uint8), 'RGB')
+            draw = ImageDraw.Draw(_ind)
+            draw.text((0, 0), text.replace("Pixel","\nPixel"),
+                      (255 if oc == 0 else 10, 255 if oc == 1 else 10, 255 if oc == 2 else 10),
+                      ImageFont.truetype("arial.ttf", 24))  # font type size)
+            mk_dir_if_nonexist(os.path.dirname(ind_file))
+            imsave(ind_file, _ind)
+
+
+def mk_dir_if_nonexist(_dir):
+    if not os.path.exists(_dir):
+        os.mkdir(_dir)
+
+
+def append_excel_sheet(_df, _xls, _sheet):
+    from openpyxl import load_workbook
+    book = load_workbook(_xls)
+    writer = pd.ExcelWriter(_xls, engine='openpyxl')
+    writer.book = book
+    _df.to_excel(writer, sheet_name=_sheet)
+    writer.save()
+    writer.close()
 
 
 if __name__ == '__main__':
@@ -172,6 +201,7 @@ if __name__ == '__main__':
     from model.unet_conv_trans import unet_conv_trans_5, unet_conv_trans_6,unet_conv_trans_7
     from model.unet_pool_up import unet_pool_up_5, unet_pool_up_6, unet_pool_up_7
     from model.unet_pool_up_31 import unet_pool_up_5_dure, unet_pool_up_6_dure, unet_pool_up_7_dure
+    from model.unet_pool_up_valid import unet_pool_up_5_valid, unet_pool_up_6_valid, unet_pool_up_7_valid
     from model.unet_vgg import unet_vgg_7conv
     models = [
         # unet_pool_trans_5,
@@ -183,11 +213,15 @@ if __name__ == '__main__':
         unet_pool_up_5_dure,
         # unet_pool_up_6_dure,
         # unet_pool_up_7_dure,
+        # unet_pool_up_5_valid,
         # unet_vgg_7conv,
     ]
     from model.unet import *
     configs = [
-        config(512, 512, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # config(1024, 1024, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
+        config(768, 768, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # config(512, 512, 3, 1, resize=0.8, padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # config(256, 256, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
         # config(3, 1, 'elu', 'sigmoid', loss_dice),
         # config(3, 1, 'elu', 'sigmoid', 'binary_crossentropy'), # mid
         # config(3, 1, 'elu', 'sigmoid', loss_bce), # no good
@@ -207,7 +241,7 @@ if __name__ == '__main__':
                 print("Network specifications: " + nn.replace("_", " "))
                 for target in targets:
                     tr_img, tr_tgt, val_img, val_tgt = get_train_data(args.train_dir, args.input, target)
-                    train(target + nn, num_rep=3, num_batch=max(1,int(1000000/cfg.row/cfg.col)), num_epoch=20, cont_train=True)
+                    train(target + nn, num_rep=3, num_batch=max(1,int(1400000/cfg.row/cfg.col)), num_epoch=20, cont_train=True)
 
     if mode != 't':
         for cfg in configs:
@@ -216,7 +250,9 @@ if __name__ == '__main__':
                 model, nn = build_compile(mod, cfg)
                 res = np.zeros((len(meta), len(targets)), np.uint32)
                 for x, target in enumerate(targets):
-                    predict(meta, target + nn, res[:, x])
-                res_df = pd.DataFrame(res, meta, targets)
+                    predict(target + nn, res[:, x])
                 # res_df.to_csv("result_" + args.pred_dir + "_" + nn + ".csv")
-                res_df.to_excel("result_" + args.pred_dir + "_" + nn + ".xlsx")
+                res_df = pd.DataFrame(res,map(str,meta), targets)
+                xls_file = "result_" + args.pred_dir + "_" + nn + ".xlsx"
+                res_df.to_excel(xls_file, sheet_name = 'Individual')
+                append_excel_sheet(res_df.groupby(res_df.index).sum(),xls_file,"Whole")

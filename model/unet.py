@@ -94,7 +94,7 @@ def build_compile(func, cfg, write=False):
         cfg.loss_fun='binary_crossentropy' if cfg.dep_out<=1 else 'categorical_crossentropy'
     model,name=func(cfg)
     from keras.optimizers import Adam
-    model.compile(optimizer=Adam(1e-4),
+    model.compile(optimizer=Adam(1e-3),
                   loss=cfg.loss_fun,
                   metrics=[jaccard_int, dice_flat_int, dice_flat_int_0])
     model.summary()
