@@ -1,7 +1,7 @@
 from __future__ import print_function
 
 from keras.models import Model
-from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, ZeroPadding2D
+from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, ZeroPadding2D, Concatenate, merge
 from keras import backend as K
 
 K.set_image_data_format('channels_last')
@@ -57,8 +57,7 @@ def unet_pool_up_4(cfg):
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(up1)
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(decon1)
 
-    ch, cw = get_crop_shape(img_input, decon1)
-    decon1 = ZeroPadding2D(padding=((ch[0], ch[1]), (cw[0], cw[1])))(decon1)
+    decon1 = ZeroPadding2D(padding=(get_crop_shape(img_input, decon1)))(decon1)
     # decon1 = BatchNormalization(mode=0, axis=concat_axis)(decon1)  # Batch normalization
     outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name
@@ -104,8 +103,7 @@ def unet_pool_up_5(cfg):
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(up1)
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(decon1)
 
-    ch, cw = get_crop_shape(img_input, decon1)
-    decon1 = ZeroPadding2D(padding=((ch[0], ch[1]), (cw[0], cw[1])))(decon1)
+    decon1 = ZeroPadding2D(padding=((get_crop_shape(img_input, decon1)), (cw[0], cw[1])))(decon1)
     # decon1 = BatchNormalization(mode=0, axis=concat_axis)(decon1)  # Batch normalization
     outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name
@@ -157,8 +155,7 @@ def unet_pool_up_6(cfg):
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(up1)
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(decon1)
 
-    ch, cw = get_crop_shape(img_input, decon1)
-    decon1 = ZeroPadding2D(padding=((ch[0], ch[1]), (cw[0], cw[1])))(decon1)
+    decon1 = ZeroPadding2D(padding=(get_crop_shape(img_input, decon1)))(decon1)
     # decon1 = BatchNormalization(mode=0, axis=concat_axis)(decon1)  # Batch normalization
     outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name
@@ -217,8 +214,7 @@ def unet_pool_up_7(cfg):
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(up1)
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(decon1)
 
-    ch, cw = get_crop_shape(img_input, decon1)
-    decon1 = ZeroPadding2D(padding=((ch[0], ch[1]), (cw[0], cw[1])))(decon1)
+    decon1 = ZeroPadding2D(padding=(get_crop_shape(img_input, decon1)))(decon1)
     # decon1 = BatchNormalization(mode=0, axis=concat_axis)(decon1)  # Batch normalization
     outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name

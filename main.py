@@ -80,11 +80,13 @@ def train(_target, num_rep=3, num_batch=1, num_epoch=12, cont_train=True):
 
     print('Creating model and checkpoint...')
     # indicator, trend = 'val_loss', 'min'
-    indicator, trend = 'val_dice_flat_int', 'max'
+    indicator, trend = 'val_dice', 'max'
     print('Fitting model...')
     for r in range(num_rep):
         print("Training %d/%d for %s" % (r + 1, num_rep, _target))
-        _tr_img, _tr_tgt = augment_image_pair(tr_img, tr_tgt)
+        _tr_img, _tr_tgt = augment_image_pair(tr_img, tr_tgt, _level=0.5*r)
+        # for _i,_ti in enumerate(_tr_img):
+        #     imsave("train_aug%d.jpg"% _i, Image.fromarray(_ti.astype(np.uint8), 'RGB'))
         history = model.fit(scale_input(_tr_img), scale_output(_tr_tgt, cfg),
               validation_data=(scale_input(val_img),scale_output(val_tgt, cfg)), batch_size=num_batch, epochs=num_epoch, shuffle=True,
               callbacks=[
@@ -108,21 +110,21 @@ def predict(_target, _vec, w_whole=True, w_ind=False):
     target_dir = os.path.join(args.pred_dir, _target)
     print('Saving predicted results [%s] to files...' % _target)
     mk_dir_if_nonexist(target_dir)
-    ind_file, whole_file, _ind, _whole, _val, _sum = None, None, None, None, 0, 0
+    ind_file, whole_file, _ind, _whole, _weight, _val, _sum = None, None, None, None, None, 0, 0
     for i, image in enumerate(imgs_mask_test):
         new_whole_file = os.path.join(target_dir, meta[i].file_name.replace(".jpg", ".png"))
         if whole_file is not None and new_whole_file!=whole_file: # export whole_file
             text="%s \n Pixels: %.0f / %.0f Percentage: %.0f%%" % (whole_file, _val, _sum, 100. * _val / _sum)
             print(text)
             if w_whole:  # write wholes image
-                _whole = Image.fromarray(((_whole + 1.0) * 127.).astype(np.uint8), 'RGB')
+                _whole = Image.fromarray(((_whole/_weight + 1.0) * 127.).astype(np.uint8), 'RGB')
                 draw = ImageDraw.Draw(_whole)
                 draw.text((0, 0), text,
                           (255 if oc == 0 else 10, 255 if oc == 1 else 10, 255 if oc == 2 else 10),
                           ImageFont.truetype("arial.ttf", 24))  # font type size)
                 mk_dir_if_nonexist(os.path.dirname(whole_file))
                 imsave(whole_file, _whole)
-            _whole, _val, _sum = None, 0, 0
+            _whole, _weight, _val, _sum = None, None, 0, 0
         whole_file = os.path.join(target_dir, meta[i].file_name.replace(".jpg", ".png"))
         ind_file = os.path.join(target_dir, meta[i].file_name.replace(".jpg", "_s%d.png" %meta[i].pic_index))
         if ch==1:  # hard sign
@@ -138,13 +140,15 @@ def predict(_target, _vec, w_whole=True, w_ind=False):
 
         if _whole is None:
             _whole=np.zeros((meta[i].origin_row,meta[i].origin_col,meta[i].origin_dep),dtype=np.float32)
+            _weight=np.zeros((meta[i].origin_row,meta[i].origin_col,meta[i].origin_dep),dtype=np.float32)
         _ind=_tst[i]
         for c in range(3):
             if c == oc:
                 _ind[..., c] = np.tanh(_ind[..., c] + op * image[..., 0])
             else:
                 _ind[..., c] = np.tanh(_ind[..., c] - op * image[..., 0])
-        _whole[meta[i].row_start:meta[i].row_end, meta[i].col_start:meta[i].col_end, ...] = _ind
+        _whole[meta[i].row_start:meta[i].row_end, meta[i].col_start:meta[i].col_end, ...] += _ind
+        _weight[meta[i].row_start:meta[i].row_end, meta[i].col_start:meta[i].col_end, ...] += 1.0
         if w_ind:  # write individual image
             _ind = Image.fromarray(((_ind + 1.0) * 127.).astype(np.uint8), 'RGB')
             draw = ImageDraw.Draw(_ind)
@@ -158,7 +162,6 @@ def predict(_target, _vec, w_whole=True, w_ind=False):
 def mk_dir_if_nonexist(_dir):
     if not os.path.exists(_dir):
         os.mkdir(_dir)
-
 
 def append_excel_sheet(_df, _xls, _sheet):
     from openpyxl import load_workbook
@@ -218,8 +221,9 @@ if __name__ == '__main__':
     ]
     from model.unet import *
     configs = [
-        # config(1024, 1024, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
-        config(768, 768, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # config(256, 256, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # config(256, 256, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
+        config(768, 768, 3, 1, resize=1.0, padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
         # config(512, 512, 3, 1, resize=0.8, padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
         # config(256, 256, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
         # config(3, 1, 'elu', 'sigmoid', loss_dice),
@@ -241,7 +245,7 @@ if __name__ == '__main__':
                 print("Network specifications: " + nn.replace("_", " "))
                 for target in targets:
                     tr_img, tr_tgt, val_img, val_tgt = get_train_data(args.train_dir, args.input, target)
-                    train(target + nn, num_rep=3, num_batch=max(1,int(1400000/cfg.row/cfg.col)), num_epoch=20, cont_train=True)
+                    train(target + nn, num_rep=4, num_batch=max(1,int(1400000/cfg.row/cfg.col)), num_epoch=20, cont_train=True)
 
     if mode != 't':
         for cfg in configs:
@@ -253,6 +257,6 @@ if __name__ == '__main__':
                     predict(target + nn, res[:, x])
                 # res_df.to_csv("result_" + args.pred_dir + "_" + nn + ".csv")
                 res_df = pd.DataFrame(res,map(str,meta), targets)
-                xls_file = "result_" + args.pred_dir + "_" + nn + ".xlsx"
+                xls_file = "Result_" + args.pred_dir + "_" + nn + ".xlsx"
                 res_df.to_excel(xls_file, sheet_name = 'Individual')
                 append_excel_sheet(res_df.groupby(res_df.index).sum(),xls_file,"Whole")

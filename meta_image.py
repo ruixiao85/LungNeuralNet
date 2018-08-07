@@ -36,8 +36,8 @@ class MetaImage:
             self.image=np.pad(self.image,((cfg.pad, cfg.pad), (cfg.pad, cfg.pad), (0, 0)),mode='reflect')
         self.ori_row, self.ori_col, self.ori_dep = self.image.shape
         if cfg.full:
-            r_len = int(math.ceil((self.ori_row - 2 * cfg.pad) / float(cfg.row - 2 * cfg.pad)))
-            c_len = int(math.ceil((self.ori_col - 2 * cfg.pad) / float(cfg.col - 2 * cfg.pad)))
+            r_len = int(math.ceil((self.ori_row - 2 * cfg.pad) / float(cfg.row - 2 * cfg.pad)))*2
+            c_len = int(math.ceil((self.ori_col - 2 * cfg.pad) / float(cfg.col - 2 * cfg.pad)))*2
         else:
             r_len = int(math.floor((self.ori_row - 2 * cfg.pad) / float(cfg.row - 2 * cfg.pad)))
             c_len = int(math.floor((self.ori_col - 2 * cfg.pad) / float(cfg.col - 2 * cfg.pad)))
