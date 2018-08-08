@@ -1,10 +1,16 @@
-
+import numpy as np
 from keras import backend as K
 from keras.backend.tensorflow_backend import _to_tensor
 from keras.engine.saving import model_from_json
 
 sum_axis=[0,-1,-2]
 SMOOTH_LOSS = 1e-5
+
+def gkern(l=5, sig=1.):  # creates gaussian kernel with side length l and a sigma of sig
+    ax = np.arange(-l // 2 + 1., l // 2 + 1.)
+    xx, yy = np.meshgrid(ax, ax)
+    kernel = np.exp(-(xx ** 2 + yy ** 2) / (2. * sig ** 2))
+    return kernel / np.sum(kernel)
 
 def jac_d(y_true, y_pred):
     y_true_f, y_pred_f = K.flatten(y_true), K.flatten(y_pred)  # smooth differentiable
@@ -32,7 +38,7 @@ def loss_bce(y_true, y_pred):  # bootstrapped binary cross entropy
     prediction_tensor = K.tf.clip_by_value(prediction_tensor, _epsilon, 1 - _epsilon)
     prediction_tensor = K.tf.log(prediction_tensor / (1 - prediction_tensor))
     alpha = 0.95
-    # bootstrap_target_tensor = alpha * target_tensor + (1.0 - alpha) * K.tf.sigmoid(prediction_tensor)  # soft bootstrap
+    # bootstrap_target_tensor = alpha * target_tensor + (1.0 - alpha) * K.unet_tf.sigmoid(prediction_tensor)  # soft bootstrap
     bootstrap_target_tensor = alpha * target_tensor + (1.0 - alpha) * K.tf.cast(K.tf.sigmoid(prediction_tensor) > 0.5, K.tf.float32)  # hard bootstrap
     return K.mean(K.tf.nn.sigmoid_cross_entropy_with_logits(labels=bootstrap_target_tensor, logits=prediction_tensor))
 
@@ -80,7 +86,6 @@ def build_compile(func, cfg, write=False):
     if write:
         save_model(model, name)
     return model, name
-
 
 def compile_model(cfg, model):
     from keras.optimizers import Adam

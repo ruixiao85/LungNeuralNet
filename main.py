@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from PIL import ImageDraw, Image, ImageFont
+from scipy.ndimage import gaussian_filter
 from skimage.io import imsave, imread
 from keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard, ReduceLROnPlateau
 
@@ -78,10 +79,10 @@ def train(_target, num_rep=3, num_batch=1, num_epoch=12, cont_train=True):
         print("Continue from previous weights")
         model.load_weights(weight_file)
 
-    print('Creating model and checkpoint...')
+    print('Creating unet and checkpoint...')
     # indicator, trend = 'val_loss', 'min'
     indicator, trend = 'val_dice', 'max'
-    print('Fitting model...')
+    print('Fitting unet...')
     for r in range(num_rep):
         print("Training %d/%d for %s" % (r + 1, num_rep, _target))
         _tr_img, _tr_tgt = augment_image_pair(tr_img, tr_tgt, _level=0.5*r)
@@ -174,6 +175,8 @@ def append_excel_sheet(_df, _xls, _sheet):
 
 
 if __name__ == '__main__':
+    # -d "D:\Cel files\2018-07.13 Adam Brenderia 2X LPS CGS" -t "071318 Cleaned 24H post cgs" -p "2018-07.20 Kyle MMP13 Smoke Flu Zander 2X" -o "Paren,InflamMild,InflamSevere"
+    # -d "I:/NonParen" -t "Rui Xiao 2017-09-07 (14332)(27)" -p "Rui Xiao 2017-12-05 (15634)(9)" -o "NonParen"
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('-d', '--dir', dest='dir', action='store',
                         default='', help='work directory, empty->current dir')
@@ -199,13 +202,13 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     targets = args.output.split(',')
 
-    from unet import build_compile
-    from model.unet_pool_trans import unet_pool_trans_5,unet_pool_trans_6,unet_pool_trans_7
-    from model.unet_conv_trans import unet_conv_trans_5, unet_conv_trans_6,unet_conv_trans_7
-    from model.unet_pool_up import unet_pool_up_5, unet_pool_up_6, unet_pool_up_7
-    from model.unet_pool_up_31 import unet_pool_up_5_dure, unet_pool_up_6_dure, unet_pool_up_7_dure
-    from model.unet_pool_up_valid import unet_pool_up_5_valid, unet_pool_up_6_valid, unet_pool_up_7_valid
-    from model.unet_vgg import unet_vgg_7conv
+    from util_unet import build_compile
+    from unet.unet_pool_trans import unet_pool_trans_5,unet_pool_trans_6,unet_pool_trans_7
+    from unet.unet_conv_trans import unet_conv_trans_5, unet_conv_trans_6,unet_conv_trans_7
+    from unet.unet_pool_up import unet_pool_up_5, unet_pool_up_6, unet_pool_up_7
+    from unet.unet_pool_up_31 import unet_pool_up_5_dure, unet_pool_up_6_dure, unet_pool_up_7_dure
+    from unet.unet_pool_up_valid import unet_pool_up_5_valid, unet_pool_up_6_valid, unet_pool_up_7_valid
+    from unet.unet_vgg import unet_vgg_7conv
     models = [
         # unet_pool_trans_5,
         # unet_pool_trans_7,
@@ -219,11 +222,12 @@ if __name__ == '__main__':
         # unet_pool_up_5_valid,
         # unet_vgg_7conv,
     ]
-    from model.unet import *
+    from unet.util_unet import *
     configs = [
         # config(256, 256, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
         # config(256, 256, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
-        config(768, 768, 3, 1, resize=1.0, padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
+        config(1024, 1024, 3, 1, resize=1.0, padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # config(768, 768, 3, 1, resize=1.0, padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
         # config(512, 512, 3, 1, resize=0.8, padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
         # config(256, 256, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
         # config(3, 1, 'elu', 'sigmoid', loss_dice),
@@ -241,7 +245,7 @@ if __name__ == '__main__':
     if mode != 'p':
         for cfg in configs:
             for mod in models:
-                model, nn = build_compile(mod, cfg, write=False)
+                model, nn = build_compile(mod, cfg, write=True)
                 print("Network specifications: " + nn.replace("_", " "))
                 for target in targets:
                     tr_img, tr_tgt, val_img, val_tgt = get_train_data(args.train_dir, args.input, target)

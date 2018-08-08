@@ -41,8 +41,8 @@ class MetaImage:
         else:
             r_len = int(math.floor((self.ori_row - 2 * cfg.pad) / float(cfg.row - 2 * cfg.pad)))
             c_len = int(math.floor((self.ori_col - 2 * cfg.pad) / float(cfg.col - 2 * cfg.pad)))
-        print("target %d x %d (pad %d full %r): original %d x %d x %d ->  row /%d col /%d" %
-              (cfg.row, cfg.col, cfg.pad, cfg.full, self.ori_row, self.ori_col, self.ori_dep, r_len, c_len))
+        print("%s target %d x %d (pad %d full %r): original %d x %d x %d ->  row /%d col /%d" %
+              (file, cfg.row, cfg.col, cfg.pad, cfg.full, self.ori_row, self.ori_col, self.ori_dep, r_len, c_len))
         self.tiles = np.empty((0, cfg.row, cfg.col, self.ori_dep), dtype=np.uint8)
         r_step = float(self.ori_row - cfg.row) / (r_len - 1) if r_len > 1 else 0
         c_step = float(self.ori_col - cfg.col) / (c_len - 1) if c_len > 1 else 0
