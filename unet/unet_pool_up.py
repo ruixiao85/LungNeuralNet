@@ -30,7 +30,7 @@ def unet_pool_up_4(cfg):
     f1, f2, f3, f4 = 32, 64, 128, 256
     # f1, f2, f3, f4 = 64, 128, 256, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
+    img_input=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(conv1)
@@ -69,7 +69,7 @@ def unet_pool_up_5(cfg):
     f1, f2, f3, f4, f5 = 64, 96, 128, 192, 256
     # f1, f2, f3, f4, f5 = 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
+    img_input=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(conv1)
@@ -103,7 +103,7 @@ def unet_pool_up_5(cfg):
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(up1)
     decon1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(decon1)
 
-    decon1 = ZeroPadding2D(padding=((get_crop_shape(img_input, decon1)), (cw[0], cw[1])))(decon1)
+    decon1 = ZeroPadding2D(padding=(get_crop_shape(img_input, decon1)))(decon1)
     # decon1 = BatchNormalization(mode=0, axis=concat_axis)(decon1)  # Batch normalization
     outputs = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(decon1)
     return Model(inputs=img_input, outputs=outputs), name
@@ -115,7 +115,7 @@ def unet_pool_up_6(cfg):
     f1, f2, f3, f4, f5, f6 = 64, 96, 128, 192, 256, 384
     # f1, f2, f3, f4, f5, f6 = 96, 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
+    img_input=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(conv1)
@@ -166,7 +166,7 @@ def unet_pool_up_7(cfg):
     name="_unet_pool_up_7_"+str(cfg)
     f1, f2, f3, f4, f5, f6, f7 = 64, 96, 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
+    img_input=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(conv1)

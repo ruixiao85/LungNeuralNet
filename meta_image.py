@@ -3,25 +3,6 @@ from scipy.misc import imresize
 import math
 import numpy as np
 
-class MetaInfo:
-    def __init__(self, file, p_index, ori_row, ori_col, ori_dep, in_row, in_col, out_row, out_col, ri, ci):
-        self.file_name=file
-        self.pic_index=p_index
-        self.origin_row=ori_row
-        self.origin_col = ori_col
-        self.origin_dep = ori_dep
-        self.input_row=in_row
-        self.input_col=in_col
-        self.output_row=out_row
-        self.output_col=out_col
-        self.row_start=ri
-        self.col_start=ci
-        self.row_end = ri+out_row
-        self.col_end = ci+out_col
-
-    def __str__(self):
-        return self.file_name
-
 class MetaImage:
     def __init__(self):
         self.image=None

@@ -70,7 +70,7 @@ def unet_pool_up_5_dure(cfg):
     f1, f2, f3, f4, f5 = 64, 96, 128, 192, 256 # standard
     # f1, f2, f3, f4, f5 = 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
+    img_input=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (1, 1), activation=act_fun, padding='same', kernel_initializer=init)(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
@@ -116,7 +116,7 @@ def unet_pool_up_6_dure(cfg):
     f1, f2, f3, f4, f5, f6 = 32,48, 64, 96, 128, 192
     # f1, f2, f3, f4, f5, f6 = 96, 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
+    img_input=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (1, 1), activation=act_fun, padding='same', kernel_initializer=init)(conv1)
@@ -168,7 +168,7 @@ def unet_pool_up_7_dure(cfg):
     f1, f2, f3, f4, f5, f6, f7 = 48, 64, 96, 128, 192, 256, 384
     # f1, f2, f3, f4, f5, f6, f7 = 64, 96, 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
-    img_input=Input((cfg.row, cfg.col, dim_in))  # r,c,3
+    img_input=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3
 
     conv1 = Conv2D(f1, (3, 3), activation=act_fun, padding='same', kernel_initializer=init)(img_input)
     conv1 = Conv2D(f1, (1, 1), activation=act_fun, padding='same', kernel_initializer=init)(conv1)

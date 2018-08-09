@@ -20,9 +20,9 @@ def scale_input(_array):
     # _array /= _array.std(axis=(0, 1), keepdims=True)
     # return _array
 
-def scale_output(_array, _cfg):
+def scale_output(_array, _out):
     _array = _array.astype(np.float32) / 255.0
-    if _cfg.dep_out==1:
+    if _out==1:
         return _array[...,2][...,np.newaxis]  # blue channel to only channel
     else:
         _array[..., 0] = _array[..., 2]
@@ -76,15 +76,15 @@ def augment_image_pair(_img, _tgt, _level=1.0):
             iaa.Grayscale(alpha=(0.0, 1.0))
         ]),
     ])
-    if _level<0:
-        return _img, _tgt
-    else:
-        rep=50 / _img.shape[0] # duplicate if less than 50
-        if rep>1:
-            print("replicate %d times before augmentation" % rep)
-            _img = np.repeat(_img, int(rep), axis=0)
-            _tgt = np.repeat(_tgt, int(rep), axis=0)
-    if 0<=_level<1:
+    # if _level<0:
+    #     return _img, _tgt
+    # else:
+    #     rep=50 / _img.shape[0] # duplicate if less than 50
+    #     if rep>1:
+    #         print("replicate %d times before augmentation" % rep)
+    #         _img = np.repeat(_img, int(rep), axis=0)
+    #         _tgt = np.repeat(_tgt, int(rep), axis=0)
+    if _level<1:
         return _img, _tgt
     elif 1<=_level<2:  # paired image augmentation 1
         seq_det = seg_both_1.to_deterministic()
