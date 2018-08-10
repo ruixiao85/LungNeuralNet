@@ -1,3 +1,4 @@
+import copy
 import math
 import os
 import random
@@ -46,8 +47,8 @@ class MetaInfo:
 
     @staticmethod
     def parse_coord(file):
-        seg=file.split("#")
-        return int(seg[1]),int(seg[2]),int(seg[3]),int(seg[4])
+        seg = file.split("#")
+        return int(seg[1]), int(seg[2]), int(seg[3]), int(seg[4])
 
     def file_slice(self):
         if self.r_index is not None:
@@ -67,14 +68,15 @@ class MetaInfo:
         return self.file_slice().__hash__()
 
 class ImageSet:
-    def __init__(self, cfg:ModelConfig, wd, sf):
+    def __init__(self, cfg:ModelConfig, wd, sf, train):
         self.work_directory=wd
         self.sub_folder=sf
         self.image_format=cfg.image_format
         self.images, self.total=[], None
         self.scan_image()
         self.row, self.col = None, None
-        self.full=cfg.full
+        self.coverage=cfg.tr_coverage if train else cfg.prd_coverage
+        self.skip_low_contrast=train
         self.view_coord=[]
 
     def scan_image(self):
@@ -112,7 +114,7 @@ class ImageSet:
             lg_row, lg_col, lg_dep=_img.shape
             ri, ro, ci, co=0, lg_row, 0, lg_col
             if self.row is not None or self.col is not None: # dimension specified
-                ratio=0.5 # if self.full is True else random.random() # add randomness if not prediction/full
+                ratio=0.5 # if self.predict_mode is True else random.random() # add randomness if not prediction/full
                 rd=int(ratio*(lg_row-self.row))
                 cd=int(ratio*(lg_col-self.col))
                 ri+=rd
@@ -125,30 +127,31 @@ class ImageSet:
 
     def split_image_coord(self, ex_dir):
         view_coord=[]
-        redundancy = 1.2  # more coverage good for prediction
-        sparsity = 1.0  # less overlap good for training
         for image_name in self.images:
             _img = imread(os.path.join(self.work_directory, self.sub_folder, image_name))
             lg_row, lg_col, lg_dep = _img.shape
-            if self.full:
-                r_len = max(1, int(math.ceil(redundancy * (lg_row - self.row) / self.row)))
-                c_len = max(1, int(math.ceil(redundancy * (lg_col - self.col) / self.col)))
+            r_len = max(1, int(round(self.coverage * (lg_row - self.row) / self.row)))
+            c_len = max(1, int(round(self.coverage * (lg_col - self.col) / self.col)))
+            print("%s target %d x %d (coverage %.1f): original %d x %d ->  row /%d col /%d" %
+                  (image_name, self.row, self.col, self.coverage, lg_row, lg_col, r_len, c_len))
+            r0, c0, r_step, c_step = 0, 0, 0, 0  # start position and step default to (0,0)
+            if r_len > 1:
+                r_step = float(lg_row - self.row) / (r_len - 1)
             else:
-                r_len = max(1, int(math.floor(sparsity * (lg_row - self.row) / self.row)))
-                c_len = max(1, int(math.floor(sparsity * (lg_col - self.col) / self.col)))
-            print("%s target %d x %d (full %r): original %d x %d ->  row /%d col /%d" %
-                  (image_name, self.row, self.col, self.full, lg_row, lg_col, r_len, c_len))
-            r_step = float(lg_row - self.row) / (r_len - 1) if r_len > 1 else 0
-            c_step = float(lg_col - self.col) / (c_len - 1) if c_len > 1 else 0
+                r0 = int(0.5 * (lg_row - self.row))
+            if c_len > 1:
+                c_step = float(lg_col - self.col) / (c_len - 1)
+            else:
+                c0 = int(0.5 * (lg_col - self.col))
             for r_index in range(r_len):
                 for c_index in range(c_len):
-                    ri = int(round(r_index * r_step))
-                    ci = int(round(c_index * c_step))
+                    ri = r0 + int(round(r_index * r_step))
+                    ci = c0 + int(round(c_index * c_step))
                     ro = ri + self.row
                     co = ci + self.col
                     s_img = _img[ri:ro, ci:co, ...]
                     std=float(np.std(s_img))
-                    if std < 20:  # skip this tile for low contrast
+                    if self.skip_low_contrast and std < 20:  # low coverage implies training mode, skip this tile if low contrast
                         print("skip tile r%d_c%d for low contrast (std=%.1f) for %s"%(r_index,c_index,std,image_name))
                         continue
                     entry = MetaInfo(image_name, r_index, c_index, lg_row, lg_col, lg_dep, ri, ro, ci, co) # temporary
@@ -162,12 +165,14 @@ class ImageSet:
 
 
 class ImageTrainPair:
-    def __init__(self, cfg:ModelConfig, ori_set:ImageSet, tgt_set:ImageSet):
+    def __init__(self, cfg:ModelConfig, ori_set, tgt_set):
         # self.img_set=ori_set
+        self.img_set=copy.deepcopy(ori_set)
         # self.msk_set=tgt_set
-        self.wd=ori_set.work_directory
-        self.dir_in=ori_set.sub_folder
-        self.dir_out=tgt_set.sub_folder
+        self.msk_set=copy.deepcopy(tgt_set)
+        self.wd=self.img_set.work_directory
+        self.dir_in=self.img_set.sub_folder
+        self.dir_out=self.msk_set.sub_folder
         self.row_in, self.col_in, self.dep_in = cfg.row_in, cfg.col_in, cfg.dep_in
         self.row_out, self.col_out, self.dep_out = cfg.row_out, cfg.col_out, cfg.dep_out
         self.separate=cfg.separate
@@ -175,12 +180,12 @@ class ImageTrainPair:
         self.batch_size=cfg.batch_size
         self.img_aug = cfg.img_aug
         self.shuffle = cfg.shuffle
-        self.images =list(set(ori_set.images).intersection(tgt_set.images)) # match image file
+        self.images =list(set(self.img_set.images).intersection(self.msk_set.images)) # match image file
 
-        ori_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in_ex())
-        tgt_set.size_folder_update(self.images, self.row_out, self.col_out, self.dir_out_ex())
+        self.img_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in_ex())
+        self.msk_set.size_folder_update(self.images, self.row_out, self.col_out, self.dir_out_ex())
 
-        self.view_coord=list(set(ori_set.view_coord).intersection(tgt_set.view_coord))
+        self.view_coord=list(set(self.img_set.view_coord).intersection(self.msk_set.view_coord))
 
     def get_tr_val_generator(self):
         tr_list, val_list=[], []

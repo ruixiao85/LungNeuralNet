@@ -6,7 +6,7 @@ from image_gen import ImageTrainPair, ImageSet, ImagePredictPair
 from process_image import scale_input, augment_image_pair, scale_output
 from tensorboard_train_val import TensorBoardTrainVal
 from model_config import ModelConfig
-from util import mk_dir_if_nonexist
+from util import mk_dir_if_nonexist, to_excel_sheet
 from unet.my_model import *
 
 if __name__ == '__main__':
@@ -37,7 +37,8 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from unet.unet_pool_up import unet_pool_up_5
+    from unet.unet_pool_up import unet_pool_up_5, unet_pool_up_7
+    from unet.unet_conv_trans import unet_conv_trans_5, unet_conv_trans_7
     from unet.unet_pool_up_31 import unet_pool_up_5_dure, unet_pool_up_7_dure
     from unet.unet_pool_up_valid import unet_pool_up_5_valid, unet_pool_up_7_valid
     models = [
@@ -54,34 +55,37 @@ if __name__ == '__main__':
         # unet_vgg_7conv,
     ]
     configs = [
-        # ModelConfig((1060, 1060, 3), (1060,1060, 1), resize=1.0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # ModelConfig((1024, 1024, 3), (1024,1024, 1), resize=1.0,full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, separate=True, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # ModelConfig((768, 768, 3), (768, 768, 1), resize=1.0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),  # 5 valid
-        # ModelConfig((768, 768, 3), (674, 674, 1), resize=1.0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),  # 5 valid
-        # ModelConfig((256, 256, 3), (256, 256, 1), resize=1.0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((1060, 1060, 3), (1060,1060, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.5,out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((1024, 1024, 3), (1024,1024, 1), resize=1.0, separate=True, tr_coverage=1.2, prd_coverage=1.1,out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((768, 768, 3), (768, 768, 1), resize=1.0, separate=False, tr_coverage=0.9, prd_coverage=1.5,out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, separate=True, tr_coverage=1.6, prd_coverage=1.5,out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.5, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((256, 256, 3), (256, 256, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.5,out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((768, 768, 3), (674, 674, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.5,out_fun='sigmoid', loss_fun=loss_bce_dice),  # 5 valid
     ]
     mode = args.mode[0].lower()
     if mode != 'p':
         for cfg in configs:
-            cfg.full = False  # less overlap
             for mod in models:
                 model= MyModel(mod, cfg, save=False)
                 print("Network specifications: " + model.name.replace("_", " "))
                 for origin in origins:
-                    ori_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), origin)
+                    ori_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), origin, train=True)
                     for target in targets:
-                        tgt_set= ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), target)
+                        tgt_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), target, train=True)
                         pair=ImageTrainPair(cfg, ori_set, tgt_set)
                         model.train(pair)
-
     if mode != 't':
         for cfg in configs:
-            cfg.full = True  # insure coverage
             for mod in models:
                 model= MyModel(mod, cfg, save=False)
+                xls_file = "Result_" + args.pred_dir + "_" + model.name + ".xlsx"
                 for origin in origins:
-                    prd_set=ImageSet(cfg, os.path.join(os.getcwd(), args.pred_dir), origin)
-                    for target in targets:
+                    prd_set=ImageSet(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, train=False)
+                    np_res=np.zeros((len(prd_set.images),len(targets)),dtype=np.uint32)
+                    for i, target in enumerate(targets):
                         pair=ImagePredictPair(cfg, prd_set, target)
-                        model.predict(pair)
+                        np_res[...,i]=model.predict(pair)
+                    pd_res=pd.DataFrame(np_res,index=prd_set.images,columns=targets)
+                    to_excel_sheet(pd_res, xls_file, origin)
+

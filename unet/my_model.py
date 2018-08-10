@@ -67,25 +67,23 @@ def loss_jac_dice(y_true, y_pred):
     return loss_jac(y_true, y_pred) + loss_dice(y_true, y_pred)
 
 
-def blend_mask(origin, image, oc, op):
+def blend_mask(origin, image, channel, opacity):
     origin=scale_input(origin)
     for c in range(3):
-        if c == oc:
-            origin[..., c] = np.tanh(origin[..., c] + op * image[..., 0])
+        if c == channel:
+            origin[..., c] = np.tanh(origin[..., c] + opacity * image[..., 0])
         else:
-            origin[..., c] = np.tanh(origin[..., c] - op * image[..., 0])
+            origin[..., c] = np.tanh(origin[..., c] - opacity * image[..., 0])
     return scale_input_reverse(origin)
 
-def draw_text(image,text):
+def draw_text(image,text,mode='RGB',col=(10,10,10)):
     # origin*=255.
     # cv2.putText(origin,text.replace("Pixel","\nPixel"),(20,20),cv2.FONT_HERSHEY_SIMPLEX,0.3,
     #             (255 if oc == 0 else 10, 255 if oc == 1 else 10, 255 if oc == 2 else 10), 1, cv2.LINE_AA, bottomLeftOrigin=False)
     # imwrite(ind_file, origin)
-    origin = Image.fromarray(image.astype(np.uint8), 'RGB')
+    origin = Image.fromarray(image.astype(np.uint8), mode) # L RGB
     draw = ImageDraw.Draw(origin)
-    draw.text((0, 0), text,
-              (10,10,10),  # dark color
-              ImageFont.truetype("arial.ttf", 24))  # font type size)
+    draw.text((0, 0), text, col, ImageFont.truetype("arial.ttf", 24))  # font type size)
     return origin
 
 class MyModel:
@@ -154,11 +152,12 @@ class MyModel:
             tr.on_epoch_end()
             val.on_epoch_end()
             history = self.model.fit_generator(tr, validation_data=val,
-                steps_per_epoch=min(100, len(tr.view_coord)), validation_steps=min(30, len(val.view_coord)),
+                # steps_per_epoch=min(100, len(tr.view_coord)), validation_steps=min(30, len(val.view_coord)),
+                steps_per_epoch=len(tr.view_coord), validation_steps=len(val.view_coord),
                 epochs=self.num_epoch, max_queue_size=1, workers=0, use_multiprocessing=False, shuffle=False,
                 callbacks=[
                     ModelCheckpoint(weight_file, monitor=indicator, mode=trend, save_best_only=True),
-                    ReduceLROnPlateau(monitor=indicator, mode=trend, factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
+                    # ReduceLROnPlateau(monitor=indicator, mode=trend, factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
                     EarlyStopping(monitor=indicator, mode=trend, patience=0, verbose=1),
                     TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                 ]).history
@@ -172,7 +171,9 @@ class MyModel:
         i_sum=pair.row_out*pair.col_out
         print('Load weights and predicting ...')
         export_name = self.get_export_name(pair)
-        self.model.load_weights(export_name + ".h5")
+        weight_file = export_name + ".h5"
+        self.model.load_weights(weight_file)
+        res=np.zeros(len(pair.images),dtype=np.uint32)
         prd = pair.get_prd_generator()
         # prd.on_epoch_end()
         msk = self.model.predict_generator(prd, verbose=1)
@@ -188,13 +189,16 @@ class MyModel:
             elif 0<ch<1:
                 image=(image+np.rint(image)*ch)/(1.0+ch)  # mixed
             i_val=int(np.sum(image[..., 0]))
+            res[i]=i_val
             text="%s Pixels: %.0f / %.0f Percentage: %.0f%%" % (ind_name, i_val, i_sum, 100. * i_val / i_sum)
             print(text)
             cv2.imwrite(ind_file, image*255.)
+            # cv2.imwrite(ind_file, draw_text((image*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
             origin=prd.view_coord[i].get_image(os.path.join(pair.wd, pair.dir_in_ex()))
-            blend=blend_mask(origin,image,oc,op)
-            markup=draw_text(blend,text.replace("Pixel","\nPixel"))
+            blend=blend_mask(origin,image,channel=oc,opacity=op)
+            markup=draw_text(blend,text.replace("Pixel","\nPixel")) # RGB:3x8-bit dark text
             imsave(ind_file.replace(".jpg",".jpe"), markup)
+        return res
 
     def merge_images(self):
         # if whole_file is not None and new_whole_file != whole_file:  # export whole_file
@@ -210,4 +214,15 @@ class MyModel:
         #         imsave(whole_file, _whole)
         #     _whole, _weight, _val, _sum = None, None, 0, 0
         # whole_file = os.path.join(target_dir, prd.view_coord[i].file_slice)
+        pass
+
+    def write_data(self):
+        # res = np.zeros((len(tst.view_coord), len(targets)), np.uint32)
+        # for x, target in enumerate(targets):
+        #     predict(target + nn, res[:, x])
+        # res_df.to_csv("result_" + args.pred_dir + "_" + nn + ".csv")
+        # res_df = pd.DataFrame(res,map(str,tst.view_coord), targets)
+        # xls_file = "Result_" + args.pred_dir + "_" + nn + ".xlsx"
+        # res_df.to_excel(xls_file, sheet_name = 'Individual')
+        # append_excel_sheet(res_df.groupby(res_df.index).sum(),xls_file,"Whole")
         pass
