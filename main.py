@@ -79,13 +79,18 @@ if __name__ == '__main__':
         for cfg in configs:
             for mod in models:
                 model= MyModel(mod, cfg, save=False)
-                xls_file = "Result_" + args.pred_dir + "_" + model.name + ".xlsx"
+                xls_file = "Result_%s_%s.xlsx" % (args.pred_dir, model.name)
                 for origin in origins:
                     prd_set=ImageSet(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, train=False)
-                    np_res=np.zeros((len(prd_set.images),len(targets)),dtype=np.uint32)
+                    pair=ImagePredictPair(cfg, prd_set)
+                    np_res=np.zeros((len(pair.view_coord),len(targets)),dtype=np.uint32)
                     for i, target in enumerate(targets):
-                        pair=ImagePredictPair(cfg, prd_set, target)
+                        pair.change_target(target)
                         np_res[...,i]=model.predict(pair)
                     pd_res=pd.DataFrame(np_res,index=prd_set.images,columns=targets)
                     to_excel_sheet(pd_res, xls_file, origin)
+                    large_name=[image.split('_#')[0] for image in prd_set.images]
+                    to_excel_sheet(pd_res.groupby(large_name).sum(), xls_file, origin+"_sum") # simple sum
+                    # TODO for simple sum: can do no overlap slicing with padding
+                    # TODO aggregate overlapping masks for ensemble prediction for optimal accuracy
 

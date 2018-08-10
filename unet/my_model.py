@@ -83,7 +83,7 @@ def draw_text(image,text,mode='RGB',col=(10,10,10)):
     # imwrite(ind_file, origin)
     origin = Image.fromarray(image.astype(np.uint8), mode) # L RGB
     draw = ImageDraw.Draw(origin)
-    draw.text((0, 0), text, col, ImageFont.truetype("arial.ttf", 24))  # font type size)
+    draw.text((0, 0), text, col, ImageFont.truetype("arial.ttf", 22))  # font type size)
     return origin
 
 class MyModel:
@@ -173,7 +173,7 @@ class MyModel:
         export_name = self.get_export_name(pair)
         weight_file = export_name + ".h5"
         self.model.load_weights(weight_file)
-        res=np.zeros(len(pair.images),dtype=np.uint32)
+        res=np.zeros(len(pair.view_coord),dtype=np.uint32)
         prd = pair.get_prd_generator()
         # prd.on_epoch_end()
         msk = self.model.predict_generator(prd, verbose=1)

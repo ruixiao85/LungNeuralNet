@@ -94,7 +94,8 @@ class ImageSet:
         return _images, _total
 
     def size_folder_update(self, images, row, col, new_dir):
-        self.images=images  # update filtered images
+        if images is not None:
+            self.images=images  # update filtered images
         self.row, self.col=row, col
         if self.sub_folder!=new_dir:
             new_path=os.path.join(self.work_directory,new_dir)
@@ -180,10 +181,10 @@ class ImageTrainPair:
         self.batch_size=cfg.batch_size
         self.img_aug = cfg.img_aug
         self.shuffle = cfg.shuffle
-        self.images =list(set(self.img_set.images).intersection(self.msk_set.images)) # match image file
 
-        self.img_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in_ex())
-        self.msk_set.size_folder_update(self.images, self.row_out, self.col_out, self.dir_out_ex())
+        images =list(set(self.img_set.images).intersection(self.msk_set.images)) # match image file
+        self.img_set.size_folder_update(images, self.row_in, self.col_in, self.dir_in_ex())
+        self.msk_set.size_folder_update(images, self.row_out, self.col_out, self.dir_out_ex())
 
         self.view_coord=list(set(self.img_set.view_coord).intersection(self.msk_set.view_coord))
 
@@ -225,9 +226,10 @@ class ImageTrainPair:
         return list(shared_names)
 
 
+ALL_TARGET='All'
 class ImagePredictPair:
-    def __init__(self, cfg: ModelConfig, ori_set: ImageSet, tgt):
-        # self.img_set = ori_set  # reference
+    def __init__(self, cfg: ModelConfig, ori_set: ImageSet, tgt=ALL_TARGET):
+        self.img_set = ori_set  # reference
         self.wd = ori_set.work_directory
         self.dir_in = ori_set.sub_folder
         self.dir_out = tgt
@@ -239,16 +241,18 @@ class ImagePredictPair:
         self.overlay_channel=cfg.overlay_channel
         self.overlay_opacity=cfg.overlay_opacity
         self.call_hardness=cfg.call_hardness
-        self.images=ori_set.images
 
-        ori_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in_ex())
-        self.view_coord=ori_set.view_coord
+        self.img_set.size_folder_update(None, self.row_in, self.col_in, self.dir_in_ex())
+        self.view_coord = self.img_set.view_coord
+
+    def change_target(self, tgt):
+        self.dir_out=tgt
 
     def get_prd_generator(self):
         return ImagePredictGenerator(self)
 
     def dir_in_ex(self):
-        return "%s-%s_%dx%d" % (self.dir_in, self.dir_out, self.row_in, self.col_in) if self.separate else self.dir_in
+        return "%s-%s_%dx%d" % (self.dir_in, ALL_TARGET, self.row_in, self.col_in) if self.separate else self.dir_in
 
     def dir_out_ex(self):
         return "%s-%s_%dx%d" % (self.dir_out, self.dir_in, self.row_out, self.col_out) if self.separate else self.dir_out
