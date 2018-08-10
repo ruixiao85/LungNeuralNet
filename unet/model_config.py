@@ -1,16 +1,16 @@
 class ModelConfig:
 
     def __init__(self, dim_in=(512,512,3), dim_out=(512,512,1), image_format="*.jpg",
-                resize=1., padding=0, full=True,
+                resize=1., full=True,
                 act_fun='elu', out_fun='sigmoid', loss_fun='binary_crossentropy',
-                over_ch=2, over_op=0.6, call_hard=0,  # 0-red 1-green 2-blue; red-blue flipped with cv2; opacity; 1: hard(0/1), 0~1: mix, 0: original smooth
+                over_ch=2, over_op=0.5, call_hard=1,  # 0-red 1-green 2-blue; red-blue flipped with cv2; opacity; 1: hard(0/1), 0~1: mix, 0: original smooth
                 num_rep=3, num_epoch=12, learning_rate=1e-3, valid_split=0.3, img_aug=True, cont_train=True,
-                batch_size=1, shuffle=True, separate=False
+                batch_size=1, shuffle=True, separate=True
                  ):
         self.row_in, self.col_in, self.dep_in = dim_in
         self.row_out, self.col_out, self.dep_out = dim_out
         self.image_format=image_format
-        self.resize, self.pad = resize, padding
+        self.resize= resize
         self.full = full
         self.act_fun = act_fun
         self.out_fun = out_fun

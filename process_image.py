@@ -19,6 +19,8 @@ def scale_input(_array):
     # _array -= ((mean + 0.6) / 2.0)
     # _array /= _array.std(axis=(0, 1), keepdims=True)
     # return _array
+def scale_input_reverse(_array):
+    return (_array.astype(np.float32) + 1.0) * 127.5
 
 def scale_output(_array, _out):
     _array = _array.astype(np.float32) / 255.0

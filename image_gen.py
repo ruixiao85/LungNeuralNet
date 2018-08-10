@@ -1,6 +1,6 @@
 import math
 import os
-from copy import deepcopy
+import random
 
 import numpy as np
 import keras
@@ -25,7 +25,7 @@ def extract_pad_image(lg_img, r0, r1, c0, c1):
     if c1 > _col:
         c1p = c1 - _col
         c1 = _col
-    if (r0p+r1p+c0p+c1p>0):
+    if r0p + r1p + c0p + c1p > 0:
         return np.pad(lg_img[r0:r1, c0:c1, ...], ((r0p, r1p), (c0p, c1p), (0, 0)), 'reflect')
     else:
         return lg_img[r0:r1, c0:c1, ...]
@@ -52,7 +52,7 @@ class MetaInfo:
     def file_slice(self):
         if self.r_index is not None:
             # return self.file_name.replace(".jpg", "_r%d_c%d.jpg" % (self.r_index,self.c_index))
-            return self.file_name.replace(".jpg", "_#%d#%d#%d#%d#.jpg" % (self.ri,self.ro,self.ci,self.co))
+            return self.file_name.replace(".jpg", "_#%d#%d#%d#%d#.jpg" % (self.row_start,self.row_end,self.col_start,self.col_end))
         return self.file_name
 
     def get_image(self, path):
@@ -70,13 +70,18 @@ class ImageSet:
     def __init__(self, cfg:ModelConfig, wd, sf):
         self.work_directory=wd
         self.sub_folder=sf
-        path = os.path.join(wd, sf)
-        self.images, self.total = self.find_file_recursive(path, cfg.image_format)
-        for i in range(len(self.images)):
-            self.images[i] = os.path.relpath(self.images[i], path)
+        self.image_format=cfg.image_format
+        self.images, self.total=[], None
+        self.scan_image()
         self.row, self.col = None, None
         self.full=cfg.full
         self.view_coord=[]
+
+    def scan_image(self):
+        path = os.path.join(self.work_directory, self.sub_folder)
+        self.images, self.total = self.find_file_recursive(path, self.image_format)
+        for i in range(len(self.images)):
+            self.images[i] = os.path.relpath(self.images[i], path)
 
     @staticmethod
     def find_file_recursive(_path, _ext):
@@ -90,22 +95,26 @@ class ImageSet:
         self.images=images  # update filtered images
         self.row, self.col=row, col
         if self.sub_folder!=new_dir:
-            # shutil.rmtree(new_dir)  # force delete
-            if not os.path.exists(new_dir): # change folder and not found
-                os.makedirs(new_dir)
-                self.view_coord=self.split_image_coord(new_dir)
-                self.sub_folder=new_dir
+            new_path=os.path.join(self.work_directory,new_dir)
+            # shutil.rmtree(new_path)  # force delete
+            if not os.path.exists(new_path): # change folder and not found
+                os.makedirs(new_path)
+                self.view_coord=self.split_image_coord(new_path)
+            self.sub_folder=new_dir
+            self.scan_image()
         self.view_coord=self.single_image_coord()
 
     def single_image_coord(self):
         view_coord=[]
         for image_name in self.images:
             _img = imread(os.path.join(self.work_directory, self.sub_folder, image_name))
+            print(image_name)
             lg_row, lg_col, lg_dep=_img.shape
             ri, ro, ci, co=0, lg_row, 0, lg_col
             if self.row is not None or self.col is not None: # dimension specified
-                rd=int(0.5*(lg_row-self.row))
-                cd=int(0.5*(lg_col-self.col))
+                ratio=0.5 # if self.full is True else random.random() # add randomness if not prediction/full
+                rd=int(ratio*(lg_row-self.row))
+                cd=int(ratio*(lg_col-self.col))
                 ri+=rd
                 ci+=cd
                 ro-=lg_row-self.row-rd
@@ -154,8 +163,8 @@ class ImageSet:
 
 class ImageTrainPair:
     def __init__(self, cfg:ModelConfig, ori_set:ImageSet, tgt_set:ImageSet):
-        self.img_set=deepcopy(ori_set)
-        self.msk_set=deepcopy(tgt_set)
+        # self.img_set=ori_set
+        # self.msk_set=tgt_set
         self.wd=ori_set.work_directory
         self.dir_in=ori_set.sub_folder
         self.dir_out=tgt_set.sub_folder
@@ -166,16 +175,12 @@ class ImageTrainPair:
         self.batch_size=cfg.batch_size
         self.img_aug = cfg.img_aug
         self.shuffle = cfg.shuffle
-        self.images =list(set(self.img_set.images).intersection(self.msk_set.images)) # match image file
+        self.images =list(set(ori_set.images).intersection(tgt_set.images)) # match image file
 
-        if self.separate: # export into separate folders
-            self.img_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in_ex())
-            self.msk_set.size_folder_update(self.images, self.row_out, self.col_out, self.dir_out_ex())
-        else:
-            self.img_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in)
-            self.msk_set.size_folder_update(self.images, self.row_out, self.col_out, self.dir_out)
+        ori_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in_ex())
+        tgt_set.size_folder_update(self.images, self.row_out, self.col_out, self.dir_out_ex())
 
-        self.view_coord=list(set(self.img_set.view_coord).intersection(self.msk_set.view_coord)) # may not be needed
+        self.view_coord=list(set(ori_set.view_coord).intersection(tgt_set.view_coord))
 
     def get_tr_val_generator(self):
         tr_list, val_list=[], []
@@ -217,7 +222,7 @@ class ImageTrainPair:
 
 class ImagePredictPair:
     def __init__(self, cfg: ModelConfig, ori_set: ImageSet, tgt):
-        self.img_set = ori_set  # reference
+        # self.img_set = ori_set  # reference
         self.wd = ori_set.work_directory
         self.dir_in = ori_set.sub_folder
         self.dir_out = tgt
@@ -229,15 +234,13 @@ class ImagePredictPair:
         self.overlay_channel=cfg.overlay_channel
         self.overlay_opacity=cfg.overlay_opacity
         self.call_hardness=cfg.call_hardness
-        self.images=self.img_set.images
+        self.images=ori_set.images
 
-        if self.separate:  # export into separate folders
-            self.img_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in_ex())
-        else:
-            self.img_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in)
+        ori_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in_ex())
+        self.view_coord=ori_set.view_coord
 
     def get_prd_generator(self):
-        return ImagePredictGenerator(self, self.img_set.view_coord)
+        return ImagePredictGenerator(self)
 
     def dir_in_ex(self):
         return "%s-%s_%dx%d" % (self.dir_in, self.dir_out, self.row_in, self.col_in) if self.separate else self.dir_in
@@ -278,9 +281,9 @@ class ImageTrainGenerator(keras.utils.Sequence):
             np.random.shuffle(self.indexes)
 
 class ImagePredictGenerator(keras.utils.Sequence):
-    def __init__(self, pair:ImagePredictPair, view_coord):
-        self.view_coord=view_coord
-        self.indexes = np.arange(len(view_coord))
+    def __init__(self, pair:ImagePredictPair):
+        self.view_coord=pair.view_coord
+        self.indexes = np.arange(len(pair.view_coord))
         self.wd=pair.wd
         self.dir_in, self.dir_out=pair.dir_in_ex(), pair.dir_out_ex()
         self.batch_size=pair.batch_size

@@ -13,7 +13,7 @@ from skimage.io import imsave
 
 from image_gen import ImageTrainPair, ImagePredictPair
 from model_config import ModelConfig
-from process_image import scale_input
+from process_image import scale_input, scale_input_reverse
 from tensorboard_train_val import TensorBoardTrainVal
 from util import mk_dir_if_nonexist
 
@@ -66,6 +66,27 @@ def loss_bce_dice(y_true, y_pred):
 def loss_jac_dice(y_true, y_pred):
     return loss_jac(y_true, y_pred) + loss_dice(y_true, y_pred)
 
+
+def blend_mask(origin, image, oc, op):
+    origin=scale_input(origin)
+    for c in range(3):
+        if c == oc:
+            origin[..., c] = np.tanh(origin[..., c] + op * image[..., 0])
+        else:
+            origin[..., c] = np.tanh(origin[..., c] - op * image[..., 0])
+    return scale_input_reverse(origin)
+
+def draw_text(image,text):
+    # origin*=255.
+    # cv2.putText(origin,text.replace("Pixel","\nPixel"),(20,20),cv2.FONT_HERSHEY_SIMPLEX,0.3,
+    #             (255 if oc == 0 else 10, 255 if oc == 1 else 10, 255 if oc == 2 else 10), 1, cv2.LINE_AA, bottomLeftOrigin=False)
+    # imwrite(ind_file, origin)
+    origin = Image.fromarray(image.astype(np.uint8), 'RGB')
+    draw = ImageDraw.Draw(origin)
+    draw.text((0, 0), text,
+              (10,10,10),  # dark color
+              ImageFont.truetype("arial.ttf", 24))  # font type size)
+    return origin
 
 class MyModel:
     # 'relu6'  # min(max(features, 0), 6)
@@ -134,7 +155,7 @@ class MyModel:
             val.on_epoch_end()
             history = self.model.fit_generator(tr, validation_data=val,
                 steps_per_epoch=min(100, len(tr.view_coord)), validation_steps=min(30, len(val.view_coord)),
-                epochs=self.num_epoch, max_queue_size=1, workers=1, use_multiprocessing=False, shuffle=False,
+                epochs=self.num_epoch, max_queue_size=1, workers=0, use_multiprocessing=False, shuffle=False,
                 callbacks=[
                     ModelCheckpoint(weight_file, monitor=indicator, mode=trend, save_best_only=True),
                     ReduceLROnPlateau(monitor=indicator, mode=trend, factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
@@ -169,22 +190,11 @@ class MyModel:
             i_val=int(np.sum(image[..., 0]))
             text="%s Pixels: %.0f / %.0f Percentage: %.0f%%" % (ind_name, i_val, i_sum, 100. * i_val / i_sum)
             print(text)
-            _ind=scale_input(prd.view_coord[i].get_image(os.path.join(pair.wd, pair.dir_in_ex())))
-            for c in range(3):
-                if c == oc:
-                    _ind[..., c] = np.tanh(_ind[..., c] + op * image[..., 0])
-                else:
-                    _ind[..., c] = np.tanh(_ind[..., c] - op * image[..., 0])
-            # _ind*=255.
-            # cv2.putText(_ind,text.replace("Pixel","\nPixel"),(20,20),cv2.FONT_HERSHEY_SIMPLEX,0.3,
-            #             (255 if oc == 0 else 10, 255 if oc == 1 else 10, 255 if oc == 2 else 10), 1, cv2.LINE_AA, bottomLeftOrigin=False)
-            # imwrite(ind_file, _ind)
-            _ind = Image.fromarray(((_ind + 1.0) * 127.).astype(np.uint8), 'RGB')
-            draw = ImageDraw.Draw(_ind)
-            draw.text((0, 0), text.replace("Pixel", "\nPixel"),
-                      (10 if oc == 0 else 200, 10 if oc == 1 else 200, 10 if oc == 2 else 200), # contrasting color
-                      ImageFont.truetype("arial.ttf", 24))  # font type size)
-            imsave(ind_file, _ind)
+            cv2.imwrite(ind_file, image*255.)
+            origin=prd.view_coord[i].get_image(os.path.join(pair.wd, pair.dir_in_ex()))
+            blend=blend_mask(origin,image,oc,op)
+            markup=draw_text(blend,text.replace("Pixel","\nPixel"))
+            imsave(ind_file.replace(".jpg",".jpe"), markup)
 
     def merge_images(self):
         # if whole_file is not None and new_whole_file != whole_file:  # export whole_file

@@ -1,17 +1,13 @@
 import os
 import argparse
 import pandas as pd
-from PIL import ImageDraw, Image, ImageFont
-from skimage.io import imsave, imread
-from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 
 from image_gen import ImageTrainPair, ImageSet, ImagePredictPair
 from process_image import scale_input, augment_image_pair, scale_output
 from tensorboard_train_val import TensorBoardTrainVal
 from model_config import ModelConfig
 from util import mk_dir_if_nonexist
-
-
+from unet.my_model import *
 
 if __name__ == '__main__':
     # -d "D:\Cel files\2018-07.13 Adam Brenderia 2X LPS CGS" -t "071318 Cleaned 24H post cgs" -p "2018-07.20 Kyle MMP13 Smoke Flu Zander 2X" -o "Paren,InflamMild,InflamSevere"
@@ -41,8 +37,9 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from unet.unet_pool_up_31 import unet_pool_up_5_dure
-    from unet.unet_pool_up_valid import unet_pool_up_5_valid
+    from unet.unet_pool_up import unet_pool_up_5
+    from unet.unet_pool_up_31 import unet_pool_up_5_dure, unet_pool_up_7_dure
+    from unet.unet_pool_up_valid import unet_pool_up_5_valid, unet_pool_up_7_valid
     models = [
         # unet_pool_trans_5,
         # unet_pool_trans_7,
@@ -56,26 +53,13 @@ if __name__ == '__main__':
         # unet_pool_up_5_valid,
         # unet_vgg_7conv,
     ]
-    from unet.my_model import *
     configs = [
-        ModelConfig((1024, 1024, 3), (1024,1024, 1), resize=1.0, padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # config((768, 768, 3), (674, 674, 1), resize=1.0, padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),  # 5 valid
-        # config(256, 256, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # config(256, 256, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # config(768, 768, 3, 1, resize=1.0, padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # config(512, 512, 3, 1, resize=0.8, padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # config(256, 256, 3, 1, resize=1., padding=0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # config(3, 1, 'elu', 'sigmoid', loss_dice),
-        # config(3, 1, 'elu', 'sigmoid', 'binary_crossentropy'), # mid
-        # config(3, 1, 'elu', 'sigmoid', loss_bce), # no good
-        # config(3, 1, 'elu', 'sigmoid', loss_jaccard), # no good
-        # config(3, 2, 'relu', 'softmax', 'categorical_crossentropy'),
-        # config(3, 2, 'elu', 'softmax'),
-        # config(3, 2, 'tanh', 'softmax', 'categorical_crossentropy'),
-        # config(3, 2, 'softsign', 'softmax', 'categorical_crossentropy'),  # trouble
-        # config(3, 2, 'selu', 'softmax', 'categorical_crossentropy'),  # trouble
-        # config(3, 2, 'softplus', 'softmax', 'categorical_crossentropy'), # trouble
+        # ModelConfig((1060, 1060, 3), (1060,1060, 1), resize=1.0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((1024, 1024, 3), (1024,1024, 1), resize=1.0,full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, separate=True, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((768, 768, 3), (768, 768, 1), resize=1.0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),  # 5 valid
+        # ModelConfig((768, 768, 3), (674, 674, 1), resize=1.0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),  # 5 valid
+        # ModelConfig((256, 256, 3), (256, 256, 1), resize=1.0, full=True, act_fun='elu', out_fun='sigmoid', loss_fun=loss_bce_dice),
     ]
     mode = args.mode[0].lower()
     if mode != 'p':
@@ -101,12 +85,3 @@ if __name__ == '__main__':
                     for target in targets:
                         pair=ImagePredictPair(cfg, prd_set, target)
                         model.predict(pair)
-                    # res = np.zeros((len(tst.view_coord), len(targets)), np.uint32)
-                    # for x, target in enumerate(targets):
-                    #     predict(target + nn, res[:, x])
-                    # res_df.to_csv("result_" + args.pred_dir + "_" + nn + ".csv")
-                    # res_df = pd.DataFrame(res,map(str,tst.view_coord), targets)
-                    # xls_file = "Result_" + args.pred_dir + "_" + nn + ".xlsx"
-                    # res_df.to_excel(xls_file, sheet_name = 'Individual')
-                    # append_excel_sheet(res_df.groupby(res_df.index).sum(),xls_file,"Whole")
-
