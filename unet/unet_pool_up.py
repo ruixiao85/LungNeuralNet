@@ -26,7 +26,7 @@ def get_crop_shape(target, refer):
 def unet_pool_up_4(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
-    name="_unet_pool_up_4_"+cfg
+    name="unet_pool_up_4_"+cfg
     f1, f2, f3, f4 = 32, 64, 128, 256
     # f1, f2, f3, f4 = 64, 128, 256, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
@@ -65,7 +65,7 @@ def unet_pool_up_4(cfg):
 def unet_pool_up_5(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
-    name="_unet_pool_up_5_"+str(cfg)
+    name="unet_pool_up_5_"+str(cfg)
     f1, f2, f3, f4, f5 = 64, 96, 128, 192, 256
     # f1, f2, f3, f4, f5 = 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
@@ -111,7 +111,7 @@ def unet_pool_up_5(cfg):
 def unet_pool_up_6(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
-    name="_unet_pool_up_6_"+str(cfg)
+    name="unet_pool_up_6_"+str(cfg)
     f1, f2, f3, f4, f5, f6 = 64, 96, 128, 192, 256, 384
     # f1, f2, f3, f4, f5, f6 = 96, 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
@@ -163,7 +163,7 @@ def unet_pool_up_6(cfg):
 def unet_pool_up_7(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
-    name="_unet_pool_up_7_"+str(cfg)
+    name="unet_pool_up_7_"+str(cfg)
     f1, f2, f3, f4, f5, f6, f7 = 64, 96, 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3
     img_input=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3

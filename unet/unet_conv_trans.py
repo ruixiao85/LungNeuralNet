@@ -15,7 +15,7 @@ init='he_normal'
 def unet_conv_trans_5(cfg):
     act_fun, out_fun=cfg.act_fun, cfg.out_fun
     dim_in, dim_out=cfg.dep_in, cfg.dep_out
-    name="_unet_conv_trans_5_"+str(cfg)
+    name="unet_conv_trans_5_"+str(cfg)
     f1, f2, f3, f4, f5 = 64, 96, 128, 192, 256
     # f1, f2, f3, f4, f5 = 96, 128, 192, 256, 384 # s
     # f1, f2, f3, f4, f5 = 32, 64, 128, 256, 512
@@ -52,7 +52,7 @@ def unet_conv_trans_5(cfg):
 def unet_conv_trans_6(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
-    name="_unet_trans_6_"+str(cfg)
+    name="unet_trans_6_"+str(cfg)
     # f1, f2, f3, f4, f5, f6 = 32, 64, 96, 128, 192, 256
     f1, f2, f3, f4, f5, f6 = 64, 96, 128, 192, 256, 384
     # img_input = Input((None, None, dim_in))  # r,c,3
@@ -93,7 +93,7 @@ def unet_conv_trans_6(cfg):
 def unet_conv_trans_7(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
-    name="_unet_conv_trans_7_"+str(cfg)
+    name="unet_conv_trans_7_"+str(cfg)
     # f1, f2, f3, f4, f5, f6, f7 = 32, 64, 96, 128, 192, 256, 384
     f1, f2, f3, f4, f5, f6, f7 = 64, 96, 128, 192, 256, 384, 512
     # img_input = Input((None, None, dim_in))  # r,c,3

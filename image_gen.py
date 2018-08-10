@@ -1,14 +1,34 @@
 import math
 import os
-import shutil
-import threading
+from copy import deepcopy
 
 import numpy as np
 import keras
 from cv2.cv2 import imread, resize, imwrite
 
+from model_config import ModelConfig
 from process_image import scale_input, scale_output, augment_image_pair
-from util import get_recursive_rel_path
+
+
+def extract_pad_image(lg_img, r0, r1, c0, c1):
+    _row, _col, _ = lg_img.shape
+    r0p, r1p, c0p, c1p = 0, 0, 0, 0
+    if r0 < 0:
+        r0p = -r0
+        r0 = 0
+    if c0 < 0:
+        c0p = -c0
+        c0 = 0
+    if r1 > _row:
+        r1p = r1 - _row
+        r1 = _row
+    if c1 > _col:
+        c1p = c1 - _col
+        c1 = _col
+    if (r0p+r1p+c0p+c1p>0):
+        return np.pad(lg_img[r0:r1, c0:c1, ...], ((r0p, r1p), (c0p, c1p), (0, 0)), 'reflect')
+    else:
+        return lg_img[r0:r1, c0:c1, ...]
 
 
 class MetaInfo:
@@ -24,66 +44,218 @@ class MetaInfo:
         self.col_start = ci
         self.col_end = co
 
+    @staticmethod
+    def parse_coord(file):
+        seg=file.split("#")
+        return int(seg[1]),int(seg[2]),int(seg[3]),int(seg[4])
+
     def file_slice(self):
         if self.r_index is not None:
-            return self.file_name.replace(".jpg", "_r%d_c%d.jpg" % (self.r_index,self.c_index))
+            # return self.file_name.replace(".jpg", "_r%d_c%d.jpg" % (self.r_index,self.c_index))
+            return self.file_name.replace(".jpg", "_#%d#%d#%d#%d#.jpg" % (self.ri,self.ro,self.ci,self.co))
         return self.file_name
 
+    def get_image(self, path):
+        return extract_pad_image(imread(os.path.join(path, self.file_slice())), self.row_start, self.row_end, self.col_start, self.col_end)
+
     def __str__(self):
-        return str(self.file_name)
+        return self.file_slice()
 
-class threadsafe_iter:
-    """Takes an iterator/generator and makes it thread-safe by
-    serializing call to the `next` method of given iterator/generator.
-    """
-    def __init__(self, it):
-        self.it = it
-        self.lock = threading.Lock()
+    def __eq__(self, other):
+        return self.file_slice()==other.file_slice()
+    def __hash__(self):
+        return self.file_slice().__hash__()
 
-    def __iter__(self):
-        return self
-
-    def next(self):
-        with self.lock:
-            return self.it.next()
-
-
-def threadsafe_generator(f):
-    """A decorator that takes a generator function and makes it thread-safe.
-    """
-    def g(*a, **kw):
-        return threadsafe_iter(f(*a, **kw))
-    return g
-
-class ImageGenerator(keras.utils.Sequence):
-    def __init__(self, name, cfg, wd, dir_in, dir_out, shuffle, batch_size=2, img_aug=False):
-        self.name=name
-        self.resize=cfg.resize
-        self.row_in, self.col_in, self.dep_in= cfg.row_in, cfg.col_in, cfg.dep_in
-        self.row_out, self.col_out, self.dep_out= cfg.row_out, cfg.col_out, cfg.dep_out
+class ImageSet:
+    def __init__(self, cfg:ModelConfig, wd, sf):
+        self.work_directory=wd
+        self.sub_folder=sf
+        path = os.path.join(wd, sf)
+        self.images, self.total = self.find_file_recursive(path, cfg.image_format)
+        for i in range(len(self.images)):
+            self.images[i] = os.path.relpath(self.images[i], path)
+        self.row, self.col = None, None
         self.full=cfg.full
-        self.wd=wd
-        self.dir_in, self.dir_out=dir_in, dir_out
-        self.shuffle=shuffle
-        self.img_aug=img_aug
-        self.batch_size=batch_size
-        self.indexes=[]
         self.view_coord=[]
-        self.skip_convert=os.path.exists(os.path.join(self.wd, self.dir_in_reg()))\
-                          and (os.path.exists(os.path.join(self.wd,self.dir_out_reg())) or self.dir_out is None)
-        if  self.skip_convert:
-            images, _ = get_recursive_rel_path(self.wd, self.dir_in_reg())
-            for img in images:
-                self.view_coord.append(MetaInfo(img, None, None, self.row_out, self.col_out, self.dep_out, 0, self.row_out, 0, self.col_out))
-        # self.lock=threading.Lock()
-        # self.dep=3
-        # self.lab=1
 
-    def dir_in_reg(self):
-        return "%s%s_%s_%dx%d"%(self.dir_in,self.dir_out,self.name,self.row_in,self.col_in)
+    @staticmethod
+    def find_file_recursive(_path, _ext):
+        from glob import glob
+        _images = [path for fn in os.walk(_path) for path in glob(os.path.join(fn[0], _ext))]
+        _total = len(_images)
+        print("Found [%d] file from [%s]" % (_total, _path))
+        return _images, _total
 
-    def dir_out_reg(self):
-        return "%s%s_%s_%dx%d"%(self.dir_out,self.dir_in,self.name,self.row_out,self.col_out)
+    def size_folder_update(self, images, row, col, new_dir):
+        self.images=images  # update filtered images
+        self.row, self.col=row, col
+        if self.sub_folder!=new_dir:
+            # shutil.rmtree(new_dir)  # force delete
+            if not os.path.exists(new_dir): # change folder and not found
+                os.makedirs(new_dir)
+                self.view_coord=self.split_image_coord(new_dir)
+                self.sub_folder=new_dir
+        self.view_coord=self.single_image_coord()
+
+    def single_image_coord(self):
+        view_coord=[]
+        for image_name in self.images:
+            _img = imread(os.path.join(self.work_directory, self.sub_folder, image_name))
+            lg_row, lg_col, lg_dep=_img.shape
+            ri, ro, ci, co=0, lg_row, 0, lg_col
+            if self.row is not None or self.col is not None: # dimension specified
+                rd=int(0.5*(lg_row-self.row))
+                cd=int(0.5*(lg_col-self.col))
+                ri+=rd
+                ci+=cd
+                ro-=lg_row-self.row-rd
+                co-=lg_col-self.col-cd
+            entry = MetaInfo(image_name, None, None, lg_row, lg_col, lg_dep, ri, ro, ci, co)
+            view_coord.append(entry)
+        return view_coord
+
+    def split_image_coord(self, ex_dir):
+        view_coord=[]
+        redundancy = 1.2  # more coverage good for prediction
+        sparsity = 1.0  # less overlap good for training
+        for image_name in self.images:
+            _img = imread(os.path.join(self.work_directory, self.sub_folder, image_name))
+            lg_row, lg_col, lg_dep = _img.shape
+            if self.full:
+                r_len = max(1, int(math.ceil(redundancy * (lg_row - self.row) / self.row)))
+                c_len = max(1, int(math.ceil(redundancy * (lg_col - self.col) / self.col)))
+            else:
+                r_len = max(1, int(math.floor(sparsity * (lg_row - self.row) / self.row)))
+                c_len = max(1, int(math.floor(sparsity * (lg_col - self.col) / self.col)))
+            print("%s target %d x %d (full %r): original %d x %d ->  row /%d col /%d" %
+                  (image_name, self.row, self.col, self.full, lg_row, lg_col, r_len, c_len))
+            r_step = float(lg_row - self.row) / (r_len - 1) if r_len > 1 else 0
+            c_step = float(lg_col - self.col) / (c_len - 1) if c_len > 1 else 0
+            for r_index in range(r_len):
+                for c_index in range(c_len):
+                    ri = int(round(r_index * r_step))
+                    ci = int(round(c_index * c_step))
+                    ro = ri + self.row
+                    co = ci + self.col
+                    s_img = _img[ri:ro, ci:co, ...]
+                    std=float(np.std(s_img))
+                    if std < 20:  # skip this tile for low contrast
+                        print("skip tile r%d_c%d for low contrast (std=%.1f) for %s"%(r_index,c_index,std,image_name))
+                        continue
+                    entry = MetaInfo(image_name, r_index, c_index, lg_row, lg_col, lg_dep, ri, ro, ci, co) # temporary
+                    imwrite(os.path.join(ex_dir, entry.file_slice()), s_img)
+                    entry.file_name = entry.file_slice()
+                    entry.r_index, entry.c_index = None, None
+                    entry.ori_row, entry.ori_col, entry.ori_dep = self.row, self.col, lg_dep
+                    entry.ri, entry.ro, entry.ci, entry.co = 0, self.row, 0, self.col
+                    view_coord.append(entry) # updated to target single exported file
+        return view_coord
+
+
+class ImageTrainPair:
+    def __init__(self, cfg:ModelConfig, ori_set:ImageSet, tgt_set:ImageSet):
+        self.img_set=deepcopy(ori_set)
+        self.msk_set=deepcopy(tgt_set)
+        self.wd=ori_set.work_directory
+        self.dir_in=ori_set.sub_folder
+        self.dir_out=tgt_set.sub_folder
+        self.row_in, self.col_in, self.dep_in = cfg.row_in, cfg.col_in, cfg.dep_in
+        self.row_out, self.col_out, self.dep_out = cfg.row_out, cfg.col_out, cfg.dep_out
+        self.separate=cfg.separate
+        self.valid_split=cfg.valid_split
+        self.batch_size=cfg.batch_size
+        self.img_aug = cfg.img_aug
+        self.shuffle = cfg.shuffle
+        self.images =list(set(self.img_set.images).intersection(self.msk_set.images)) # match image file
+
+        if self.separate: # export into separate folders
+            self.img_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in_ex())
+            self.msk_set.size_folder_update(self.images, self.row_out, self.col_out, self.dir_out_ex())
+        else:
+            self.img_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in)
+            self.msk_set.size_folder_update(self.images, self.row_out, self.col_out, self.dir_out)
+
+        self.view_coord=list(set(self.img_set.view_coord).intersection(self.msk_set.view_coord)) # may not be needed
+
+    def get_tr_val_generator(self):
+        tr_list, val_list=[], []
+        ti,vi=0,0
+        for i, vc in enumerate(self.view_coord):
+            if 0.1*(i%10)<self.valid_split: # validation
+                val_list.append(vc)
+                vi+=1
+            else: # training
+                tr_list.append(vc)
+                ti+=1
+        print("From %d split into train : validation  %d : %d"%(len(self.view_coord),ti,vi))
+        return ImageTrainGenerator(self, tr_list), ImageTrainGenerator(self, val_list)
+
+    def dir_in_ex(self):
+        return "%s-%s_%dx%d" % (self.dir_in, self.dir_out, self.row_in, self.col_in) if self.separate else self.dir_in
+
+    def dir_out_ex(self):
+        return "%s-%s_%dx%d" % (self.dir_out, self.dir_in, self.row_out, self.col_out) if self.separate else self.dir_out
+
+    @staticmethod
+    def filter_match_pair(set1: ImageSet, set2: ImageSet):
+        shared_names = set(set1.images).intersection(set2.images)
+        size_map = {}  # file:(row,col)
+        if not set1.view_coord:
+            set1.single_image_coord()
+        for mi in set1.view_coord:
+            if mi.file_name in shared_names:
+                size_map[mi.file_name] = (mi.ori_row, mi.or_col)
+        if not set2.view_coord:
+            set2.single_image_coord()
+        for mi in set2.view_coord:
+            if mi.file_name in size_map.keys():
+                if size_map[mi.file_name] != (mi.ori_row, mi.or_col):
+                    print("size mismatch for %s" % mi.file_name)
+                    shared_names.remove(mi.file_name)
+        return list(shared_names)
+
+
+class ImagePredictPair:
+    def __init__(self, cfg: ModelConfig, ori_set: ImageSet, tgt):
+        self.img_set = ori_set  # reference
+        self.wd = ori_set.work_directory
+        self.dir_in = ori_set.sub_folder
+        self.dir_out = tgt
+        self.row_in, self.col_in, self.dep_in = cfg.row_in, cfg.col_in, cfg.dep_in
+        self.row_out, self.col_out, self.dep_out = cfg.row_out, cfg.col_out, cfg.dep_out
+        self.separate = cfg.separate
+        self.batch_size=cfg.batch_size
+
+        self.overlay_channel=cfg.overlay_channel
+        self.overlay_opacity=cfg.overlay_opacity
+        self.call_hardness=cfg.call_hardness
+        self.images=self.img_set.images
+
+        if self.separate:  # export into separate folders
+            self.img_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in_ex())
+        else:
+            self.img_set.size_folder_update(self.images, self.row_in, self.col_in, self.dir_in)
+
+    def get_prd_generator(self):
+        return ImagePredictGenerator(self, self.img_set.view_coord)
+
+    def dir_in_ex(self):
+        return "%s-%s_%dx%d" % (self.dir_in, self.dir_out, self.row_in, self.col_in) if self.separate else self.dir_in
+
+    def dir_out_ex(self):
+        return "%s-%s_%dx%d" % (self.dir_out, self.dir_in, self.row_out, self.col_out) if self.separate else self.dir_out
+
+class ImageTrainGenerator(keras.utils.Sequence):
+    def __init__(self, pair:ImageTrainPair, view_coord):
+        self.view_coord=view_coord
+        self.indexes = np.arange(len(view_coord))
+        self.wd=pair.wd
+        self.dir_in, self.dir_out=pair.dir_in_ex(), pair.dir_out_ex()
+        self.batch_size=pair.batch_size
+        self.img_aug=pair.img_aug
+        self.shuffle=pair.shuffle
+        self.row_in, self.col_in, self.dep_in=pair.row_in, pair.col_in, pair.dep_in
+        self.row_out, self.col_out, self.dep_out=pair.row_out, pair.col_out, pair.dep_out
 
     def __len__(self):  # Denotes the number of batches per epoch
         return int(np.floor(len(self.view_coord) / self.batch_size))
@@ -91,143 +263,41 @@ class ImageGenerator(keras.utils.Sequence):
     def __getitem__(self, index):  # Generate one batch of data
         indexes = self.indexes[index * self.batch_size:(index + 1) * self.batch_size]
         # print(" getting index %d with %d batch size"%(index,self.batch_size))
-        return self.__data_generation([self.view_coord[k] for k in indexes])
+        _img = np.zeros((self.batch_size, self.row_in, self.col_in, self.dep_in), dtype=np.uint8)
+        _tgt = np.zeros((self.batch_size, self.row_out, self.col_out, 3), dtype=np.uint8)
+        for i, vc in enumerate([self.view_coord[k] for k in indexes]):
+            _img[i, ...] = vc.get_image(os.path.join(self.wd, self.dir_in))
+            _tgt[i, ...] = vc.get_image(os.path.join(self.wd, self.dir_out))
+        if self.img_aug:
+            _img, _tgt = augment_image_pair(_img, _tgt, _level=1)
+        return scale_input(_img), scale_output(_tgt, self.dep_out)
 
     def on_epoch_end(self):  # Updates indexes after each epoch
         self.indexes = np.arange(len(self.view_coord))
         if self.shuffle:
             np.random.shuffle(self.indexes)
 
-    def recreate_dir(self):
-        down_img = os.path.join(self.wd, self.dir_in_reg())
-        down_tgt = os.path.join(self.wd, self.dir_out_reg())
-        if os.path.exists(down_img):
-            shutil.rmtree(down_img)
-        if os.path.exists(down_tgt):
-            shutil.rmtree(down_tgt)
-        os.mkdir(down_img)
-        os.mkdir(down_tgt)
+class ImagePredictGenerator(keras.utils.Sequence):
+    def __init__(self, pair:ImagePredictPair, view_coord):
+        self.view_coord=view_coord
+        self.indexes = np.arange(len(view_coord))
+        self.wd=pair.wd
+        self.dir_in, self.dir_out=pair.dir_in_ex(), pair.dir_out_ex()
+        self.batch_size=pair.batch_size
+        self.row_in, self.col_in, self.dep_in=pair.row_in, pair.col_in, pair.dep_in
+        # self.row_out, self.col_out, self.dep_out=pair.row_out, pair.col_out, pair.dep_out
 
-    def register_image(self, image_name):
-        down_img=os.path.join(self.wd,self.dir_in_reg())
-        down_tgt=os.path.join(self.wd,self.dir_out_reg())
-        rd = int(round(0.5 * (self.row_in - self.row_out), 0))
-        cd = int(round(0.5 * (self.col_in - self.col_out), 0))
-        _img = imread(os.path.join(self.wd, self.dir_in, image_name))
-        lg_row, lg_col, lg_dep=_img.shape
-        if self.dir_out is not None:  # training mode check file size
-            _tgt = imread(os.path.join(self.wd, self.dir_out, image_name))
-            tgt_row, tgt_col, _=_tgt.shape
-            if lg_row!=tgt_row or lg_col!=tgt_col:
-                print("Skipping for size mismatch in %s"%image_name)
-                return 0 # skip the file
-        if self.full:
-            redundancy=1.2 # more
-            r_len = max(1,int(math.ceil(redundancy*(lg_row-self.row_out) / self.row_out)))
-            c_len = max(1,int(math.ceil(redundancy*(lg_col-self.col_out) / self.col_out)))
-        else:
-            sparsity=1.0 # less
-            r_len = max(1,int(math.floor(sparsity*(lg_row-self.row_out) / self.row_out)))
-            c_len = max(1,int(math.floor(sparsity*(lg_col-self.col_out) / self.col_out)))
-        print("%s target %d x %d (full %r): original %d x %d x %d ->  row /%d col /%d" %
-              (image_name, self.row_out, self.col_out, self.full, lg_row, lg_col, lg_dep, r_len, c_len))
-        r_step = float(lg_row - self.row_out) / (r_len - 1) if r_len > 1 else 0
-        c_step = float(lg_col - self.col_out) / (c_len - 1) if c_len > 1 else 0
-        for r_index in range(r_len):
-            for c_index in range(c_len):
-                ri = int(round(r_index * r_step))
-                ci = int(round(c_index * c_step))
-                ro = ri+self.row_out
-                co=ci+self.col_out
-                s_img = _img[ri:ro, ci:co, ...]
-                s_tgt=_tgt[ri:ro,ci:co,...]
-                if np.std(s_img) < 20 or np.std(s_tgt) < 5:  # skip low contrast image
-                    continue
-                entry = MetaInfo(image_name, r_index, c_index, lg_row, lg_col, lg_dep, ri, ro, ci, co)
-                self.view_coord.append(entry)
-                if rd != 0 or cd != 0:
-                    r0, r1 = ri - rd, ro + rd
-                    c0, c1 = ci- cd, co + cd
-                    r0p, r1p, c0p, c1p = 0, 0, 0, 0
-                    if r0 < 0:
-                        r0p = -r0
-                        r0 = 0
-                    if c0 < 0:
-                        c0p = -c0
-                        c0 = 0
-                    if r1 > lg_row:
-                        r1p = r1 - lg_row
-                        r1 = lg_row
-                    if c1 > lg_col:
-                        c1p = c1 - lg_col
-                        c1 = lg_col
-                    s_img= np.pad(_img[r0:r1, c0:c1, ...], ((r0p, r1p), (c0p, c1p), (0, 0)), 'reflect')
-                imwrite(os.path.join(down_img,entry.file_slice()),s_img)
-                imwrite(os.path.join(down_tgt,entry.file_slice()),s_tgt)
-        # print("%s was split into %d views and added"%(image_name,p_index))
-        return 1
+    def __len__(self):  # Denotes the number of batches per epoch
+        return int(np.floor(len(self.view_coord) / self.batch_size))
 
-    def __data_generation(self, view_coords):  # Generates data containing batch_size samples # X : (n_samples, *dim, n_channels)
-        _img=np.zeros((self.batch_size, self.row_in, self.col_in, self.dep_in),dtype=np.uint8)
-        for i,vc in enumerate(view_coords):
-            _img[i,...]=imread(os.path.join(self.wd, self.dir_in_reg(), vc.file_slice()))
-        if self.dir_out is not None:
-            _tgt = np.zeros((self.batch_size, self.row_out, self.col_out, 3),dtype=np.uint8)
-            for i,vc in enumerate(view_coords):
-                _tgt[i,...] =imread(os.path.join(self.wd, self.dir_out_reg(), vc.file_slice()))
-        else:
-            _tgt=None
-        if self.dir_out is not None:
-            if self.img_aug:
-                _img,_tgt=augment_image_pair(_img, _tgt, _level=1)
-            _img,_tgt=scale_input(_img),scale_output(_tgt,self.dep_out)
-        else:
-            _img=scale_input(_img)
-        return _img, _tgt
+    def __getitem__(self, index):  # Generate one batch of data
+        indexes = self.indexes[index * self.batch_size:(index + 1) * self.batch_size]
+        # print(" getting index %d with %d batch size"%(index,self.batch_size))
+        _img = np.zeros((self.batch_size, self.row_in, self.col_in, self.dep_in), dtype=np.uint8)
+        for i, vc in enumerate([self.view_coord[k] for k in indexes]):
+            _img[i, ...] = vc.get_image(os.path.join(self.wd, self.dir_in))
+        return scale_input(_img),None
 
-    def __data_generation_old(self, view_coords):  # Generates data containing batch_size samples # X : (n_samples, *dim, n_channels)
-        _img=np.zeros((self.batch_size, self.row_in, self.col_in, self.dep_in),dtype=np.uint8)
-        rd=round(0.5*(self.row_in-self.row_out),0)
-        cd=round(0.5*(self.col_in-self.col_out),0)
-        assert(self.row_in>=self.row_out and self.col_in>=self.col_out)
-        for i,vc in enumerate(view_coords):
-            large=imread(os.path.join(self.wd, self.dir_in, vc.file_name))
-            if rd==0 and cd==0:
-                _img[i,...]=large[vc.row_start:vc.row_end, vc.col_start:vc.col_end, ...]
-            else:
-                lg_row,lg_col,lg_dep=large.shape
-                r0, r1 = vc.row_start - rd, vc.row_end + rd
-                c0, c1 = vc.col_start - cd, vc.col_end + cd
-                r0p, r1p, c0p, c1p = 0, 0, 0, 0
-                if r0 < 0:
-                    r0p = -r0
-                    r0 = 0
-                if c0 < 0:
-                    c0p = -c0
-                    c0 = 0
-                if r1 > lg_row:
-                    r1p = r1 - lg_row
-                    r1 = lg_row
-                if c1 > lg_col:
-                    c1p = c1 - lg_col
-                    c1 = lg_col
-                _img[i,...] =np.pad(large[r0:r1,c0:c1,...],((r0p,r1p),(c0p,c1p),(0,0)),'reflect')
-        if self.dir_out is not None:
-            _tgt = np.zeros((self.batch_size, self.row_out, self.col_out, 3),dtype=np.uint8)
-            for i,vc in enumerate(view_coords):
-                large = imread(os.path.join(self.wd, self.dir_out, vc.file_name))
-                _tgt[i,...] =large[vc.row_start:vc.row_end, vc.col_start:vc.col_end,...]
-        else:
-            _tgt=None
-        if self.dir_out is not None:
-            if self.img_aug:
-                _img,_tgt=augment_image_pair(_img, _tgt, _level=1)
-            _img,_tgt=scale_input(_img),scale_output(_tgt,self.dep_out)
-        else:
-            _img=scale_input(_img)
-        return _img, _tgt
-        # for i, ID in enumerate(view_coords):
-        #     X[i,] = np.load('data/' + ID + '.npy')
-        #     y[i] = self.labels[ID]
-        # return X, keras.utils.to_categorical(y, num_classes=self.n_classes)
+    def on_epoch_end(self):  # Updates indexes after each epoch
+        self.indexes = np.arange(len(self.view_coord))
 

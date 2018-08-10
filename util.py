@@ -1,17 +1,16 @@
 import os
-
-
-def get_recursive_rel_path(_wd, _sf, ext='*.jpg'):
-    _path = os.path.join(_wd, _sf)
-    from glob import glob
-    images = [path for fn in os.walk(_path) for path in glob(os.path.join(fn[0], ext))]
-    total = len(images)
-    print("Found [%d] file from subfolders [/%s] of [%s]" % (total, _sf, _wd))
-    for i in range(total):
-        images[i] = os.path.relpath(images[i], _path)
-    return images, total
+import pandas as pd
 
 
 def mk_dir_if_nonexist(_dir):
     if not os.path.exists(_dir):
         os.mkdir(_dir)
+
+def append_excel_sheet(_df, _xls, _sheet):
+    from openpyxl import load_workbook
+    book = load_workbook(_xls)
+    writer = pd.ExcelWriter(_xls, engine='openpyxl')
+    writer.book = book
+    _df.to_excel(writer, sheet_name=_sheet)
+    writer.save()
+    writer.close()

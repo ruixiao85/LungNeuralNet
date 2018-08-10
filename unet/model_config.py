@@ -1,21 +1,15 @@
-class config:
-    def __init__(self):
-        self.row_in, self.col_in, self.dep_in = None, None, None
-        self.row_out, self.col_out, self.dep_out = None, None, None
-        self.resize, self.pad = None, None
-        self.full = None
-        self.act_fun = None
-        self.out_fun = None
-        self.loss_fun = None
-        self.overlay_channel, self.overlay_opacity = None, None
-        self.call_hardness = None
+class ModelConfig:
 
-
-    def __init__(self, dim_in=(512,512,3), dim_out=(512,512,1), resize=1., padding=0, full=True,
-                 act_fun='elu', out_fun='sigmoid', loss_fun='binary_crossentropy',
-                 over_ch=2, over_op=0.6, call_hard=0):  # 0-red 1-green 2-blue; opacity; 1: hard(0/1), 0~1: mix, 0: original smooth
+    def __init__(self, dim_in=(512,512,3), dim_out=(512,512,1), image_format="*.jpg",
+                resize=1., padding=0, full=True,
+                act_fun='elu', out_fun='sigmoid', loss_fun='binary_crossentropy',
+                over_ch=2, over_op=0.6, call_hard=0,  # 0-red 1-green 2-blue; red-blue flipped with cv2; opacity; 1: hard(0/1), 0~1: mix, 0: original smooth
+                num_rep=3, num_epoch=12, learning_rate=1e-3, valid_split=0.3, img_aug=True, cont_train=True,
+                batch_size=1, shuffle=True, separate=False
+                 ):
         self.row_in, self.col_in, self.dep_in = dim_in
         self.row_out, self.col_out, self.dep_out = dim_out
+        self.image_format=image_format
         self.resize, self.pad = resize, padding
         self.full = full
         self.act_fun = act_fun
@@ -23,6 +17,15 @@ class config:
         self.loss_fun = loss_fun
         self.overlay_channel, self.overlay_opacity = over_ch, over_op
         self.call_hardness = call_hard
+        self.num_rep = num_rep
+        self.num_epoch = num_epoch
+        self.learning_rate = learning_rate
+        self.valid_split = valid_split
+        self.img_aug = img_aug
+        self.shuffle = shuffle
+        self.continue_train = cont_train
+        self.batch_size = batch_size
+        self.separate = separate
 
     def sum(self):
         return self.row_in * self.col_in
