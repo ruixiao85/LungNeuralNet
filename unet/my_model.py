@@ -11,7 +11,7 @@ from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
 from keras.engine.saving import model_from_json
 from skimage.io import imsave
 
-from image_gen import ImageTrainPair, ImagePredictPair
+from image_gen import ImageTrainPair, ImagePredictPair, MetaInfo, ImagePredictGenerator
 from model_config import ModelConfig
 from process_image import scale_input, scale_input_reverse
 from tensorboard_train_val import TensorBoardTrainVal
@@ -112,6 +112,12 @@ class MyModel:
         self.compile_model()
         if save:
             self.save_model()
+        self.mrg_in, self.mrg_out=None, None  # merge input/output
+        self.mrg_in_wt, self.mrg_out_wt=None, None  # weight matrix of merge input/output
+        self.separate=cfg.separate
+        self.overlay_channel=cfg.overlay_channel
+        self.overlay_opacity=cfg.overlay_opacity
+        self.call_hardness=cfg.call_hardness
 
     def load_model(self, name:str):  # load model
         self.name=name
@@ -132,18 +138,20 @@ class MyModel:
         with open(model_json, "w") as json_file:
             json_file.write(self.model.to_json())
 
-    def get_export_name(self, pair):
-        return "%s-%s_%s" % (pair.dir_out, pair.dir_in, self.name)
+    # def get_export_name(self, pair):
+    #     return "%s-%s_%s" % (pair.dir_out, pair.dir_in, self.name)
 
     def train(self, pair:ImageTrainPair):
-        export_name = self.get_export_name(pair)
+        print('Generate iterable data set...')
+        tr, val=pair.get_tr_val_generator()
+
+        export_name = "%s_%s" % (tr.dir_out, self.name)
         weight_file = export_name + ".h5"
         if self.continue_train and os.path.exists(weight_file):
             print("Continue from previous weights")
             self.model.load_weights(weight_file)
 
-        print('Generate iterable data set...')
-        tr, val=pair.get_tr_val_generator()
+
         # indicator, trend = 'val_loss', 'min'
         indicator, trend = 'val_dice', 'max'
         print('Fitting neural net...')
@@ -157,7 +165,7 @@ class MyModel:
                 epochs=self.num_epoch, max_queue_size=1, workers=0, use_multiprocessing=False, shuffle=False,
                 callbacks=[
                     ModelCheckpoint(weight_file, monitor=indicator, mode=trend, save_best_only=True),
-                    # ReduceLROnPlateau(monitor=indicator, mode=trend, factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
+                    ReduceLROnPlateau(monitor=indicator, mode=trend, factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
                     EarlyStopping(monitor=indicator, mode=trend, patience=0, verbose=1),
                     TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                 ]).history
@@ -167,62 +175,80 @@ class MyModel:
 
 
     def predict(self, pair:ImagePredictPair):
-        oc, op, ch = pair.overlay_channel, pair.overlay_opacity, pair.call_hardness
         i_sum=pair.row_out*pair.col_out
+        res_i=np.zeros(len(pair.img_set.images),dtype=np.uint32)
+        res_g=np.zeros(len(pair.img_set.groups),dtype=np.uint32)
+        prd:ImagePredictGenerator = pair.get_prd_generator()
+
         print('Load weights and predicting ...')
-        export_name = self.get_export_name(pair)
+        export_name = "%s_%s" % (prd.dir_out, self.name)
         weight_file = export_name + ".h5"
         self.model.load_weights(weight_file)
-        res=np.zeros(len(pair.view_coord),dtype=np.uint32)
-        prd = pair.get_prd_generator()
-        # prd.on_epoch_end()
-        msk = self.model.predict_generator(prd, verbose=1)
 
+        msks = self.model.predict_generator(prd, max_queue_size=1, workers=0,use_multiprocessing=False, verbose=1)
         target_dir = os.path.join(pair.wd, export_name)
         print('Saving predicted results [%s] to files...' % export_name)
         mk_dir_if_nonexist(target_dir)
-        for i, image in enumerate(msk):
-            ind_name=prd.view_coord[i].file_slice()
+        merge_dir = os.path.join(pair.wd, "%s_%s" % (prd.dir_out.split('_')[0], self.name))
+        if self.separate:
+            mk_dir_if_nonexist(merge_dir)
+        for i, msk in enumerate(msks):
+            ind_name=prd.view_coord[i].file_name
             ind_file = os.path.join(target_dir, ind_name)
-            if ch==1:  # hard sign
-                image = np.rint(image)
-            elif 0<ch<1:
-                image=(image+np.rint(image)*ch)/(1.0+ch)  # mixed
-            i_val=int(np.sum(image[..., 0]))
-            res[i]=i_val
+            msk, i_val = self.msk_call(msk, self.call_hardness)
+            res_i[i]=i_val
             text="%s Pixels: %.0f / %.0f Percentage: %.0f%%" % (ind_name, i_val, i_sum, 100. * i_val / i_sum)
             print(text)
-            cv2.imwrite(ind_file, image*255.)
-            # cv2.imwrite(ind_file, draw_text((image*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
-            origin=prd.view_coord[i].get_image(os.path.join(pair.wd, pair.dir_in_ex()))
-            blend=blend_mask(origin,image,channel=oc,opacity=op)
+            cv2.imwrite(ind_file, msk*255.)
+            # cv2.imwrite(ind_file, draw_text((msk*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
+            origin=prd.view_coord[i].get_image(os.path.join(pair.wd, pair.dir_in_ex()),pair.separate)
+            if self.separate:
+                self.merge_images(pair.view_coord, i, origin, msk, merge_dir, res_g, pair.img_set.groups)
+            blend=blend_mask(origin,msk,channel=self.overlay_channel,opacity=self.overlay_opacity)
             markup=draw_text(blend,text.replace("Pixel","\nPixel")) # RGB:3x8-bit dark text
             imsave(ind_file.replace(".jpg",".jpe"), markup)
-        return res
+        return res_i, res_g
 
-    def merge_images(self):
-        # if whole_file is not None and new_whole_file != whole_file:  # export whole_file
-        #     text = "%s \n Pixels: %.0f / %.0f Percentage: %.0f%%" % (whole_file, _val, _sum, 100. * _val / _sum)
-        #     print(text)
-        #     if w_whole:  # write wholes image
-        #         _whole = Image.fromarray(((_whole / _weight + 1.0) * 127.).astype(np.uint8), 'RGB')
-        #         draw = ImageDraw.Draw(_whole)
-        #         draw.text((0, 0), text,
-        #                   (255 if oc == 0 else 10, 255 if oc == 1 else 10, 255 if oc == 2 else 10),
-        #                   ImageFont.truetype("arial.ttf", 24))  # font type size)
-        #         mk_dir_if_nonexist(os.path.dirname(whole_file))
-        #         imsave(whole_file, _whole)
-        #     _whole, _weight, _val, _sum = None, None, 0, 0
-        # whole_file = os.path.join(target_dir, prd.view_coord[i].file_slice)
-        pass
+    @staticmethod
+    def msk_call(msk, ch):
+        if ch == 1:  # hard sign
+            msk = np.rint(msk)
+        elif 0 < ch < 1:
+            msk = (msk + np.rint(msk) * ch) / (1.0 + ch)  # mixed
+        return msk, int(np.sum(msk[..., 0]))
 
-    def write_data(self):
-        # res = np.zeros((len(tst.view_coord), len(targets)), np.uint32)
-        # for x, target in enumerate(targets):
-        #     predict(target + nn, res[:, x])
-        # res_df.to_csv("result_" + args.pred_dir + "_" + nn + ".csv")
-        # res_df = pd.DataFrame(res,map(str,tst.view_coord), targets)
-        # xls_file = "Result_" + args.pred_dir + "_" + nn + ".xlsx"
-        # res_df.to_excel(xls_file, sheet_name = 'Individual')
-        # append_excel_sheet(res_df.groupby(res_df.index).sum(),xls_file,"Whole")
-        pass
+    def merge_images(self, views, idx, img, msk, folder, res, groups):
+        view:MetaInfo=views[idx]
+        this_file=view.image_name
+        last_file=None if idx<1 else views[idx-1].image_name
+        next_file=views[idx+1].image_name if idx<len(views)-1 else "LastImage!@#$%^&*()_+"
+        mrg_dep, msk_dep=3, 1
+        if this_file != last_file:  # create new
+            self.mrg_in=np.zeros((view.ori_row,view.ori_col,mrg_dep),dtype=np.float32)
+            self.mrg_in_wt=np.zeros((view.ori_row,view.ori_col),dtype=np.float32)
+            self.mrg_out=np.zeros((view.ori_row,view.ori_col,msk_dep),dtype=np.float32)
+            self.mrg_out_wt=np.zeros((view.ori_row,view.ori_col),dtype=np.float32)
+        # insert image
+        self.mrg_in[view.row_start:view.row_end,view.col_start:view.col_end,...]+=img
+        self.mrg_in_wt[view.row_start:view.row_end,view.col_start:view.col_end]+=1.0
+        self.mrg_out[view.row_start:view.row_end,view.col_start:view.col_end,...]+=msk
+        self.mrg_out_wt[view.row_start:view.row_end,view.col_start:view.col_end]+=1.0
+        if this_file!=next_file:  # export new
+            for d in range(mrg_dep):
+                self.mrg_in[...,d]/=self.mrg_in_wt
+            for d in range(msk_dep):
+                self.mrg_out[...,d]/=self.mrg_out_wt
+            self.mrg_in_wt, self.mrg_out_wt=None,None
+            self.mrg_out, _val=self.msk_call(self.mrg_out, self.call_hardness)
+            _sum=view.ori_row*view.ori_col
+            text = "%s %dx%d \n Pixels: %.0f / %.0f Percentage: %.0f%%" % (view.image_name, view.ori_row, view.ori_col, _val, _sum, 100. * _val / _sum)
+            print(text)
+            res[groups.index(view.image_name)]=_val
+            merge_file=os.path.join(folder, this_file)
+            cv2.imwrite(merge_file, self.mrg_out * 255.)
+            # cv2.imwrite(merge_file, draw_text((msk*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
+            blend = blend_mask(self.mrg_in, self.mrg_out, channel=self.overlay_channel, opacity=self.overlay_opacity)
+            markup = draw_text(blend, text.replace("Pixel", "\nPixel"))  # RGB:3x8-bit dark text
+            imsave(merge_file.replace(".jpg", ".jpe"), markup)
+            self.mrg_in,self.mrg_out=None,None
+

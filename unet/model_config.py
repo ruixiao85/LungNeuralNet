@@ -1,7 +1,7 @@
 class ModelConfig:
 
     def __init__(self, dim_in=(512,512,3), dim_out=(512,512,1), image_format="*.jpg",
-                 resize=1., tr_coverage=0.8, prd_coverage=1.3,
+                 resize=1., tr_coverage=-1, prd_coverage=1,
                  act_fun='elu', out_fun='sigmoid', loss_fun='binary_crossentropy',
                  over_ch=2, over_op=0.5, call_hard=1,  # 0-red 1-green 2-blue; red-blue flipped with cv2; opacity; 1: hard(0/1), 0~1: mix, 0: original smooth
                  num_rep=3, num_epoch=12, learning_rate=1e-4, valid_split=0.25, img_aug=True, cont_train=True,

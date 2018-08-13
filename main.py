@@ -55,13 +55,13 @@ if __name__ == '__main__':
         # unet_vgg_7conv,
     ]
     configs = [
-        # ModelConfig((1060, 1060, 3), (1060,1060, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.5,out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # ModelConfig((1024, 1024, 3), (1024,1024, 1), resize=1.0, separate=True, tr_coverage=1.2, prd_coverage=1.1,out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # ModelConfig((768, 768, 3), (768, 768, 1), resize=1.0, separate=False, tr_coverage=0.9, prd_coverage=1.5,out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, separate=True, tr_coverage=1.6, prd_coverage=1.5,out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.5, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # ModelConfig((256, 256, 3), (256, 256, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.5,out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # ModelConfig((768, 768, 3), (674, 674, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.5,out_fun='sigmoid', loss_fun=loss_bce_dice),  # 5 valid
+        # ModelConfig((1060, 1060, 3), (1060,1060, 1), resize=1.0, separate=True, tr_coverage=0 prd_coverage=1,out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((1024, 1024, 3), (1024,1024, 1), resize=1.0, separate=True, tr_coverage=0, prd_coverage=1,out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((768, 768, 3), (768, 768, 1), resize=1.0, separate=True, tr_coverage=0, prd_coverage=1, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, separate=True, tr_coverage=0, prd_coverage=1, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, separate=True, tr_coverage=0, prd_coverage=1, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((256, 256, 3), (256, 256, 1), resize=1.0, separate=True, tr_coverage=0, prd_coverage=1,out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((768, 768, 3), (674, 674, 1), resize=1.0, separate=True, tr_coverage=0, prd_coverage=1,out_fun='sigmoid', loss_fun=loss_bce_dice),  # 5 valid
     ]
     mode = args.mode[0].lower()
     if mode != 'p':
@@ -83,14 +83,15 @@ if __name__ == '__main__':
                 for origin in origins:
                     prd_set=ImageSet(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, train=False)
                     pair=ImagePredictPair(cfg, prd_set)
-                    np_res=np.zeros((len(pair.view_coord),len(targets)),dtype=np.uint32)
+                    res_ind = np.zeros((len(prd_set.images), len(targets)), dtype=np.uint32)
+                    res_grp = np.zeros((len(prd_set.groups), len(targets)), dtype=np.uint32)
                     for i, target in enumerate(targets):
                         pair.change_target(target)
-                        np_res[...,i]=model.predict(pair)
-                    pd_res=pd.DataFrame(np_res,index=prd_set.images,columns=targets)
-                    to_excel_sheet(pd_res, xls_file, origin)
-                    large_name=[image.split('_#')[0] for image in prd_set.images]
-                    to_excel_sheet(pd_res.groupby(large_name).sum(), xls_file, origin+"_sum") # simple sum
-                    # TODO for simple sum: can do no overlap slicing with padding
-                    # TODO aggregate overlapping masks for ensemble prediction for optimal accuracy
+                        res_ind[..., i], res_grp[...,i]=model.predict(pair)
+                    df=pd.DataFrame(res_ind, index=prd_set.images, columns=targets)
+                    to_excel_sheet(df, xls_file, origin) # per slice
+                    if cfg.separate:
+                        df=pd.DataFrame(res_grp, index=prd_set.groups, columns=targets)
+                        to_excel_sheet(df, xls_file, origin + "_sum")
+                        # to_excel_sheet(df.groupby([vc.image_file for vc in prd_set.view_coord]).sum(), xls_file, origin + "_sum") # simple sum
 

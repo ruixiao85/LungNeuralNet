@@ -33,39 +33,65 @@ def extract_pad_image(lg_img, r0, r1, c0, c1):
 
 
 class MetaInfo:
-    def __init__(self, file, r_index, c_index, ori_row, ori_col, ori_dep, ri, ro, ci, co):
-        self.file_name = file
-        self.r_index = r_index
-        self.c_index = c_index
+    def __init__(self, file, image, ori_row, ori_col, ri, ro, ci, co):
+        self.file_name = file  # direct file can be a slice
+        self.image_name = image # can be name of the whole image, can different from file_name (slice)
         self.ori_row = ori_row
         self.ori_col = ori_col
-        self.ori_dep = ori_dep
         self.row_start = ri
         self.row_end = ro
         self.col_start = ci
         self.col_end = co
 
-    @staticmethod
-    def parse_coord(file):
-        seg = file.split("#")
-        return int(seg[1]), int(seg[2]), int(seg[3]), int(seg[4])
+    @classmethod
+    def from_single(cls, file):
+        ls = file.split("_#")
+        ext = file.split(".")
+        ss = file.split("#")
+        if len(ls) == 2 and len(ss) == 8:  # slice
+            return cls(file, "%s.%s" % (ls[0], ext[len(ext) - 1]), int(ss[1]), int(ss[2]), int(ss[3]), int(ss[4]), int(ss[5]), int(ss[6]))
+        return cls(file, file, None, None, None, None, None, None)
+
+    @classmethod
+    def from_whole(cls, image_name, lg_row, lg_col, ri, ro, ci, co):
+        obj=cls(None,image_name,lg_row,lg_col,ri,ro,ci,co)
+        obj.file_name=obj.file_slice()
+        return obj
+
+    def update_coord(self, lg_row, lg_col, ri, ro, ci, co):
+        self.ori_row, self.ori_col, self.row_start, self.row_end, self.col_start, self.col_end =\
+            lg_row,lg_col,ri,ro,ci,co
+
+    # def duplicate_parsed(self):
+    #     ls=self.file_name.split("_#")
+    #     ss=self.file_name.split("#")
+    #     if len(ls)==2 and len(ss)==6:
+    #         newcopy=copy.deepcopy(self)
+    #         newcopy.file_name=ls[0]
+    #         newcopy.row_start,newcopy.row_end,newcopy.col_start,newcopy.col_end=int(ss[1]), int(ss[2]), int(ss[3]), int(ss[4])
+    #         return newcopy
+    #     else:
+    #         print("already or unable to parse %s" % self.file_name)
+    #         return self
 
     def file_slice(self):
-        if self.r_index is not None:
-            # return self.file_name.replace(".jpg", "_r%d_c%d.jpg" % (self.r_index,self.c_index))
-            return self.file_name.replace(".jpg", "_#%d#%d#%d#%d#.jpg" % (self.row_start,self.row_end,self.col_start,self.col_end))
-        return self.file_name
+        return self.image_name.replace(".jpg", "_#%d#%d#%d#%d#%d#%d#.jpg"
+                                          % (self.ori_row, self.ori_col, self.row_start,self.row_end,self.col_start,self.col_end))
 
-    def get_image(self, path):
-        return extract_pad_image(imread(os.path.join(path, self.file_slice())), self.row_start, self.row_end, self.col_start, self.col_end)
+    def get_image(self, path, separate):
+        if separate:
+            return imread(os.path.join(path, self.file_name))
+        return extract_pad_image(imread(os.path.join(path, self.image_name)), self.row_start, self.row_end, self.col_start, self.col_end)
 
     def __str__(self):
-        return self.file_slice()
+        return self.file_name
 
     def __eq__(self, other):
-        return self.file_slice()==other.file_slice()
+        return str(self)==str(other)
+
     def __hash__(self):
-        return self.file_slice().__hash__()
+        return str(self).__hash__()
+
 
 class ImageSet:
     def __init__(self, cfg:ModelConfig, wd, sf, train):
@@ -73,10 +99,11 @@ class ImageSet:
         self.sub_folder=sf
         self.image_format=cfg.image_format
         self.images, self.total=[], None
+        self.groups = []
         self.scan_image()
         self.row, self.col = None, None
         self.coverage=cfg.tr_coverage if train else cfg.prd_coverage
-        self.skip_low_contrast=train
+        self.train=train
         self.view_coord=[]
 
     def scan_image(self):
@@ -84,6 +111,17 @@ class ImageSet:
         self.images, self.total = self.find_file_recursive(path, self.image_format)
         for i in range(len(self.images)):
             self.images[i] = os.path.relpath(self.images[i], path)
+            group=self.file_to_whole_image(self.images[i])
+            if group not in self.groups:
+                self.groups.append(group)
+
+    @staticmethod
+    def file_to_whole_image(text):
+        half=text.split('_#')
+        if len(half)==2:
+            dot_sep=text.split('.')
+            return "%s.%s"%(half[0],dot_sep[len(dot_sep)-1])
+        return text
 
     @staticmethod
     def find_file_recursive(_path, _ext):
@@ -112,17 +150,19 @@ class ImageSet:
         for image_name in self.images:
             _img = imread(os.path.join(self.work_directory, self.sub_folder, image_name))
             print(image_name)
-            lg_row, lg_col, lg_dep=_img.shape
-            ri, ro, ci, co=0, lg_row, 0, lg_col
-            if self.row is not None or self.col is not None: # dimension specified
-                ratio=0.5 # if self.predict_mode is True else random.random() # add randomness if not prediction/full
-                rd=int(ratio*(lg_row-self.row))
-                cd=int(ratio*(lg_col-self.col))
-                ri+=rd
-                ci+=cd
-                ro-=lg_row-self.row-rd
-                co-=lg_col-self.col-cd
-            entry = MetaInfo(image_name, None, None, lg_row, lg_col, lg_dep, ri, ro, ci, co)
+            entry=MetaInfo.from_single(image_name)
+            if entry.row_start is None:
+                lg_row, lg_col, lg_dep=_img.shape
+                ri, ro, ci, co=0, lg_row, 0, lg_col
+                if self.row is not None or self.col is not None: # dimension specified
+                    ratio=0.5 # if self.predict_mode is True else random.random() # add randomness if not prediction/full
+                    rd=int(ratio*(lg_row-self.row))
+                    cd=int(ratio*(lg_col-self.col))
+                    ri+=rd
+                    ci+=cd
+                    ro-=lg_row-self.row-rd
+                    co-=lg_col-self.col-cd
+                entry.update_coord(lg_row, lg_col, ri, ro, ci, co)
             view_coord.append(entry)
         return view_coord
 
@@ -131,8 +171,12 @@ class ImageSet:
         for image_name in self.images:
             _img = imread(os.path.join(self.work_directory, self.sub_folder, image_name))
             lg_row, lg_col, lg_dep = _img.shape
-            r_len = max(1, int(round(self.coverage * (lg_row - self.row) / self.row)))
-            c_len = max(1, int(round(self.coverage * (lg_col - self.col) / self.col)))
+            if self.train:
+                r_len = max(1, int(self.coverage + math.floor((lg_row - self.row) / self.row)))
+                c_len = max(1, int(self.coverage + math.floor((lg_col - self.col) / self.col)))
+            else:
+                r_len = max(1, int(self.coverage + math.ceil((lg_row - self.row) / self.row)))
+                c_len = max(1, int(self.coverage + math.ceil((lg_col - self.col) / self.col)))
             print("%s target %d x %d (coverage %.1f): original %d x %d ->  row /%d col /%d" %
                   (image_name, self.row, self.col, self.coverage, lg_row, lg_col, r_len, c_len))
             r0, c0, r_step, c_step = 0, 0, 0, 0  # start position and step default to (0,0)
@@ -151,17 +195,14 @@ class ImageSet:
                     ro = ri + self.row
                     co = ci + self.col
                     s_img = _img[ri:ro, ci:co, ...]
-                    std=float(np.std(s_img))
-                    if self.skip_low_contrast and std < 20:  # low coverage implies training mode, skip this tile if low contrast
-                        print("skip tile r%d_c%d for low contrast (std=%.1f) for %s"%(r_index,c_index,std,image_name))
+                    std = float(np.std(s_img))
+                    if self.train and std < 20:  # low coverage implies training mode, skip this tile if low contrast
+                        print("skip tile r%d_c%d for low contrast (std=%.1f) for %s" % (r_index, c_index, std, image_name))
                         continue
-                    entry = MetaInfo(image_name, r_index, c_index, lg_row, lg_col, lg_dep, ri, ro, ci, co) # temporary
-                    imwrite(os.path.join(ex_dir, entry.file_slice()), s_img)
-                    entry.file_name = entry.file_slice()
-                    entry.r_index, entry.c_index = None, None
-                    entry.ori_row, entry.ori_col, entry.ori_dep = self.row, self.col, lg_dep
-                    entry.ri, entry.ro, entry.ci, entry.co = 0, self.row, 0, self.col
-                    view_coord.append(entry) # updated to target single exported file
+                    entry = MetaInfo.from_whole(image_name, lg_row, lg_col, ri, ro, ci, co)
+                    imwrite(os.path.join(ex_dir, entry.file_name), s_img)
+                    # entry.ri, entry.ro, entry.ci, entry.co = 0, self.row, 0, self.col
+                    view_coord.append(entry)  # updated to target single exported file
         return view_coord
 
 
@@ -226,21 +267,17 @@ class ImageTrainPair:
         return list(shared_names)
 
 
-ALL_TARGET='All'
 class ImagePredictPair:
-    def __init__(self, cfg: ModelConfig, ori_set: ImageSet, tgt=ALL_TARGET):
+    ALL_TARGET='All'
+    def __init__(self, cfg: ModelConfig, ori_set: ImageSet, tgt=None):
         self.img_set = ori_set  # reference
         self.wd = ori_set.work_directory
         self.dir_in = ori_set.sub_folder
-        self.dir_out = tgt
+        self.dir_out = tgt if tgt is not None else ImagePredictPair.ALL_TARGET
         self.row_in, self.col_in, self.dep_in = cfg.row_in, cfg.col_in, cfg.dep_in
         self.row_out, self.col_out, self.dep_out = cfg.row_out, cfg.col_out, cfg.dep_out
         self.separate = cfg.separate
         self.batch_size=cfg.batch_size
-
-        self.overlay_channel=cfg.overlay_channel
-        self.overlay_opacity=cfg.overlay_opacity
-        self.call_hardness=cfg.call_hardness
 
         self.img_set.size_folder_update(None, self.row_in, self.col_in, self.dir_in_ex())
         self.view_coord = self.img_set.view_coord
@@ -252,7 +289,7 @@ class ImagePredictPair:
         return ImagePredictGenerator(self)
 
     def dir_in_ex(self):
-        return "%s-%s_%dx%d" % (self.dir_in, ALL_TARGET, self.row_in, self.col_in) if self.separate else self.dir_in
+        return "%s-%s_%dx%d" % (self.dir_in, ImagePredictPair.ALL_TARGET, self.row_in, self.col_in) if self.separate else self.dir_in
 
     def dir_out_ex(self):
         return "%s-%s_%dx%d" % (self.dir_out, self.dir_in, self.row_out, self.col_out) if self.separate else self.dir_out
@@ -263,6 +300,9 @@ class ImageTrainGenerator(keras.utils.Sequence):
         self.indexes = np.arange(len(view_coord))
         self.wd=pair.wd
         self.dir_in, self.dir_out=pair.dir_in_ex(), pair.dir_out_ex()
+        self.wd_dir_in = os.path.join(self.wd, self.dir_in)
+        self.wd_dir_out = os.path.join(self.wd, self.dir_out)
+        self.separate=pair.separate
         self.batch_size=pair.batch_size
         self.img_aug=pair.img_aug
         self.shuffle=pair.shuffle
@@ -278,8 +318,8 @@ class ImageTrainGenerator(keras.utils.Sequence):
         _img = np.zeros((self.batch_size, self.row_in, self.col_in, self.dep_in), dtype=np.uint8)
         _tgt = np.zeros((self.batch_size, self.row_out, self.col_out, 3), dtype=np.uint8)
         for i, vc in enumerate([self.view_coord[k] for k in indexes]):
-            _img[i, ...] = vc.get_image(os.path.join(self.wd, self.dir_in))
-            _tgt[i, ...] = vc.get_image(os.path.join(self.wd, self.dir_out))
+            _img[i, ...] = vc.get_image(self.wd_dir_in,self.separate)
+            _tgt[i, ...] = vc.get_image(self.wd_dir_out,self.separate)
         if self.img_aug:
             _img, _tgt = augment_image_pair(_img, _tgt, _level=1)
         return scale_input(_img), scale_output(_tgt, self.dep_out)
@@ -295,6 +335,8 @@ class ImagePredictGenerator(keras.utils.Sequence):
         self.indexes = np.arange(len(pair.view_coord))
         self.wd=pair.wd
         self.dir_in, self.dir_out=pair.dir_in_ex(), pair.dir_out_ex()
+        self.wd_dir_in=os.path.join(self.wd, self.dir_in)
+        self.separate = pair.separate
         self.batch_size=pair.batch_size
         self.row_in, self.col_in, self.dep_in=pair.row_in, pair.col_in, pair.dep_in
         # self.row_out, self.col_out, self.dep_out=pair.row_out, pair.col_out, pair.dep_out
@@ -307,7 +349,7 @@ class ImagePredictGenerator(keras.utils.Sequence):
         # print(" getting index %d with %d batch size"%(index,self.batch_size))
         _img = np.zeros((self.batch_size, self.row_in, self.col_in, self.dep_in), dtype=np.uint8)
         for i, vc in enumerate([self.view_coord[k] for k in indexes]):
-            _img[i, ...] = vc.get_image(os.path.join(self.wd, self.dir_in))
+            _img[i, ...] = vc.get_image(self.wd_dir_in,self.separate)
         return scale_input(_img),None
 
     def on_epoch_end(self):  # Updates indexes after each epoch
