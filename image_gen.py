@@ -5,7 +5,7 @@ import random
 
 import numpy as np
 import keras
-from cv2.cv2 import imread, resize, imwrite
+from cv2.cv2 import imread, resize, imwrite, INTER_AREA
 
 from model_config import ModelConfig
 from process_image import scale_input, scale_output, augment_image_pair
@@ -30,6 +30,19 @@ def extract_pad_image(lg_img, r0, r1, c0, c1):
         return np.pad(lg_img[r0:r1, c0:c1, ...], ((r0p, r1p), (c0p, c1p), (0, 0)), 'reflect')
     else:
         return lg_img[r0:r1, c0:c1, ...]
+
+
+def read_resize_padding(_file, _resize, _padding):
+    if _resize < 1.0:
+        img = resize(imread(_file), (0, 0), fx=_resize, fy=_resize, interpolation=INTER_AREA)
+    else:
+        img = imread(_file)
+        if _resize > 1.0:
+            print("Resize ratio of more than 1.0 is ignored.")
+    if _padding > 0:
+        return np.pad(img,((_padding,_padding),(_padding,_padding),(0,0)), 'reflect')
+    else:
+        return img
 
 
 class MetaInfo:
@@ -78,10 +91,10 @@ class MetaInfo:
         return self.image_name.replace(".jpg", "_#%d#%d#%d#%d#%d#%d#.jpg"
                                           % (self.ori_row, self.ori_col, self.row_start,self.row_end,self.col_start,self.col_end))
 
-    def get_image(self, path, separate):
-        if separate:
-            return imread(os.path.join(path, self.file_name))
-        return extract_pad_image(imread(os.path.join(path, self.image_name)), self.row_start, self.row_end, self.col_start, self.col_end)
+    def get_image(self, _path, _separate, _resize=1.0, _padding=0):
+        if _separate:
+            return read_resize_padding(os.path.join(_path, self.file_name),_resize,_padding)
+        return extract_pad_image(read_resize_padding(os.path.join(_path, self.image_name),_resize,_padding), self.row_start, self.row_end, self.col_start, self.col_end)
 
     def __str__(self):
         return self.file_name
@@ -98,6 +111,8 @@ class ImageSet:
         self.work_directory=wd
         self.sub_folder=sf
         self.image_format=cfg.image_format
+        self.resize=cfg.resize
+        self.padding=cfg.padding
         self.images, self.total=[], None
         self.groups = []
         self.scan_image()
@@ -148,7 +163,7 @@ class ImageSet:
     def single_image_coord(self):
         view_coord=[]
         for image_name in self.images:
-            _img = imread(os.path.join(self.work_directory, self.sub_folder, image_name))
+            _img = read_resize_padding(os.path.join(self.work_directory, self.sub_folder, image_name),self.resize,self.padding)
             print(image_name)
             entry=MetaInfo.from_single(image_name)
             if entry.row_start is None:
@@ -169,7 +184,7 @@ class ImageSet:
     def split_image_coord(self, ex_dir):
         view_coord=[]
         for image_name in self.images:
-            _img = imread(os.path.join(self.work_directory, self.sub_folder, image_name))
+            _img = read_resize_padding(os.path.join(self.work_directory, self.sub_folder, image_name),self.resize,self.padding)
             lg_row, lg_col, lg_dep = _img.shape
             if self.train:
                 r_len = max(1, 1+int(math.floor((lg_row - self.row) / self.row * self.coverage)))
@@ -274,6 +289,8 @@ class ImagePredictPair:
         self.wd = ori_set.work_directory
         self.dir_in = ori_set.sub_folder
         self.dir_out = tgt if tgt is not None else ImagePredictPair.ALL_TARGET
+        self.resize = cfg.resize
+        self.padding = cfg.padding
         self.row_in, self.col_in, self.dep_in = cfg.row_in, cfg.col_in, cfg.dep_in
         self.row_out, self.col_out, self.dep_out = cfg.row_out, cfg.col_out, cfg.dep_out
         self.separate = cfg.separate
@@ -302,6 +319,8 @@ class ImageTrainGenerator(keras.utils.Sequence):
         self.dir_in, self.dir_out=pair.dir_in_ex(), pair.dir_out_ex()
         self.wd_dir_in = os.path.join(self.wd, self.dir_in)
         self.wd_dir_out = os.path.join(self.wd, self.dir_out)
+        self.resize=pair.resize
+        self.padding=pair.padding
         self.separate=pair.separate
         self.batch_size=pair.batch_size
         self.img_aug=pair.img_aug if aug is None else aug
@@ -336,6 +355,8 @@ class ImagePredictGenerator(keras.utils.Sequence):
         self.wd=pair.wd
         self.dir_in, self.dir_out=pair.dir_in_ex(), pair.dir_out_ex()
         self.wd_dir_in=os.path.join(self.wd, self.dir_in)
+        self.resize = pair.resize
+        self.padding = pair.padding
         self.separate = pair.separate
         self.batch_size=pair.batch_size
         self.row_in, self.col_in, self.dep_in=pair.row_in, pair.col_in, pair.dep_in

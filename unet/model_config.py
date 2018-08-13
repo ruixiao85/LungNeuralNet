@@ -37,7 +37,7 @@ class ModelConfig:
             "%d" % int(0.5 * (self.row_in + self.col_in)),
             # "%d_%d"% (self.row, self.col),
             # "%d_%d"% (self.dep_in, self.dep_out),
-            "%.1f" % self.resize,
+            # "%.1f" % self.resize,
             # "%d" % self.pad,
              # self.act_fun, self.out_fun, self.loss_fun if isinstance(self.loss_fun, str) else self.loss_fun.__name__,
             # "%d_%.1f_%.1f" %  (self.overlay_channel, self.overlay_opacity, self.call_hardness)
