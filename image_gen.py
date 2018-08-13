@@ -172,11 +172,11 @@ class ImageSet:
             _img = imread(os.path.join(self.work_directory, self.sub_folder, image_name))
             lg_row, lg_col, lg_dep = _img.shape
             if self.train:
-                r_len = max(1, int(self.coverage + math.floor((lg_row - self.row) / self.row)))
-                c_len = max(1, int(self.coverage + math.floor((lg_col - self.col) / self.col)))
+                r_len = max(1, 1+int(math.floor((lg_row - self.row) / self.row * self.coverage)))
+                c_len = max(1, 1+int(math.floor((lg_col - self.col) / self.col * self.coverage)))
             else:
-                r_len = max(1, int(self.coverage + math.ceil((lg_row - self.row) / self.row)))
-                c_len = max(1, int(self.coverage + math.ceil((lg_col - self.col) / self.col)))
+                r_len = max(1, 1+int(math.ceil((lg_row - self.row) / self.row * self.coverage)))
+                c_len = max(1, 1+int(math.ceil((lg_col - self.col) / self.col * self.coverage)))
             print("%s target %d x %d (coverage %.1f): original %d x %d ->  row /%d col /%d" %
                   (image_name, self.row, self.col, self.coverage, lg_row, lg_col, r_len, c_len))
             r0, c0, r_step, c_step = 0, 0, 0, 0  # start position and step default to (0,0)
@@ -240,7 +240,7 @@ class ImageTrainPair:
                 tr_list.append(vc)
                 ti+=1
         print("From %d split into train : validation  %d : %d"%(len(self.view_coord),ti,vi))
-        return ImageTrainGenerator(self, tr_list), ImageTrainGenerator(self, val_list)
+        return ImageTrainGenerator(self, tr_list), ImageTrainGenerator(self, val_list, aug=False)
 
     def dir_in_ex(self):
         return "%s-%s_%dx%d" % (self.dir_in, self.dir_out, self.row_in, self.col_in) if self.separate else self.dir_in
@@ -295,7 +295,7 @@ class ImagePredictPair:
         return "%s-%s_%dx%d" % (self.dir_out, self.dir_in, self.row_out, self.col_out) if self.separate else self.dir_out
 
 class ImageTrainGenerator(keras.utils.Sequence):
-    def __init__(self, pair:ImageTrainPair, view_coord):
+    def __init__(self, pair:ImageTrainPair, view_coord, aug=None):
         self.view_coord=view_coord
         self.indexes = np.arange(len(view_coord))
         self.wd=pair.wd
@@ -304,7 +304,7 @@ class ImageTrainGenerator(keras.utils.Sequence):
         self.wd_dir_out = os.path.join(self.wd, self.dir_out)
         self.separate=pair.separate
         self.batch_size=pair.batch_size
-        self.img_aug=pair.img_aug
+        self.img_aug=pair.img_aug if aug is None else aug
         self.shuffle=pair.shuffle
         self.row_in, self.col_in, self.dep_in=pair.row_in, pair.col_in, pair.dep_in
         self.row_out, self.col_out, self.dep_out=pair.row_out, pair.col_out, pair.dep_out
@@ -321,7 +321,7 @@ class ImageTrainGenerator(keras.utils.Sequence):
             _img[i, ...] = vc.get_image(self.wd_dir_in,self.separate)
             _tgt[i, ...] = vc.get_image(self.wd_dir_out,self.separate)
         if self.img_aug:
-            _img, _tgt = augment_image_pair(_img, _tgt, _level=1)
+            _img, _tgt = augment_image_pair(_img, _tgt, _level=random.randint(0, 4))  # integer N: a <= N <= b.
         return scale_input(_img), scale_output(_tgt, self.dep_out)
 
     def on_epoch_end(self):  # Updates indexes after each epoch
