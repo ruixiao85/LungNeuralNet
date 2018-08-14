@@ -35,13 +35,18 @@ def extract_pad_image(lg_img, r0, r1, c0, c1):
 def read_resize_padding(_file, _resize, _padding):
     if _resize < 1.0:
         img = resize(imread(_file), (0, 0), fx=_resize, fy=_resize, interpolation=INTER_AREA)
+        print(" Resize [%.1f] applied "%_resize,end='')
     else:
         img = imread(_file)
-        if _resize > 1.0:
-            print("Resize ratio of more than 1.0 is ignored.")
-    if _padding > 0:
-        return np.pad(img,((_padding,_padding),(_padding,_padding),(0,0)), 'reflect')
+        print(" Resize [%.1f] not applied "%_resize,end='')
+    if _padding > 1.0:
+        row,col,_=img.shape
+        row_pad=int(_padding*row-row)
+        col_pad=int(_padding*col-col)
+        print(" Padding [%.1f] applied "%_padding,end='')
+        return np.pad(img,((row_pad,row_pad),(col_pad,col_pad),(0,0)), 'reflect')
     else:
+        print(" Padding [%.1f] not applied "%_padding,end='')
         return img
 
 
@@ -91,9 +96,9 @@ class MetaInfo:
         return self.image_name.replace(".jpg", "_#%d#%d#%d#%d#%d#%d#.jpg"
                                           % (self.ori_row, self.ori_col, self.row_start,self.row_end,self.col_start,self.col_end))
 
-    def get_image(self, _path, _separate, _resize=1.0, _padding=0):
+    def get_image(self, _path, _separate, _resize, _padding):
         if _separate:
-            return read_resize_padding(os.path.join(_path, self.file_name),_resize,_padding)
+            return read_resize_padding(os.path.join(_path, self.file_name),_resize=1.0,_padding=1.0)
         return extract_pad_image(read_resize_padding(os.path.join(_path, self.image_name),_resize,_padding), self.row_start, self.row_end, self.col_start, self.col_end)
 
     def __str__(self):
@@ -232,6 +237,8 @@ class ImageTrainPair:
         self.dir_out=self.msk_set.sub_folder
         self.row_in, self.col_in, self.dep_in = cfg.row_in, cfg.col_in, cfg.dep_in
         self.row_out, self.col_out, self.dep_out = cfg.row_out, cfg.col_out, cfg.dep_out
+        self.resize = cfg.resize
+        self.padding = cfg.padding
         self.separate=cfg.separate
         self.valid_split=cfg.valid_split
         self.batch_size=cfg.batch_size
@@ -337,8 +344,8 @@ class ImageTrainGenerator(keras.utils.Sequence):
         _img = np.zeros((self.batch_size, self.row_in, self.col_in, self.dep_in), dtype=np.uint8)
         _tgt = np.zeros((self.batch_size, self.row_out, self.col_out, 3), dtype=np.uint8)
         for i, vc in enumerate([self.view_coord[k] for k in indexes]):
-            _img[i, ...] = vc.get_image(self.wd_dir_in,self.separate)
-            _tgt[i, ...] = vc.get_image(self.wd_dir_out,self.separate)
+            _img[i, ...] = vc.get_image(self.wd_dir_in,self.separate,self.resize,self.padding)
+            _tgt[i, ...] = vc.get_image(self.wd_dir_out,self.separate,self.resize,self.padding)
         if self.img_aug:
             _img, _tgt = augment_image_pair(_img, _tgt, _level=random.randint(0, 4))  # integer N: a <= N <= b.
         return scale_input(_img), scale_output(_tgt, self.dep_out)
@@ -370,7 +377,7 @@ class ImagePredictGenerator(keras.utils.Sequence):
         # print(" getting index %d with %d batch size"%(index,self.batch_size))
         _img = np.zeros((self.batch_size, self.row_in, self.col_in, self.dep_in), dtype=np.uint8)
         for i, vc in enumerate([self.view_coord[k] for k in indexes]):
-            _img[i, ...] = vc.get_image(self.wd_dir_in,self.separate)
+            _img[i, ...] = vc.get_image(self.wd_dir_in,self.separate,self.resize,self.padding)
         return scale_input(_img),None
 
     def on_epoch_end(self):  # Updates indexes after each epoch

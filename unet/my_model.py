@@ -10,7 +10,7 @@ from keras.backend.tensorflow_backend import _to_tensor
 from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
 from keras.engine.saving import model_from_json
 from skimage.io import imsave
-
+from scipy import signal
 from image_gen import ImageTrainPair, ImagePredictPair, MetaInfo, ImagePredictGenerator
 from model_config import ModelConfig
 from process_image import scale_input, scale_input_reverse
@@ -18,11 +18,17 @@ from tensorboard_train_val import TensorBoardTrainVal
 from util import mk_dir_if_nonexist
 
 SMOOTH_LOSS = 1e-5
-def gkern(l=5, sig=1.):  # creates gaussian kernel with side length l and a sigma of sig
-    ax = np.arange(-l // 2 + 1., l // 2 + 1.)
-    xx, yy = np.meshgrid(ax, ax)
-    kernel = np.exp(-(xx ** 2 + yy ** 2) / (2. * sig ** 2))
-    return kernel / np.sum(kernel)
+
+def gkern(size,sigma):
+    gkern1d = signal.gaussian(size, std=sigma).reshape(size, 1)
+    gkern2d = np.outer(gkern1d, gkern1d)
+    return gkern2d
+
+def g_kern(row, col):
+    l=max(row,col)
+    mat=gkern(l,int(l/2))
+    r0, c0=int(0.5*(l-row)),int(0.5*(l-col))
+    return mat[r0:r0+row,c0:c0+col]
 
 def jac_d(y_true, y_pred):
     y_true_f, y_pred_f = K.flatten(y_true), K.flatten(y_pred)  # smooth differentiable
@@ -86,6 +92,7 @@ def draw_text(image,text,mode='RGB',col=(10,10,10)):
     draw.text((0, 0), text, col, ImageFont.truetype("arial.ttf", 22))  # font type size)
     return origin
 
+
 class MyModel:
     # 'relu6'  # min(max(features, 0), 6)
     # 'crelu'  # Concatenates ReLU (only positive part) with ReLU (only the negative part). Note that this non-linearity doubles the depth of the activations
@@ -118,6 +125,7 @@ class MyModel:
         self.overlay_channel=cfg.overlay_channel
         self.overlay_opacity=cfg.overlay_opacity
         self.call_hardness=cfg.call_hardness
+        self.mask_wt = None
 
     def load_model(self, name:str):  # load model
         self.name=name
@@ -197,7 +205,7 @@ class MyModel:
             ind_file = os.path.join(target_dir, ind_name)
             msk, i_val = self.msk_call(msk, self.call_hardness)
             res_i[i]=i_val
-            text="%s Pixels: %.0f / %.0f Percentage: %.0f%%" % (ind_name, i_val, i_sum, 100. * i_val / i_sum)
+            text="%s \nPixels: %.0f / %.0f Percentage: %.0f%%" % (ind_name, i_val, i_sum, 100. * i_val / i_sum)
             print(text)
             cv2.imwrite(ind_file, msk*255.)
             # cv2.imwrite(ind_file, draw_text((msk*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
@@ -205,7 +213,7 @@ class MyModel:
             if self.separate:
                 self.merge_images(pair.view_coord, i, origin, msk, merge_dir, res_g, pair.img_set.groups)
             blend=blend_mask(origin,msk,channel=self.overlay_channel,opacity=self.overlay_opacity)
-            markup=draw_text(blend,text.replace("Pixel","\nPixel")) # RGB:3x8-bit dark text
+            markup=draw_text(blend,text) # RGB:3x8-bit dark text
             imsave(ind_file.replace(".jpg",".jpe"), markup)
         return res_i, res_g
 
@@ -229,10 +237,13 @@ class MyModel:
             self.mrg_out=np.zeros((view.ori_row,view.ori_col,msk_dep),dtype=np.float32)
             self.mrg_out_wt=np.zeros((view.ori_row,view.ori_col),dtype=np.float32)
         # insert image
-        self.mrg_in[view.row_start:view.row_end,view.col_start:view.col_end,...]+=img
-        self.mrg_in_wt[view.row_start:view.row_end,view.col_start:view.col_end]+=1.0
-        self.mrg_out[view.row_start:view.row_end,view.col_start:view.col_end,...]+=msk
-        self.mrg_out_wt[view.row_start:view.row_end,view.col_start:view.col_end]+=1.0
+        if self.mask_wt is None or self.mask_wt.shape!=self.mrg_out_wt.shape:
+            self.mask_wt=g_kern(view.row_end-view.row_start,view.col_end-view.col_start)
+        self.mrg_in[view.row_start:view.row_end, view.col_start:view.col_end,...] += img
+        self.mrg_in_wt[view.row_start:view.row_end, view.col_start:view.col_end] += 1.0
+        for d in range(msk_dep):
+            self.mrg_out[view.row_start:view.row_end, view.col_start:view.col_end, d] += msk[...,d]*self.mask_wt
+        self.mrg_out_wt[view.row_start:view.row_end, view.col_start:view.col_end] += self.mask_wt
         if this_file!=next_file:  # export new
             for d in range(mrg_dep):
                 self.mrg_in[...,d]/=self.mrg_in_wt
@@ -241,14 +252,14 @@ class MyModel:
             self.mrg_in_wt, self.mrg_out_wt=None,None
             self.mrg_out, _val=self.msk_call(self.mrg_out, self.call_hardness)
             _sum=view.ori_row*view.ori_col
-            text = "%s %dx%d \n Pixels: %.0f / %.0f Percentage: %.0f%%" % (view.image_name, view.ori_row, view.ori_col, _val, _sum, 100. * _val / _sum)
+            text = "%s %dx%d \nPixels: %.0f / %.0f Percentage: %.0f%%" % (view.image_name, view.ori_row, view.ori_col, _val, _sum, 100. * _val / _sum)
             print(text)
             res[groups.index(view.image_name)]=_val
             merge_file=os.path.join(folder, this_file)
             cv2.imwrite(merge_file, self.mrg_out * 255.)
             # cv2.imwrite(merge_file, draw_text((msk*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
             blend = blend_mask(self.mrg_in, self.mrg_out, channel=self.overlay_channel, opacity=self.overlay_opacity)
-            markup = draw_text(blend, text.replace("Pixel", "\nPixel"))  # RGB:3x8-bit dark text
+            markup = draw_text(blend, text)  # RGB:3x8-bit dark text
             imsave(merge_file.replace(".jpg", ".jpe"), markup)
             self.mrg_in,self.mrg_out=None,None
 

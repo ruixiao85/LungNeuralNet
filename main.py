@@ -58,7 +58,8 @@ if __name__ == '__main__':
     configs = [
         # ModelConfig((1060, 1060, 3), (1060,1060, 1), resize=1.0, separate=True, tr_coverage=0.9 prd_coverage=1.4, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((1024, 1024, 3), (1024,1024, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.4, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((768, 768, 3), (768, 768, 1), resize=0.4, padding=20, separate=True, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((768, 768, 3), (768, 768, 1), resize=1.0, padding=1.0, separate=True, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((768, 768, 3), (768, 768, 1), resize=0.3, padding=1.0, separate=False, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.4, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.4, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((256, 256, 3), (256, 256, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.4, out_fun='sigmoid', loss_fun=loss_bce_dice),
