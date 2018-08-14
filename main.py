@@ -37,29 +37,29 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from unet.unet_pool_up import unet_pool_up_5, unet_pool_up_7
-    from unet.unet_pool_trans import unet_pool_trans_5, unet_pool_trans_7
-    from unet.unet_conv_trans import unet_conv_trans_5, unet_conv_trans_7
-    from unet.unet_pool_up_31 import unet_pool_up_5_dure, unet_pool_up_6_dure, unet_pool_up_7_dure
-    from unet.unet_pool_up_valid import unet_pool_up_5_valid, unet_pool_up_7_valid
+    from unet.unet_conv_trans import unet_conv_trans_1f1, unet_conv_trans_2f1, unet_conv_trans_2f2
+    from unet.unet_pool_trans import unet_pool_trans_1f1, unet_pool_trans_2f1, unet_pool_trans_2f2
+    from unet.unet_pool_up import unet_pool_up_1f1, unet_pool_up_2f1, unet_pool_up_2f2
     models = [
-        # unet_pool_trans_5,
-        # unet_pool_trans_7,
-        # unet_conv_trans_5,
-        # unet_conv_trans_7,
-        # unet_pool_up_5,
-        # unet_pool_up_7,
-        unet_pool_up_5_dure,
-        # unet_pool_up_6_dure,
-        # unet_pool_up_7_dure,
-        # unet_pool_up_5_valid,
+        # unet_conv_trans_1f1,
+        # unet_conv_trans_2f1,
+        # unet_conv_trans_2f2,
+        # unet_pool_trans_1f1,
+        # unet_pool_trans_2f1,
+        # unet_pool_trans_2f2,
+        # unet_pool_up_1f1,
+        unet_pool_up_2f1,
+        # unet_pool_up_2f2,
         # unet_vgg_7conv,
     ]
     configs = [
         # ModelConfig((1060, 1060, 3), (1060,1060, 1), resize=1.0, separate=True, tr_coverage=0.9 prd_coverage=1.4, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((1024, 1024, 3), (1024,1024, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.4, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((768, 768, 3), (768, 768, 1), resize=1.0, padding=1.0, separate=True, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((768, 768, 3), (768, 768, 1), resize=0.3, padding=1.0, separate=False, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((768, 768, 3), (768, 768, 1), filter_size=[64, 96, 128, 192], resize=1.0, padding=1.0, separate=True, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((768, 768, 3), (768, 768, 1), filter_size=[64, 96, 128, 192, 256], resize=1.0, padding=1.0, separate=True, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((768, 768, 3), (768, 768, 1), filter_size=[64, 96, 128, 192, 256, 384], resize=1.0, padding=1.0, separate=True, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((768, 768, 3), (768, 768, 1), filter_size=[64, 96, 128, 192, 256, 384, 512], resize=1.0, padding=1.0, separate=True, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.4, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.4, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((256, 256, 3), (256, 256, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.4, out_fun='sigmoid', loss_fun=loss_bce_dice),

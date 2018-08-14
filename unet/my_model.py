@@ -159,7 +159,6 @@ class MyModel:
             print("Continue from previous weights")
             self.model.load_weights(weight_file)
 
-
         # indicator, trend = 'val_loss', 'min'
         indicator, trend = 'val_dice', 'max'
         print('Fitting neural net...')
@@ -177,6 +176,9 @@ class MyModel:
                     EarlyStopping(monitor=indicator, mode=trend, patience=0, verbose=1),
                     TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                 ]).history
+            if not os.path.exists(export_name + ".csv"):
+                with open(export_name + ".csv", "w") as log:
+                    self.model.summary(print_fn=lambda x: log.write(x + '\n'))
             with open(export_name + ".csv", "a") as log:
                 log.write("\n" + datetime.now().strftime("%Y-%m-%d %H:%M") + " train history:\n")
             pd.DataFrame(history).to_csv(export_name + ".csv", mode="a")

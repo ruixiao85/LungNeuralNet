@@ -35,18 +35,18 @@ def extract_pad_image(lg_img, r0, r1, c0, c1):
 def read_resize_padding(_file, _resize, _padding):
     if _resize < 1.0:
         img = resize(imread(_file), (0, 0), fx=_resize, fy=_resize, interpolation=INTER_AREA)
-        print(" Resize [%.1f] applied "%_resize,end='')
+        # print(" Resize [%.1f] applied "%_resize,end='')
     else:
         img = imread(_file)
-        print(" Resize [%.1f] not applied "%_resize,end='')
+        # print(" Resize [%.1f] not applied "%_resize,end='')
     if _padding > 1.0:
         row,col,_=img.shape
         row_pad=int(_padding*row-row)
         col_pad=int(_padding*col-col)
-        print(" Padding [%.1f] applied "%_padding,end='')
+        # print(" Padding [%.1f] applied "%_padding,end='')
         return np.pad(img,((row_pad,row_pad),(col_pad,col_pad),(0,0)), 'reflect')
     else:
-        print(" Padding [%.1f] not applied "%_padding,end='')
+    #     print(" Padding [%.1f] not applied "%_padding,end='')
         return img
 
 
