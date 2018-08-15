@@ -3,7 +3,8 @@ from __future__ import print_function
 import traceback
 
 from keras.models import Model
-from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, ZeroPadding2D, Concatenate, merge
+from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, ZeroPadding2D, Concatenate, merge, \
+    BatchNormalization, Dropout
 from keras import backend as K
 
 K.set_image_data_format('channels_last')
@@ -43,13 +44,17 @@ def unet_pool_up_1f1(cfg):
     locals()['pool0']=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3
 
     for i in range(len(fs)):
-        locals()['conv'+str(i)]=Conv2D(fs[i], (ks[0], ks[0]), activation=act_fun, padding='same', kernel_initializer=init, name='conv' + str(i))(locals()['pool'+str(i)])
+        locals()['conv'+str(i)]=BatchNormalization(
+            Conv2D(fs[i], (ks[0], ks[0]), activation=act_fun, padding='same', kernel_initializer=init, name='conv' + str(i))(locals()['pool'+str(i)])
+        )
         if i < len(fs)-1:
             locals()['pool' + str(i+1)] = MaxPooling2D((2, 2), strides=(2, 2), name='pool' + str(i+1))(locals()['conv'+str(i)])
 
     for i in range(len(fs)-2,-1,-1):
-        locals()['upsamp'+str(i)]=concatenate([locals()['conv'+str(i)], UpSampling2D(size=(2,2))(locals()['conv'+str(i+1)])],axis=concat_axis)\
+        locals()['upsamp'+str(i)]=Dropout(
+            concatenate([locals()['conv'+str(i)], UpSampling2D(size=(2,2))(locals()['conv'+str(i+1)])],axis=concat_axis)\
             if i==len(fs)-2 else concatenate([locals()['conv'+str(i)], UpSampling2D(size=(2,2))(locals()['decon'+str(i+1)])], axis=concat_axis)
+        ,0.5)
         locals()['decon'+str(i)] = Conv2D(fs[i], (ks[0], ks[0]), activation=act_fun, kernel_initializer=init, padding='same', name='decon'+str(i))(locals()['upsamp'+str(i)])
     locals()['out0'] = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same',name='out0')(locals()['decon0'])
     return Model(locals()['pool0'], locals()['out0']),  traceback.extract_stack(None, 2)[1].name  + "_" + str(cfg)

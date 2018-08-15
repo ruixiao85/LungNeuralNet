@@ -49,6 +49,22 @@ def dice_d(y_true, y_pred):
 def dice(y_true, y_pred):
     return dice_d(y_true, K.round(K.clip(y_pred, 0, 1)))  # integer call
 
+from tensorflow.python.ops.image_ops_impl import central_crop
+def dice_90(y_true, y_pred):
+    return dice(central_crop(y_true,0.9), central_crop(y_pred,0.9))
+
+def dice_80(y_true, y_pred):
+    return dice(central_crop(y_true,0.8), central_crop(y_pred,0.8))
+
+def dice_70(y_true, y_pred):
+    return dice(central_crop(y_true,0.7), central_crop(y_pred,0.7))
+
+def dice_60(y_true, y_pred):
+    return dice(central_crop(y_true,0.6), central_crop(y_pred,0.6))
+
+def dice_50(y_true, y_pred):
+    return dice(central_crop(y_true,0.5), central_crop(y_pred,0.5))
+
 def loss_bce(y_true, y_pred):  # bootstrapped binary cross entropy
     target_tensor = y_true
     prediction_tensor = y_pred
@@ -138,7 +154,7 @@ class MyModel:
 
     def compile_model(self):
         from keras.optimizers import Adam
-        self.model.compile(optimizer=Adam(self.learning_rate), loss=self.loss_fun, metrics=[jac, dice])
+        self.model.compile(optimizer=Adam(self.learning_rate), loss=self.loss_fun, metrics=[jac, dice, dice_90, dice_80, dice_70, dice_60, dice_50])
         self.model.summary()
 
     def save_model(self):
@@ -172,17 +188,17 @@ class MyModel:
                 epochs=self.num_epoch, max_queue_size=1, workers=0, use_multiprocessing=False, shuffle=False,
                 callbacks=[
                     ModelCheckpoint(weight_file, monitor=indicator, mode=trend, save_best_only=True),
-                    ReduceLROnPlateau(monitor=indicator, mode=trend, factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
-                    EarlyStopping(monitor=indicator, mode=trend, patience=0, verbose=1),
-                    TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
+                    EarlyStopping(monitor=indicator, mode=trend, patience=1, verbose=1),
+                    # ReduceLROnPlateau(monitor=indicator, mode=trend, factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
+                    # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                 ]).history
-            if not os.path.exists(export_name + ".csv"):
-                with open(export_name + ".csv", "w") as log:
-                    self.model.summary(print_fn=lambda x: log.write(x + '\n'))
-            with open(export_name + ".csv", "a") as log:
-                log.write("\n" + datetime.now().strftime("%Y-%m-%d %H:%M") + " train history:\n")
-            pd.DataFrame(history).to_csv(export_name + ".csv", mode="a")
-
+            if not os.path.exists(export_name + ".txt"):
+                with open(export_name + ".txt", "w") as net_summary:
+                    self.model.summary(print_fn=lambda x: net_summary.write(x + '\n'))
+            df=pd.DataFrame(history)
+            df['time']=datetime.now().strftime("%Y-%m-%d %H:%M")
+            df['repeat']=r+1
+            df.to_csv(export_name + ".csv", mode="a", header=(not os.path.exists(export_name + ".csv")))
 
     def predict(self, pair:ImagePredictPair):
         i_sum=pair.row_out*pair.col_out

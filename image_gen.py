@@ -253,15 +253,17 @@ class ImageTrainPair:
 
     def get_tr_val_generator(self):
         tr_list, val_list=[], []
-        ti,vi=0,0
-        for i, vc in enumerate(self.view_coord):
-            if 0.1*(i%10)<self.valid_split: # validation
-                val_list.append(vc)
-                vi+=1
-            else: # training
+        for vc in self.view_coord:
+            if vc.image_name in tr_list:
                 tr_list.append(vc)
-                ti+=1
-        print("From %d split into train : validation  %d : %d"%(len(self.view_coord),ti,vi))
+            elif vc.image_name in val_list:
+                val_list.append(vc)
+            else:
+                if (len(val_list)+0.05)/(len(tr_list)+0.05)>self.valid_split:
+                    tr_list.append(vc)
+                else:
+                    val_list.append(vc)
+        print("From %d split into train : validation  %d : %d"%(len(self.view_coord),len(tr_list),len(val_list)))
         return ImageTrainGenerator(self, tr_list), ImageTrainGenerator(self, val_list, aug=False)
 
     def dir_in_ex(self):
