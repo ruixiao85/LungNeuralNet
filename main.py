@@ -54,8 +54,8 @@ if __name__ == '__main__':
         # unet_vgg_7conv,
     ]
     configs = [
-        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,1), resize=1.0, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 128, 256, 512, 1024], kernel_size=(3,3), resize=1.0, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,3), resize=0.5, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,1), resize=0.5, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
 
         # ModelConfig((572, 572, 3), (572, 572, 1), filter_size=[64, 128, 256, 512, 1024], resize=1.0, padding=1.0, separate=True, tr_coverage=1.2, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # Vanilla U-Net 572 -> 388 (valid padding, Center 67%), pool_up_2f2 with 64, 128, 256, 512, 1024 filters
@@ -83,9 +83,9 @@ if __name__ == '__main__':
                 model= MyModel(mod, cfg, save=False)
                 print("Network specifications: " + model.name.replace("_", " "))
                 for origin in origins:
-                    ori_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), origin, train=True)
+                    ori_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), origin, train=True, filter_type='rgb')
                     for target in targets:
-                        tgt_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), target, train=True)
+                        tgt_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), target, train=True, filter_type=cfg.mask_color)
                         pair=ImageTrainPair(cfg, ori_set, tgt_set)
                         model.train(pair)
     if mode != 't':

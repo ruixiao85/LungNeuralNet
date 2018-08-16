@@ -10,6 +10,7 @@ from cv2.cv2 import imread, resize, imwrite, INTER_AREA
 from model_config import ModelConfig
 from process_image import scale_input, scale_output, augment_image_pair
 
+ALL_TARGET='All'
 
 def extract_pad_image(lg_img, r0, r1, c0, c1):
     _row, _col, _ = lg_img.shape
@@ -112,7 +113,7 @@ class MetaInfo:
 
 
 class ImageSet:
-    def __init__(self, cfg:ModelConfig, wd, sf, train):
+    def __init__(self, cfg:ModelConfig, wd, sf, train, filter_type=None):
         self.work_directory=wd
         self.sub_folder=sf
         self.image_format=cfg.image_format
@@ -124,6 +125,7 @@ class ImageSet:
         self.row, self.col = None, None
         self.coverage=cfg.tr_coverage if train else cfg.prd_coverage
         self.train=train
+        self.filter_type=filter_type
         self.view_coord=[]
 
     def scan_image(self):
@@ -215,10 +217,18 @@ class ImageSet:
                     ro = ri + self.row
                     co = ci + self.col
                     s_img = _img[ri:ro, ci:co, ...]
-                    std = float(np.std(s_img))
-                    if self.train and std < 20:  # low coverage implies training mode, skip this tile if low contrast
-                        print("skip tile r%d_c%d for low contrast (std=%.1f) for %s" % (r_index, c_index, std, image_name))
-                        continue
+                    if self.filter_type is not None: # skip if low contrast or masked information
+                        col=self.filter_type[0].lower()
+                        if col=='g': # green mask
+                            gmin=float(np.min(s_img[...,0]))+float(np.min(s_img[...,2])) # min_R min_B
+                            if gmin>15.0:
+                                print("skip tile r%d_c%d for no green mask (min_R+B=%.1f) for %s" % (r_index, c_index, gmin, image_name))
+                                continue
+                        else: # default white/black or rgb
+                            std=float(np.std(s_img))
+                            if std<20.0:
+                                print("skip tile r%d_c%d for low contrast (std=%.1f) for %s" % (r_index, c_index, std, image_name))
+                                continue
                     entry = MetaInfo.from_whole(image_name, lg_row, lg_col, ri, ro, ci, co)
                     imwrite(os.path.join(ex_dir, entry.file_name), s_img)
                     # entry.ri, entry.ro, entry.ci, entry.co = 0, self.row, 0, self.col
@@ -276,7 +286,7 @@ class ImageTrainPair:
         return ImageTrainGenerator(self, tr_list), ImageTrainGenerator(self, val_list, aug=False)
 
     def dir_in_ex(self):
-        return "%s-%s_%.1f_%dx%d" % (self.dir_in, self.dir_out, self.resize, self.row_in, self.col_in) if self.separate else self.dir_in
+        return "%s-%s_%.1f_%dx%d" % (self.dir_in, ALL_TARGET, self.resize, self.row_in, self.col_in) if self.separate else self.dir_in
 
     def dir_out_ex(self):
         return "%s-%s_%.1f_%dx%d" % (self.dir_out, self.dir_in, self.resize, self.row_out, self.col_out) if self.separate else self.dir_out
@@ -301,12 +311,11 @@ class ImageTrainPair:
 
 
 class ImagePredictPair:
-    ALL_TARGET='All'
     def __init__(self, cfg: ModelConfig, ori_set: ImageSet, tgt=None):
         self.img_set = ori_set  # reference
         self.wd = ori_set.work_directory
         self.dir_in = ori_set.sub_folder
-        self.dir_out = tgt if tgt is not None else ImagePredictPair.ALL_TARGET
+        self.dir_out = tgt if tgt is not None else ALL_TARGET
         self.resize = cfg.resize
         self.padding = cfg.padding
         self.row_in, self.col_in, self.dep_in = cfg.row_in, cfg.col_in, cfg.dep_in
@@ -320,11 +329,23 @@ class ImagePredictPair:
     def change_target(self, tgt):
         self.dir_out=tgt
 
+    def get_prd_generator(self):
+        return ImagePredictGenerator(self)
+
     def get_prd_generators(self):
-        return ImagePredictGenerator(self, image)
+        if self.separate:
+            lpg={}
+            for vc in self.view_coord:
+                existing=lpg[vc.image_name]
+                sublist=existing if existing is not None else []
+                sublist.append(vc)
+                lpg[vc.image_name]=sublist
+            return [ImagePredictGenerator(self,l) for l in lpg.values()]
+        else:
+            return [ImagePredictGenerator(self)]
 
     def dir_in_ex(self):
-        return "%s-%s_%.1f_%dx%d" % (self.dir_in, ImagePredictPair.ALL_TARGET, self.resize, self.row_in, self.col_in) if self.separate else self.dir_in
+        return "%s-%s_%.1f_%dx%d" % (self.dir_in, ALL_TARGET, self.resize, self.row_in, self.col_in) if self.separate else self.dir_in
 
     def dir_out_ex(self):
         return "%s-%s_%.1f_%dx%d" % (self.dir_out, self.dir_in, self.resize, self.row_out, self.col_out) if self.separate else self.dir_out
@@ -368,18 +389,18 @@ class ImageTrainGenerator(keras.utils.Sequence):
             np.random.shuffle(self.indexes)
 
 class ImagePredictGenerator(keras.utils.Sequence):
-    def __init__(self, pair:ImagePredictPair):
-        self.view_coord=pair.view_coord
-        self.indexes = np.arange(len(pair.view_coord))
+    def __init__(self, pair:ImagePredictPair, view_coord=None):
         self.wd=pair.wd
         self.dir_in, self.dir_out=pair.dir_in_ex(), pair.dir_out_ex()
         self.wd_dir_in=os.path.join(self.wd, self.dir_in)
         self.resize = pair.resize
         self.padding = pair.padding
-        self.separate = pair.separate
         self.batch_size=pair.batch_size
         self.row_in, self.col_in, self.dep_in=pair.row_in, pair.col_in, pair.dep_in
         # self.row_out, self.col_out, self.dep_out=pair.row_out, pair.col_out, pair.dep_out
+        self.separate = pair.separate
+        self.view_coord=view_coord if view_coord is not None else pair.view_coord
+        self.indexes = np.arange(len(pair.view_coord))
 
     def __len__(self):  # Denotes the number of batches per epoch
         return int(np.floor(len(self.view_coord) / self.batch_size))

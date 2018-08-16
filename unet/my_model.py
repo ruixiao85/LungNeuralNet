@@ -212,7 +212,7 @@ class MyModel:
             if not os.path.exists(export_name + ".txt"):
                 with open(export_name + ".txt", "w") as net_summary:
                     self.model.summary(print_fn=lambda x: net_summary.write(x + '\n'))
-            df=pd.DataFrame(history)
+            df=pd.DataFrame(history).round(4)
             df['time']=datetime.now().strftime("%Y-%m-%d %H:%M")
             df['repeat']=r+1
             df.to_csv(export_name + ".csv", mode="a", header=(not os.path.exists(export_name + ".csv")))
