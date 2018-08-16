@@ -1,16 +1,18 @@
 class ModelConfig:
 
-    def __init__(self, dim_in=(512,512,3), dim_out=(512,512,1), image_format="*.jpg",
+    def __init__(self, dim_in=(512,512,3), dim_out=(512,512,1), image_format="*.jpg", mask_color="green",  #green/white
                  resize=1., padding=1.0, tr_coverage=0.9, prd_coverage=1.4,
                  filter_size=None, kernel_size=None,
                  act_fun='elu', out_fun='sigmoid', loss_fun='binary_crossentropy',
                  over_ch=2, over_op=0.5, call_hard=1,  # 0-red 1-green 2-blue; red-blue flipped with cv2; opacity; 1: hard(0/1), 0~1: mix, 0: original smooth
-                 num_rep=5, num_epoch=12, learning_rate=1e-4, valid_split=0.4, img_aug=True, cont_train=True,
+                 num_rep=5, num_epoch=12, max_train_step=500, max_vali_step=200, # no limit if None
+                 learning_rate=1e-4, valid_split=0.4, img_aug=True, cont_train=True,
                  batch_size=1, shuffle=True, separate=True
                  ):
         self.row_in, self.col_in, self.dep_in = dim_in
         self.row_out, self.col_out, self.dep_out = dim_out
         self.image_format=image_format
+        self.mask_color=mask_color
         self.resize= resize
         self.padding= padding
         self.tr_coverage = tr_coverage
@@ -24,6 +26,8 @@ class ModelConfig:
         self.call_hardness = call_hard
         self.num_rep = num_rep
         self.num_epoch = num_epoch
+        self.max_train_step = max_train_step
+        self.max_vali_step = max_vali_step
         self.learning_rate = learning_rate
         self.valid_split = valid_split
         self.img_aug = img_aug

@@ -1,14 +1,8 @@
 import numpy as np
 import imgaug as ia
+from cv2 import cv2
 from imgaug import augmenters as iaa
 
-def fit(_img, _r, _c):
-    tr, tc, _ = _img.shape
-    ri = int((tr - _r) / 2)
-    ci = int((tc - _c) / 2)
-    # ri = 0 if ri < 0 else ri
-    # ci = 0 if ci < 0 else ci
-    return _img[np.newaxis,ri:ri+_r,ci:ci+_c,...]
 
 def scale_input(_array):
     return _array.astype(np.float32) / 127.5 - 1.0
@@ -22,14 +16,17 @@ def scale_input(_array):
 def scale_input_reverse(_array):
     return (_array.astype(np.float32) + 1.0) * 127.5
 
-def scale_output(_array, _out):
-    _array = _array.astype(np.float32) / 255.0
-    if _out==1:
+def scale_output(_array, _color):
+    _array=_array.astype(np.float32) / 255.0
+    code=_color[0].lower()
+    if code=='g':  # green
+        # cv2.imwrite("testd_2f_-0.3.jpg",np.clip(2.0*(_array[..., 1] - _array[..., 0]-0.3), 0, 1)[..., np.newaxis][0]*255.)
+        # cv2.imwrite("testd_2f_-0.4.jpg",np.clip(2.0*(_array[..., 1] - _array[..., 0]-0.4), 0, 1)[..., np.newaxis][0]*255.)
+        # cv2.imwrite("testd_2f_-0.5.jpg",np.clip(2.0*(_array[..., 1] - _array[..., 0]-0.5), 0, 1)[..., np.newaxis][0]*255.)
+        # cv2.imwrite("testd_2f_-0.6.jpg",np.clip(2.0*(_array[..., 1] - _array[..., 0]-0.6), 0, 1)[..., np.newaxis][0]*255.)
+        return np.clip(2.0*(_array[..., 1] - _array[..., 0]-0.4), 0, 1)[..., np.newaxis]
+    else:  # default to white/black from blue channel
         return _array[...,2][...,np.newaxis]  # blue channel to only channel
-    else:
-        _array[..., 0] = _array[..., 2]
-        _array[..., 1] = 1.0 - _array[..., 2]
-        return _array[..., 0:2]  # blue first, reverse second
 
 def augment_image_pair(_img, _tgt, _level=1.0):
     seg_both_1 = iaa.Sequential([

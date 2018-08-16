@@ -1,3 +1,5 @@
+import traceback
+
 import numpy as np
 from keras.applications.vgg16 import VGG16
 from keras.engine.topology import Input
@@ -13,12 +15,19 @@ from keras import backend as K
 K.set_image_data_format("channels_last")
 #K.set_image_dim_ordering("th")
 
-def unet_vgg_7conv(img_rows, img_cols, cfg):
+#VGG 16 weighted layers (224 x 224 x 3 RGB)
+# conv3x3-64 conv3x3-64 maxpool
+# conv3x3-128 conv3x3-128 maxpool
+# conv3x3-256 conv3x3-256 conv3x3/1x1-256 maxpool
+# conv3x3-512 conv3x3-512 conv3x3/1x1-512 maxpool
+# conv3x3-512 conv3x3-512 conv3x3/1x1-512 maxpool
+# FC-4096 -> FC-4096 -> FC-1000 -> softmax
+
+def unet_vgg_7conv(cfg):
     act_fun, out_fun = cfg.act_fun, cfg.out_fun
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
-    name = "_unet_vgg_7_" + str(cfg)
     # f1, f2, f3, f4, f5 = 64, 96, 128, 192, 256
-    input_shape=(img_rows, img_cols, dim_in)
+    input_shape=(cfg.row_in, cfg.col_in, dim_in)
     img_input = Input(input_shape)  # r,c,3
     vgg16_base = VGG16(input_tensor=img_input, include_top=False, weights=None)
     #for l in vgg16_base.layers:
@@ -72,9 +81,9 @@ def unet_vgg_7conv(img_rows, img_cols, cfg):
 
     # Recalculate weights on first layer
     conv1_weights = np.zeros((3, 3, dim_in, 64), dtype="float32")
-    vgg = VGG16(include_top=False, input_shape=(img_rows, img_cols, 3))
+    vgg = VGG16(include_top=False, input_shape=input_shape)
     conv1_weights[:, :, :3, :] = vgg.get_layer("block1_conv1").get_weights()[0][:, :, :, :]
     bias = vgg.get_layer("block1_conv1").get_weights()[1]
     model.get_layer('block1_conv1').set_weights((conv1_weights, bias))
-    return model, name
+    return model, traceback.extract_stack(None, 2)[1].name  + "_" + str(cfg)
 

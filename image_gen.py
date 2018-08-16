@@ -242,8 +242,11 @@ class ImageTrainPair:
         self.separate=cfg.separate
         self.valid_split=cfg.valid_split
         self.batch_size=cfg.batch_size
+        self.max_train_step=cfg.max_train_step
+        self.max_vali_step=cfg.max_vali_step
         self.img_aug = cfg.img_aug
         self.shuffle = cfg.shuffle
+        self.mask_color = cfg.mask_color
 
         images =list(set(self.img_set.images).intersection(self.msk_set.images)) # match image file
         self.img_set.size_folder_update(images, self.row_in, self.col_in, self.dir_in_ex())
@@ -252,25 +255,31 @@ class ImageTrainPair:
         self.view_coord=list(set(self.img_set.view_coord).intersection(self.msk_set.view_coord))
 
     def get_tr_val_generator(self):
-        tr_list, val_list=[], []
+        tr_list, val_list=[], [] # list view_coords, can be from slices
+        tr_image, val_image=set(), set() # set whole images
         for vc in self.view_coord:
-            if vc.image_name in tr_list:
+            if vc.image_name in tr_image:
                 tr_list.append(vc)
-            elif vc.image_name in val_list:
+                tr_image.add(vc.image_name)
+            elif vc.image_name in val_image:
                 val_list.append(vc)
+                val_image.add(vc.image_name)
             else:
                 if (len(val_list)+0.05)/(len(tr_list)+0.05)>self.valid_split:
                     tr_list.append(vc)
+                    tr_image.add(vc.image_name)
                 else:
                     val_list.append(vc)
-        print("From %d split into train : validation  %d : %d"%(len(self.view_coord),len(tr_list),len(val_list)))
+                    val_image.add(vc.image_name)
+        print("From %d split into train: %d views %d images; validation %d views %d images"%
+              (len(self.view_coord),len(tr_list),len(tr_image),len(val_list),len(val_image)))
         return ImageTrainGenerator(self, tr_list), ImageTrainGenerator(self, val_list, aug=False)
 
     def dir_in_ex(self):
-        return "%s-%s_%dx%d" % (self.dir_in, self.dir_out, self.row_in, self.col_in) if self.separate else self.dir_in
+        return "%s-%s_%.1f_%dx%d" % (self.dir_in, self.dir_out, self.resize, self.row_in, self.col_in) if self.separate else self.dir_in
 
     def dir_out_ex(self):
-        return "%s-%s_%dx%d" % (self.dir_out, self.dir_in, self.row_out, self.col_out) if self.separate else self.dir_out
+        return "%s-%s_%.1f_%dx%d" % (self.dir_out, self.dir_in, self.resize, self.row_out, self.col_out) if self.separate else self.dir_out
 
     @staticmethod
     def filter_match_pair(set1: ImageSet, set2: ImageSet):
@@ -311,14 +320,14 @@ class ImagePredictPair:
     def change_target(self, tgt):
         self.dir_out=tgt
 
-    def get_prd_generator(self):
-        return ImagePredictGenerator(self)
+    def get_prd_generators(self):
+        return ImagePredictGenerator(self, image)
 
     def dir_in_ex(self):
-        return "%s-%s_%dx%d" % (self.dir_in, ImagePredictPair.ALL_TARGET, self.row_in, self.col_in) if self.separate else self.dir_in
+        return "%s-%s_%.1f_%dx%d" % (self.dir_in, ImagePredictPair.ALL_TARGET, self.resize, self.row_in, self.col_in) if self.separate else self.dir_in
 
     def dir_out_ex(self):
-        return "%s-%s_%dx%d" % (self.dir_out, self.dir_in, self.row_out, self.col_out) if self.separate else self.dir_out
+        return "%s-%s_%.1f_%dx%d" % (self.dir_out, self.dir_in, self.resize, self.row_out, self.col_out) if self.separate else self.dir_out
 
 class ImageTrainGenerator(keras.utils.Sequence):
     def __init__(self, pair:ImageTrainPair, view_coord, aug=None):
@@ -334,6 +343,7 @@ class ImageTrainGenerator(keras.utils.Sequence):
         self.batch_size=pair.batch_size
         self.img_aug=pair.img_aug if aug is None else aug
         self.shuffle=pair.shuffle
+        self.mask_color=pair.mask_color
         self.row_in, self.col_in, self.dep_in=pair.row_in, pair.col_in, pair.dep_in
         self.row_out, self.col_out, self.dep_out=pair.row_out, pair.col_out, pair.dep_out
 
@@ -350,7 +360,7 @@ class ImageTrainGenerator(keras.utils.Sequence):
             _tgt[i, ...] = vc.get_image(self.wd_dir_out,self.separate,self.resize,self.padding)
         if self.img_aug:
             _img, _tgt = augment_image_pair(_img, _tgt, _level=random.randint(0, 4))  # integer N: a <= N <= b.
-        return scale_input(_img), scale_output(_tgt, self.dep_out)
+        return scale_input(_img), scale_output(_tgt, self.mask_color)
 
     def on_epoch_end(self):  # Updates indexes after each epoch
         self.indexes = np.arange(len(self.view_coord))

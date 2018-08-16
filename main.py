@@ -11,7 +11,7 @@ from unet.my_model import *
 
 if __name__ == '__main__':
     # -d "D:\Cel files\2018-07.13 Adam Brenderia 2X LPS CGS" -t "071318 Cleaned 24H post cgs" -p "2018-07.20 Kyle MMP13 Smoke Flu Zander 2X" -o "Paren,InflamMild,InflamSevere"
-    # -d "I:/NonParen" -t "Rui Xiao 2017-09-07 (14332)(27)" -p "Rui Xiao 2017-12-05 (15634)(9)" -o "NonParen"
+    # -d "I:/NonParen" -t "Rui Xiao 2017-09-07 (14332)(27)" -p "Rui Xiao 2017-12-05 (15634)(9)" -o "BloodVessel,Capilary,Conductive,Connective"
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('-d', '--dir', dest='dir', action='store',
                         default='', help='work directory, empty->current dir')
@@ -40,24 +40,35 @@ if __name__ == '__main__':
     from unet.unet_conv_trans import unet_conv_trans_1f1, unet_conv_trans_2f1, unet_conv_trans_2f2
     from unet.unet_pool_trans import unet_pool_trans_1f1, unet_pool_trans_2f1, unet_pool_trans_2f2
     from unet.unet_pool_up import unet_pool_up_1f1, unet_pool_up_2f1, unet_pool_up_2f2
+    from unet.unet_vgg import unet_vgg_7conv
     models = [
-        unet_conv_trans_1f1,
-        unet_conv_trans_2f1,
-        unet_conv_trans_2f2,
-        unet_pool_trans_1f1,
-        unet_pool_trans_2f1,
-        unet_pool_trans_2f2,
-        unet_pool_up_1f1,
+        # unet_conv_trans_1f1,
+        # unet_conv_trans_2f1,
+        # unet_conv_trans_2f2,
+        # unet_pool_trans_1f1,
+        # unet_pool_trans_2f1,
+        # unet_pool_trans_2f2,
+        # unet_pool_up_1f1,
         unet_pool_up_2f1,
         unet_pool_up_2f2,
         # unet_vgg_7conv,
     ]
     configs = [
+        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,1), resize=1.0, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 128, 256, 512, 1024], kernel_size=(3,3), resize=1.0, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+
+        # ModelConfig((572, 572, 3), (572, 572, 1), filter_size=[64, 128, 256, 512, 1024], resize=1.0, padding=1.0, separate=True, tr_coverage=1.2, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # Vanilla U-Net 572 -> 388 (valid padding, Center 67%), pool_up_2f2 with 64, 128, 256, 512, 1024 filters
+
         # ModelConfig((1060, 1060, 3), (1060,1060, 1), resize=1.0, separate=True, tr_coverage=0.9 prd_coverage=1.4, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((1024, 1024, 3), (1024,1024, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.4, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((768, 768, 3), (768, 768, 1), resize=1.0, padding=1.0, separate=True, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((768, 768, 3), (768, 768, 1), filter_size=[64, 96, 128, 192], resize=1.0, padding=1.0, separate=False, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((768, 768, 3), (768, 768, 1), filter_size=[64, 96, 128, 192, 256], resize=1.0, padding=1.0, separate=False, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((768, 768, 3), (768, 768, 1), filter_size=[64, 96, 128, 192, 256], resize=0.5, padding=1.0, separate=True, tr_coverage=1.2, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((1024, 1024, 3), (1024, 1024, 1), filter_size=[64, 96, 128, 192, 256], resize=0.5, padding=1.0, separate=True, tr_coverage=1.2, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # last-use ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], resize=1.0, padding=1.0, separate=True, tr_coverage=1.2, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((1024, 1024, 3), (1024, 1024, 1), filter_size=[32, 48, 64, 96, 128, 192, 256, 384, 512], resize=0.5, padding=1.0, separate=True, tr_coverage=1.2, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((1024, 1024, 3), (1024, 1024, 1), filter_size=[64, 96, 128, 192, 256, 384], resize=0.5, padding=1.0, separate=True, tr_coverage=1.2, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((768, 768, 3), (768, 768, 1), filter_size=[64, 96, 128, 192, 256, 384], resize=1.0, padding=1.0, separate=False, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((768, 768, 3), (768, 768, 1), filter_size=[64, 96, 128, 192, 256, 384, 512], resize=1.0, padding=1.0, separate=False, tr_coverage=0.9, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((512, 512, 3), (512, 512, 1), resize=1.0, separate=True, tr_coverage=0.9, prd_coverage=1.4, out_fun='sigmoid', loss_fun=loss_bce_dice),

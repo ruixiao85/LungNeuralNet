@@ -65,6 +65,18 @@ def dice_60(y_true, y_pred):
 def dice_50(y_true, y_pred):
     return dice(central_crop(y_true,0.5), central_crop(y_pred,0.5))
 
+def dice_40(y_true, y_pred):
+    return dice(central_crop(y_true,0.4), central_crop(y_pred,0.4))
+
+def dice_30(y_true, y_pred):
+    return dice(central_crop(y_true,0.3), central_crop(y_pred,0.3))
+
+def dice_20(y_true, y_pred):
+    return dice(central_crop(y_true,0.2), central_crop(y_pred,0.2))
+
+def dice_10(y_true, y_pred):
+    return dice(central_crop(y_true,0.1), central_crop(y_pred,0.1))
+
 def loss_bce(y_true, y_pred):  # bootstrapped binary cross entropy
     target_tensor = y_true
     prediction_tensor = y_pred
@@ -153,8 +165,13 @@ class MyModel:
         return self.name
 
     def compile_model(self):
-        from keras.optimizers import Adam
-        self.model.compile(optimizer=Adam(self.learning_rate), loss=self.loss_fun, metrics=[jac, dice, dice_90, dice_80, dice_70, dice_60, dice_50])
+        from keras.optimizers import Adam, RMSprop, SGD
+        # optimizer = SGD(lr=0.01)
+        self.model.compile(
+            # optimizer=Adam(self.learning_rate),
+            optimizer=RMSprop(self.learning_rate,decay=1e-6),
+            # optimizer=SGD(self.learning_rate),
+           loss=self.loss_fun, metrics=[jac, dice, dice_90, dice_80, dice_70, dice_60, dice_50, dice_40, dice_30, dice_20, dice_10])
         self.model.summary()
 
     def save_model(self):
@@ -182,9 +199,9 @@ class MyModel:
             print("Training %d/%d for %s" % (r + 1, self.num_rep, export_name))
             tr.on_epoch_end()
             val.on_epoch_end()
-            history = self.model.fit_generator(tr, validation_data=val,
-                # steps_per_epoch=min(100, len(tr.view_coord)), validation_steps=min(30, len(val.view_coord)),
-                steps_per_epoch=len(tr.view_coord), validation_steps=len(val.view_coord),
+            history = self.model.fit_generator(tr, validation_data=val, verbose=1,
+                steps_per_epoch=min(pair.max_train_step, len(tr.view_coord)) if isinstance(pair.max_train_step , int) else len(tr.view_coord),
+               validation_steps=min(pair.max_vali_step, len(val.view_coord)) if isinstance(pair.max_vali_step, int) else len(val.view_coord),
                 epochs=self.num_epoch, max_queue_size=1, workers=0, use_multiprocessing=False, shuffle=False,
                 callbacks=[
                     ModelCheckpoint(weight_file, monitor=indicator, mode=trend, save_best_only=True),
@@ -227,7 +244,7 @@ class MyModel:
             print(text)
             cv2.imwrite(ind_file, msk*255.)
             # cv2.imwrite(ind_file, draw_text((msk*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
-            origin=prd.view_coord[i].get_image(os.path.join(pair.wd, pair.dir_in_ex()),pair.separate)
+            origin=prd.view_coord[i].get_image(os.path.join(pair.wd, pair.dir_in_ex()),pair.separate,pair.resize,pair.padding)
             if self.separate:
                 self.merge_images(pair.view_coord, i, origin, msk, merge_dir, res_g, pair.img_set.groups)
             blend=blend_mask(origin,msk,channel=self.overlay_channel,opacity=self.overlay_opacity)
