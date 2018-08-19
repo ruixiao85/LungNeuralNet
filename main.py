@@ -1,17 +1,12 @@
-import os
 import argparse
-import pandas as pd
 
-from image_gen import ImageTrainPair, ImageSet, ImagePredictPair
-from process_image import scale_input, augment_image_pair, scale_output
-from tensorboard_train_val import TensorBoardTrainVal
-from model_config import ModelConfig
-from util import mk_dir_if_nonexist, to_excel_sheet
-from unet.my_model import *
+from image_gen import ImageSet
+from util import to_excel_sheet
+from model import *
 
 if __name__ == '__main__':
     # -d "D:\Cel files\2018-07.13 Adam Brenderia 2X LPS CGS" -t "071318 Cleaned 24H post cgs" -p "2018-07.20 Kyle MMP13 Smoke Flu Zander 2X" -o "Paren,InflamMild,InflamSevere"
-    # -d "I:/NonParen" -t "Rui Xiao 2017-09-07 (14332)(27)" -p "Rui Xiao 2017-12-05 (15634)(9)" -o "BloodVessel,Capilary,Conductive,Connective"
+    # -d "I:/NonParen" -t "Rui Xiao 2017-09-07 (14332)(27)" -p "Rui Xiao 2017-12-05 (15634)(9)" -o "Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,SmallBloodVessel" -m t
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('-d', '--dir', dest='dir', action='store',
                         default='', help='work directory, empty->current dir')
@@ -37,10 +32,11 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from unet.unet_conv_trans import unet_conv_trans_1f1, unet_conv_trans_2f1, unet_conv_trans_2f2
-    from unet.unet_pool_trans import unet_pool_trans_1f1, unet_pool_trans_2f1, unet_pool_trans_2f2
-    from unet.unet_pool_up import unet_pool_up_1f1, unet_pool_up_2f1, unet_pool_up_2f2
-    from unet.unet_vgg import unet_vgg_7conv
+    from densenet.dn121 import DenseNet
+    from unet_pool_up_deep import unet_pool_up_deep_2f2
+    from unet.unet_pool_up import unet_pool_up_2f1
+    from unet.unet_pool_up_dual import unet_pool_up_dual_2f1
+    from unet.unet_pool_up_dual_residual import unet_pool_up_dual_residual_2f1, unet_pool_up_dual_residual_c13_2f1
     models = [
         # unet_conv_trans_1f1,
         # unet_conv_trans_2f1,
@@ -48,14 +44,30 @@ if __name__ == '__main__':
         # unet_pool_trans_1f1,
         # unet_pool_trans_2f1,
         # unet_pool_trans_2f2,
+        # unet_pool_up_dual_2f1, #very good
         # unet_pool_up_1f1,
         unet_pool_up_2f1,
-        unet_pool_up_2f2,
+        # unet_pool_up_2f2,
+        # unet_pool_up_dual_residual_c13_2f1,
+        # unet_pool_up_dual_residual_2f1,
+        # unet_pool_up_deep_2f2,
         # unet_vgg_7conv,
+        # unet_recursive, # not working
+        # DenseNet,
     ]
     configs = [
-        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,3), resize=0.5, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,1), resize=0.5, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 128, 192, 192, 256, 256, 384], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 128, 192, 192, 256, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 128, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256, 256, 384], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((1024, 1024, 3), (1024, 1024, 1), filter_size=[64, 96, 128, 192, 256, 256, 384], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,1), resize=0.5, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
 
         # ModelConfig((572, 572, 3), (572, 572, 1), filter_size=[64, 128, 256, 512, 1024], resize=1.0, padding=1.0, separate=True, tr_coverage=1.2, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # Vanilla U-Net 572 -> 388 (valid padding, Center 67%), pool_up_2f2 with 64, 128, 256, 512, 1024 filters
@@ -82,12 +94,15 @@ if __name__ == '__main__':
             for mod in models:
                 model= MyModel(mod, cfg, save=False)
                 print("Network specifications: " + model.name.replace("_", " "))
+                ### pair sigmoid ###
                 for origin in origins:
                     ori_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), origin, train=True, filter_type='rgb')
                     for target in targets:
-                        tgt_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), target, train=True, filter_type=cfg.mask_color)
+                        tgt_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), target, train=True, filter_type='rgb')  # filter_type=cfg.mask_color
                         pair=ImageTrainPair(cfg, ori_set, tgt_set)
                         model.train(pair)
+                ### set softmax ###
+
     if mode != 't':
         for cfg in configs:
             for mod in models:

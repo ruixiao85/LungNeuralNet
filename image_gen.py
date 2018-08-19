@@ -226,7 +226,7 @@ class ImageSet:
                                 continue
                         else: # default white/black or rgb
                             std=float(np.std(s_img))
-                            if std<20.0:
+                            if std<15.0:
                                 print("skip tile r%d_c%d for low contrast (std=%.1f) for %s" % (r_index, c_index, std, image_name))
                                 continue
                     entry = MetaInfo.from_whole(image_name, lg_row, lg_col, ri, ro, ci, co)
@@ -283,6 +283,10 @@ class ImageTrainPair:
                     val_image.add(vc.image_name)
         print("From %d split into train: %d views %d images; validation %d views %d images"%
               (len(self.view_coord),len(tr_list),len(tr_image),len(val_list),len(val_image)))
+        print("Training Images:")
+        print(tr_image)
+        print("Validation Images:")
+        print(val_image)
         return ImageTrainGenerator(self, tr_list), ImageTrainGenerator(self, val_list, aug=False)
 
     def dir_in_ex(self):

@@ -1,3 +1,5 @@
+import traceback
+
 from keras.models import Input, Model
 from keras.layers import Conv2D, Concatenate, MaxPooling2D, Conv2DTranspose
 from keras.layers import UpSampling2D, Dropout, BatchNormalization
@@ -5,6 +7,7 @@ from keras.layers import UpSampling2D, Dropout, BatchNormalization
 '''
 U-Net: Convolutional Networks for Biomedical Image Segmentation
 (https://arxiv.org/abs/1505.04597)
+github: pietz
 ---
 img_shape: (height, width, channels)
 out_ch: number of output channels
@@ -17,36 +20,44 @@ batchnorm: adds Batch Normalization if true
 maxpool: use strided conv instead of maxpooling if false
 upconv: use transposed conv instead of upsamping + conv if false
 residual: add residual connections around each conv block if true
-github: pietz
 '''
 
-def conv_block(m, dim, acti, bn, res, do=0):
-	n = Conv2D(dim, 3, activation=acti, padding='same')(m)
-	n = BatchNormalization()(n) if bn else n
-	n = Dropout(do)(n) if do else n
-	n = Conv2D(dim, 3, activation=acti, padding='same')(n)
-	n = BatchNormalization()(n) if bn else n
-	return Concatenate()([m, n]) if res else n
+def conv_block(m, dim, actfun, batchnorm, dropout, residual):
+	n = Conv2D(dim, 3, activation=actfun, padding='same')(m)
+	n = BatchNormalization()(n) if batchnorm else n
+	n = Dropout(dropout)(n) if dropout else n
+	n = Conv2D(dim, 3, activation=actfun, padding='same')(n)
+	n = BatchNormalization()(n) if batchnorm else n
+	return Concatenate()([m, n]) if residual else n
 
-def level_block(m, dim, depth, inc, acti, do, bn, mp, up, res):
-	if depth > 0:
-		n = conv_block(m, dim, acti, bn, res)
-		m = MaxPooling2D()(n) if mp else Conv2D(dim, 3, strides=2, padding='same')(n)
-		m = level_block(m, int(inc*dim), depth-1, inc, acti, do, bn, mp, up, res)
-		if up:
+def level_block(m, filters, index, actfun, maxpool, upconv, batchnorm, dropout, residual):
+	if index >= len(filters)-1:
+		n = conv_block(m, filters[index], actfun, batchnorm, 0., residual)
+		m = MaxPooling2D()(n) if maxpool else Conv2D(filters[index], 3, strides=2, padding='same')(n)
+		m = level_block(m, filters, index + 1, actfun, maxpool, upconv, batchnorm, dropout, residual)
+		if upconv:
 			m = UpSampling2D()(m)
-			m = Conv2D(dim, 2, activation=acti, padding='same')(m)
+			m = Conv2D(filters[index], 2, activation=actfun, padding='same')(m)
 		else:
-			m = Conv2DTranspose(dim, 3, strides=2, activation=acti, padding='same')(m)
+			m = Conv2DTranspose(filters[index], 3, strides=2, activation=actfun, padding='same')(m)
 		n = Concatenate()([n, m])
-		m = conv_block(n, dim, acti, bn, res)
+		m = conv_block(n, filters[index], actfun, batchnorm, 0.,residual)
 	else:
-		m = conv_block(m, dim, acti, bn, res, do)
+		m = conv_block(m, filters[index], actfun, batchnorm, dropout, residual)
 	return m
 
-def UNet(img_shape, out_ch=1, start_ch=64, depth=4, inc_rate=2., activation='relu',
-		 dropout=0.5, batchnorm=False, maxpool=True, upconv=True, residual=False):
-	i = Input(shape=img_shape)
-	o = level_block(i, start_ch, depth, inc_rate, activation, dropout, batchnorm, maxpool, upconv, residual)
-	o = Conv2D(out_ch, 1, activation='sigmoid')(o)
-	return Model(inputs=i, outputs=o)
+def unet_recursive(cfg):
+	if cfg.filter_size is None:
+		# cfg.filter_size = [64, 96, 128, 192]
+		cfg.filter_size = [64, 96, 128, 192, 256]
+		# cfg.filter_size = [96, 128, 192, 256, 384]
+		# cfg.filter_size = [64, 96, 128, 192, 256, 384]
+		# cfg.filter_size = [64, 96, 128, 192, 256, 384, 512]
+	if cfg.kernel_size is None or len(cfg.kernel_size) != 2:
+		cfg.kernel_size = [3, 3]
+
+	i = Input(shape=(cfg.row_in, cfg.col_in, cfg.dep_in))
+	o = level_block(i, cfg.filter_size, index=0, actfun=cfg.act_fun,
+					maxpool=True, upconv=True, batchnorm=True, dropout=0.5, residual=False)
+	o = Conv2D(cfg.dep_out, (1, 1), activation='sigmoid')(o)
+	return Model(inputs=i, outputs=o), traceback.extract_stack(None, 2)[1].name + "_" + str(cfg)

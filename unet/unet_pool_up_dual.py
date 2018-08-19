@@ -27,7 +27,7 @@ def get_crop_shape(target, refer):
     return (ch1, ch2), (cw1, cw2)
 
 
-def unet_pool_up_1f1(cfg):
+def unet_pool_up_dual_1f1(cfg):
     if cfg.filter_size is None:
         # cfg.filter_size = [64, 96, 128, 192]
         cfg.filter_size = [64, 96, 128, 192, 256]
@@ -55,13 +55,13 @@ def unet_pool_up_1f1(cfg):
     locals()['out0'] = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same',name='out0')(locals()['decon0'])
     return Model(locals()['pool0'], locals()['out0']),  traceback.extract_stack(None, 2)[1].name  + "_" + str(cfg)
 
-def unet_pool_up_2f1(cfg):
+def unet_pool_up_dual_2f1(cfg):
     if cfg.filter_size is None:
         # cfg.filter_size = [64, 96, 128, 192]
-        cfg.filter_size = [64, 96, 128, 192, 256]
+        # cfg.filter_size = [64, 96, 128, 192, 256]
         # cfg.filter_size = [96, 128, 192, 256, 384]
         # cfg.filter_size = [64, 96, 128, 192, 256, 384]
-        # cfg.filter_size = [64, 96, 128, 192, 256, 384, 512]
+        cfg.filter_size = [64, 96, 128, 192, 256, 320, 384, 460]
     if cfg.kernel_size is None or len(cfg.kernel_size) != 2:
         cfg.kernel_size=[3,3]
     fs = cfg.filter_size
@@ -71,20 +71,23 @@ def unet_pool_up_2f1(cfg):
     # img_input = Input((None, None, dim_in))  # r,c,3
     locals()['pool0']=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3
 
-    for i in range(len(fs)):
-        locals()['conv'+str(i)]=Conv2D(fs[i], (ks[1], ks[1]), activation=act_fun, padding='same', kernel_initializer=init, name='conv' + str(i))\
-                (Conv2D(fs[i], (ks[0], ks[0]), activation=act_fun, padding='same', kernel_initializer=init)(locals()['pool'+str(i)]))
-        if i < len(fs)-1:
-            locals()['pool' + str(i+1)] = MaxPooling2D((2, 2), strides=(2, 2), name='pool' + str(i+1))(locals()['conv'+str(i)])
+    for lyr, div in [(5,1),(9,2)]:
+        for i in range(lyr):
+            locals()[str(lyr)+'conv'+str(i)]=Conv2D(int(fs[i]/div), (ks[1], ks[1]), activation=act_fun, padding='same', kernel_initializer=init, name=str(lyr)+'conv' + str(i))\
+                    (Conv2D(int(fs[i]/div), (ks[0], ks[0]), activation=act_fun, padding='same', kernel_initializer=init)(locals()[(str(lyr) if i!=0 else '')+'pool'+str(i)]))
+            if i < lyr-1:
+                locals()[str(lyr)+'pool' + str(i+1)] = MaxPooling2D((2, 2), strides=(2, 2), name=str(lyr)+'pool' + str(i+1))(locals()[str(lyr)+'conv'+str(i)])
 
-    for i in range(len(fs)-2,-1,-1):
-        locals()['upsamp'+str(i)]=concatenate([locals()['conv'+str(i)], UpSampling2D(size=(2,2))(locals()['conv'+str(i+1)])],axis=concat_axis)\
-            if i==len(fs)-2 else concatenate([locals()['conv'+str(i)], UpSampling2D(size=(2,2))(locals()['decon'+str(i+1)])], axis=concat_axis)
-        locals()['decon'+str(i)] = Conv2D(fs[i], (ks[0], ks[0]), activation=act_fun, kernel_initializer=init, padding='same', name='decon'+str(i))(locals()['upsamp'+str(i)])
-    locals()['out0'] = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same',name='out0')(locals()['decon0'])
+        for i in range(lyr-2,-1,-1):
+            locals()[str(lyr)+'upsamp'+str(i)]=concatenate([locals()[str(lyr)+'conv'+str(i)], UpSampling2D(size=(2,2))(locals()[str(lyr)+'conv'+str(i+1)])],axis=concat_axis)\
+                if i==lyr-2 else concatenate([locals()[str(lyr)+'conv'+str(i)], UpSampling2D(size=(2,2))(locals()[str(lyr)+'decon'+str(i+1)])], axis=concat_axis)
+            locals()[str(lyr)+'decon'+str(i)] = Conv2D(int(fs[i]/div), (ks[0], ks[0]), activation=act_fun, kernel_initializer=init, padding='same', name=str(lyr)+'decon'+str(i))(locals()[str(lyr)+'upsamp'+str(i)])
+
+
+    locals()['out0'] = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same',name='out0')(concatenate([locals()['5decon0'],locals()['9decon0']],axis=concat_axis))
     return Model(locals()['pool0'], locals()['out0']),  traceback.extract_stack(None, 2)[1].name  + "_" + str(cfg)
 
-def unet_pool_up_2f2(cfg):
+def unet_pool_up_dual_2f2(cfg):
     if cfg.filter_size is None:
         # cfg.filter_size = [64, 96, 128, 192]
         cfg.filter_size = [64, 96, 128, 192, 256]

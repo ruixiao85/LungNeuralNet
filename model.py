@@ -7,14 +7,13 @@ import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
 from keras import backend as K
 from keras.backend.tensorflow_backend import _to_tensor
-from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.engine.saving import model_from_json
 from skimage.io import imsave
 from scipy import signal
 from image_gen import ImageTrainPair, ImagePredictPair, MetaInfo, ImagePredictGenerator
 from model_config import ModelConfig
 from process_image import scale_input, scale_input_reverse
-from tensorboard_train_val import TensorBoardTrainVal
 from util import mk_dir_if_nonexist
 
 SMOOTH_LOSS = 1e-5
@@ -165,7 +164,7 @@ class MyModel:
         return self.name
 
     def compile_model(self):
-        from keras.optimizers import Adam, RMSprop, SGD
+        from keras.optimizers import RMSprop
         # optimizer = SGD(lr=0.01)
         self.model.compile(
             # optimizer=Adam(self.learning_rate),

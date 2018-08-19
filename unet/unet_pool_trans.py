@@ -3,7 +3,6 @@ import traceback
 from keras.engine.training import Model
 from keras.layers.convolutional import Conv2D, UpSampling2D, Conv2DTranspose, Cropping2D, ZeroPadding2D
 from keras.layers.merge import concatenate
-from keras.layers.normalization import BatchNormalization
 from keras.layers.pooling import MaxPooling2D
 from keras.layers import Input
 from keras import backend as K
