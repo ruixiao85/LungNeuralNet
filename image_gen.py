@@ -8,47 +8,7 @@ import keras
 from cv2.cv2 import imread, resize, imwrite, INTER_AREA
 
 from model_config import ModelConfig
-from process_image import scale_input, scale_output, augment_image_pair
-
-ALL_TARGET='All'
-
-def extract_pad_image(lg_img, r0, r1, c0, c1):
-    _row, _col, _ = lg_img.shape
-    r0p, r1p, c0p, c1p = 0, 0, 0, 0
-    if r0 < 0:
-        r0p = -r0
-        r0 = 0
-    if c0 < 0:
-        c0p = -c0
-        c0 = 0
-    if r1 > _row:
-        r1p = r1 - _row
-        r1 = _row
-    if c1 > _col:
-        c1p = c1 - _col
-        c1 = _col
-    if r0p + r1p + c0p + c1p > 0:
-        return np.pad(lg_img[r0:r1, c0:c1, ...], ((r0p, r1p), (c0p, c1p), (0, 0)), 'reflect')
-    else:
-        return lg_img[r0:r1, c0:c1, ...]
-
-
-def read_resize_padding(_file, _resize, _padding):
-    if _resize < 1.0:
-        img = resize(imread(_file), (0, 0), fx=_resize, fy=_resize, interpolation=INTER_AREA)
-        # print(" Resize [%.1f] applied "%_resize,end='')
-    else:
-        img = imread(_file)
-        # print(" Resize [%.1f] not applied "%_resize,end='')
-    if _padding > 1.0:
-        row,col,_=img.shape
-        row_pad=int(_padding*row-row)
-        col_pad=int(_padding*col-col)
-        # print(" Padding [%.1f] applied "%_padding,end='')
-        return np.pad(img,((row_pad,row_pad),(col_pad,col_pad),(0,0)), 'reflect')
-    else:
-    #     print(" Padding [%.1f] not applied "%_padding,end='')
-        return img
+from process_image import scale_input, scale_output, augment_image_pair, read_resize_padding, extract_pad_image
 
 
 class MetaInfo:
@@ -235,34 +195,66 @@ class ImageSet:
                     view_coord.append(entry)  # updated to target single exported file
         return view_coord
 
-
-class ImageTrainPair:
-    def __init__(self, cfg:ModelConfig, ori_set, tgt_set):
+class ImagePair:
+    def __init__(self, cfg: ModelConfig, ori_set, tgt_set):
         # self.img_set=ori_set
-        self.img_set=copy.deepcopy(ori_set)
+        self.img_set = copy.deepcopy(ori_set)
         # self.msk_set=tgt_set
-        self.msk_set=copy.deepcopy(tgt_set)
-        self.wd=self.img_set.work_directory
-        self.dir_in=self.img_set.sub_folder
-        self.dir_out=self.msk_set.sub_folder
+        self.msk_set = copy.deepcopy(tgt_set) if tgt_set is not None else None
+        self.train = None  # set in subclass
+        self.wd = self.img_set.work_directory
+        self.dir_in = self.img_set.sub_folder
+        self.dir_out = self.msk_set.sub_folder if self.msk_set is not None else ALL_TARGET
         self.row_in, self.col_in, self.dep_in = cfg.row_in, cfg.col_in, cfg.dep_in
         self.row_out, self.col_out, self.dep_out = cfg.row_out, cfg.col_out, cfg.dep_out
         self.resize = cfg.resize
         self.padding = cfg.padding
-        self.separate=cfg.separate
-        self.valid_split=cfg.valid_split
-        self.batch_size=cfg.batch_size
-        self.max_train_step=cfg.max_train_step
-        self.max_vali_step=cfg.max_vali_step
+        self.separate = cfg.separate
+        self.valid_split = cfg.valid_split
+        self.batch_size = cfg.batch_size
+        self.max_train_step = cfg.max_train_step
+        self.max_vali_step = cfg.max_vali_step
         self.img_aug = cfg.img_aug
         self.shuffle = cfg.shuffle
         self.mask_color = cfg.mask_color
+        if self.msk_set is not None:
+            images = list(set(self.img_set.images).intersection(self.msk_set.images))  # match image file
+            self.img_set.size_folder_update(images, self.row_in, self.col_in, self.dir_in_ex())
+            self.msk_set.size_folder_update(images, self.row_out, self.col_out, self.dir_out_ex())
+            self.view_coord = list(set(self.img_set.view_coord).intersection(self.msk_set.view_coord))
+        else:
+            self.img_set.size_folder_update(None, self.row_in, self.col_in, self.dir_in_ex())
+            self.view_coord = self.img_set.view_coord
 
-        images =list(set(self.img_set.images).intersection(self.msk_set.images)) # match image file
-        self.img_set.size_folder_update(images, self.row_in, self.col_in, self.dir_in_ex())
-        self.msk_set.size_folder_update(images, self.row_out, self.col_out, self.dir_out_ex())
+    ALL_TARGET='All'
+    def dir_in_ex(self):
+        return "%s-%s_%.1f_%dx%d" % (self.dir_in, self.ALL_TARGET, self.resize, self.row_in, self.col_in) if self.separate else self.dir_in
 
-        self.view_coord=list(set(self.img_set.view_coord).intersection(self.msk_set.view_coord))
+    def dir_out_ex(self):
+        return "%s-%s_%.1f_%dx%d" % (self.dir_out, self.dir_in, self.resize, self.row_out, self.col_out) if self.separate else self.dir_out
+
+    @staticmethod
+    def filter_match_pair(set1: ImageSet, set2: ImageSet):
+        shared_names = set(set1.images).intersection(set2.images)
+        size_map = {}  # file:(row,col)
+        if not set1.view_coord:
+            set1.single_image_coord()
+        for mi in set1.view_coord:
+            if mi.file_name in shared_names:
+                size_map[mi.file_name] = (mi.ori_row, mi.or_col)
+        if not set2.view_coord:
+            set2.single_image_coord()
+        for mi in set2.view_coord:
+            if mi.file_name in size_map.keys():
+                if size_map[mi.file_name] != (mi.ori_row, mi.or_col):
+                    print("size mismatch for %s" % mi.file_name)
+                    shared_names.remove(mi.file_name)
+        return list(shared_names)
+
+class ImagePairTrain(ImagePair):
+    def __init__(self, cfg: ModelConfig, ori_set, tgt_set):
+        super().__init__(cfg, ori_set, tgt_set)
+        self.train=True
 
     def get_tr_val_generator(self):
         tr_list, val_list=[], [] # list view_coords, can be from slices
@@ -287,76 +279,24 @@ class ImageTrainPair:
         print(tr_image)
         print("Validation Images:")
         print(val_image)
-        return ImageTrainGenerator(self, tr_list), ImageTrainGenerator(self, val_list, aug=False)
+        return ImageGenerator(self, tr_list), ImageGenerator(self, val_list, aug=False)
 
-    def dir_in_ex(self):
-        return "%s-%s_%.1f_%dx%d" % (self.dir_in, ALL_TARGET, self.resize, self.row_in, self.col_in) if self.separate else self.dir_in
-
-    def dir_out_ex(self):
-        return "%s-%s_%.1f_%dx%d" % (self.dir_out, self.dir_in, self.resize, self.row_out, self.col_out) if self.separate else self.dir_out
-
-    @staticmethod
-    def filter_match_pair(set1: ImageSet, set2: ImageSet):
-        shared_names = set(set1.images).intersection(set2.images)
-        size_map = {}  # file:(row,col)
-        if not set1.view_coord:
-            set1.single_image_coord()
-        for mi in set1.view_coord:
-            if mi.file_name in shared_names:
-                size_map[mi.file_name] = (mi.ori_row, mi.or_col)
-        if not set2.view_coord:
-            set2.single_image_coord()
-        for mi in set2.view_coord:
-            if mi.file_name in size_map.keys():
-                if size_map[mi.file_name] != (mi.ori_row, mi.or_col):
-                    print("size mismatch for %s" % mi.file_name)
-                    shared_names.remove(mi.file_name)
-        return list(shared_names)
-
-
-class ImagePredictPair:
-    def __init__(self, cfg: ModelConfig, ori_set: ImageSet, tgt=None):
-        self.img_set = ori_set  # reference
-        self.wd = ori_set.work_directory
-        self.dir_in = ori_set.sub_folder
-        self.dir_out = tgt if tgt is not None else ALL_TARGET
-        self.resize = cfg.resize
-        self.padding = cfg.padding
-        self.row_in, self.col_in, self.dep_in = cfg.row_in, cfg.col_in, cfg.dep_in
-        self.row_out, self.col_out, self.dep_out = cfg.row_out, cfg.col_out, cfg.dep_out
-        self.separate = cfg.separate
-        self.batch_size=cfg.batch_size
-
-        self.img_set.size_folder_update(None, self.row_in, self.col_in, self.dir_in_ex())
-        self.view_coord = self.img_set.view_coord
+class ImagePairPredict(ImagePair):
+    def __init__(self, cfg: ModelConfig, ori_set, tgt_set):
+        super().__init__(cfg, ori_set, tgt_set)
+        self.train=False
 
     def change_target(self, tgt):
         self.dir_out=tgt
 
     def get_prd_generator(self):
-        return ImagePredictGenerator(self)
+        return ImageGenerator(self, aug=False)
 
-    def get_prd_generators(self):
-        if self.separate:
-            lpg={}
-            for vc in self.view_coord:
-                existing=lpg[vc.image_name]
-                sublist=existing if existing is not None else []
-                sublist.append(vc)
-                lpg[vc.image_name]=sublist
-            return [ImagePredictGenerator(self,l) for l in lpg.values()]
-        else:
-            return [ImagePredictGenerator(self)]
 
-    def dir_in_ex(self):
-        return "%s-%s_%.1f_%dx%d" % (self.dir_in, ALL_TARGET, self.resize, self.row_in, self.col_in) if self.separate else self.dir_in
-
-    def dir_out_ex(self):
-        return "%s-%s_%.1f_%dx%d" % (self.dir_out, self.dir_in, self.resize, self.row_out, self.col_out) if self.separate else self.dir_out
-
-class ImageTrainGenerator(keras.utils.Sequence):
-    def __init__(self, pair:ImageTrainPair, view_coord, aug=None):
-        self.view_coord=view_coord
+class ImageGenerator(keras.utils.Sequence):
+    def __init__(self, pair:ImagePair, view_coord, aug=None):
+        self.view_coord=view_coord if view_coord is not None else pair.view_coord
+        self.train = pair.train
         self.indexes = np.arange(len(view_coord))
         self.wd=pair.wd
         self.dir_in, self.dir_out=pair.dir_in_ex(), pair.dir_out_ex()
@@ -366,7 +306,7 @@ class ImageTrainGenerator(keras.utils.Sequence):
         self.padding=pair.padding
         self.separate=pair.separate
         self.batch_size=pair.batch_size
-        self.img_aug=pair.img_aug if aug is None else aug
+        self.img_aug=(pair.train and pair.img_aug) if aug is None else aug
         self.shuffle=pair.shuffle
         self.mask_color=pair.mask_color
         self.row_in, self.col_in, self.dep_in=pair.row_in, pair.col_in, pair.dep_in
@@ -378,45 +318,22 @@ class ImageTrainGenerator(keras.utils.Sequence):
     def __getitem__(self, index):  # Generate one batch of data
         indexes = self.indexes[index * self.batch_size:(index + 1) * self.batch_size]
         # print(" getting index %d with %d batch size"%(index,self.batch_size))
-        _img = np.zeros((self.batch_size, self.row_in, self.col_in, self.dep_in), dtype=np.uint8)
-        _tgt = np.zeros((self.batch_size, self.row_out, self.col_out, 3), dtype=np.uint8)
-        for i, vc in enumerate([self.view_coord[k] for k in indexes]):
-            _img[i, ...] = vc.get_image(self.wd_dir_in,self.separate,self.resize,self.padding)
-            _tgt[i, ...] = vc.get_image(self.wd_dir_out,self.separate,self.resize,self.padding)
-        if self.img_aug:
-            _img, _tgt = augment_image_pair(_img, _tgt, _level=random.randint(0, 4))  # integer N: a <= N <= b.
-        return scale_input(_img), scale_output(_tgt, self.mask_color)
+        if self.train:
+            _img = np.zeros((self.batch_size, self.row_in, self.col_in, self.dep_in), dtype=np.uint8)
+            _tgt = np.zeros((self.batch_size, self.row_out, self.col_out, 3), dtype=np.uint8)
+            for i, vc in enumerate([self.view_coord[k] for k in indexes]):
+                _img[i, ...] = vc.get_image(self.wd_dir_in,self.separate,self.resize,self.padding)
+                _tgt[i, ...] = vc.get_image(self.wd_dir_out,self.separate,self.resize,self.padding)
+            if self.img_aug:
+                _img, _tgt = augment_image_pair(_img, _tgt, _level=random.randint(0, 4))  # integer N: a <= N <= b.
+            return scale_input(_img), scale_output(_tgt, self.mask_color)
+        else:
+            _img = np.zeros((self.batch_size, self.row_in, self.col_in, self.dep_in), dtype=np.uint8)
+            for i, vc in enumerate([self.view_coord[k] for k in indexes]):
+                _img[i, ...] = vc.get_image(self.wd_dir_in, self.separate, self.resize, self.padding)
+            return scale_input(_img), None
 
     def on_epoch_end(self):  # Updates indexes after each epoch
         self.indexes = np.arange(len(self.view_coord))
-        if self.shuffle:
+        if self.train and self.shuffle:
             np.random.shuffle(self.indexes)
-
-class ImagePredictGenerator(keras.utils.Sequence):
-    def __init__(self, pair:ImagePredictPair, view_coord=None):
-        self.wd=pair.wd
-        self.dir_in, self.dir_out=pair.dir_in_ex(), pair.dir_out_ex()
-        self.wd_dir_in=os.path.join(self.wd, self.dir_in)
-        self.resize = pair.resize
-        self.padding = pair.padding
-        self.batch_size=pair.batch_size
-        self.row_in, self.col_in, self.dep_in=pair.row_in, pair.col_in, pair.dep_in
-        # self.row_out, self.col_out, self.dep_out=pair.row_out, pair.col_out, pair.dep_out
-        self.separate = pair.separate
-        self.view_coord=view_coord if view_coord is not None else pair.view_coord
-        self.indexes = np.arange(len(pair.view_coord))
-
-    def __len__(self):  # Denotes the number of batches per epoch
-        return int(np.floor(len(self.view_coord) / self.batch_size))
-
-    def __getitem__(self, index):  # Generate one batch of data
-        indexes = self.indexes[index * self.batch_size:(index + 1) * self.batch_size]
-        # print(" getting index %d with %d batch size"%(index,self.batch_size))
-        _img = np.zeros((self.batch_size, self.row_in, self.col_in, self.dep_in), dtype=np.uint8)
-        for i, vc in enumerate([self.view_coord[k] for k in indexes]):
-            _img[i, ...] = vc.get_image(self.wd_dir_in,self.separate,self.resize,self.padding)
-        return scale_input(_img),None
-
-    def on_epoch_end(self):  # Updates indexes after each epoch
-        self.indexes = np.arange(len(self.view_coord))
-

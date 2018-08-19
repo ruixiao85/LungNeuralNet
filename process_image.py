@@ -4,6 +4,44 @@ from cv2 import cv2
 from imgaug import augmenters as iaa
 
 
+def read_resize_padding(_file, _resize, _padding):
+    if _resize < 1.0:
+        img = cv2.resize(cv2.imread(_file), (0, 0), fx=_resize, fy=_resize, interpolation=INTER_AREA)
+        # print(" Resize [%.1f] applied "%_resize,end='')
+    else:
+        img =  cv2.imread(_file)
+        # print(" Resize [%.1f] not applied "%_resize,end='')
+    if _padding > 1.0:
+        row,col,_=img.shape
+        row_pad=int(_padding*row-row)
+        col_pad=int(_padding*col-col)
+        # print(" Padding [%.1f] applied "%_padding,end='')
+        return np.pad(img,((row_pad,row_pad),(col_pad,col_pad),(0,0)), 'reflect')
+    else:
+    #     print(" Padding [%.1f] not applied "%_padding,end='')
+        return img
+
+
+def extract_pad_image(lg_img, r0, r1, c0, c1):
+    _row, _col, _ = lg_img.shape
+    r0p, r1p, c0p, c1p = 0, 0, 0, 0
+    if r0 < 0:
+        r0p = -r0
+        r0 = 0
+    if c0 < 0:
+        c0p = -c0
+        c0 = 0
+    if r1 > _row:
+        r1p = r1 - _row
+        r1 = _row
+    if c1 > _col:
+        c1p = c1 - _col
+        c1 = _col
+    if r0p + r1p + c0p + c1p > 0:
+        return np.pad(lg_img[r0:r1, c0:c1, ...], ((r0p, r1p), (c0p, c1p), (0, 0)), 'reflect')
+    else:
+        return lg_img[r0:r1, c0:c1, ...]
+
 def scale_input(_array):
     return _array.astype(np.float32) / 127.5 - 1.0
     # mean = np.mean(_array)

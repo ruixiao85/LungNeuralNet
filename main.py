@@ -99,7 +99,7 @@ if __name__ == '__main__':
                     ori_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), origin, train=True, filter_type='rgb')
                     for target in targets:
                         tgt_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), target, train=True, filter_type='rgb')  # filter_type=cfg.mask_color
-                        pair=ImageTrainPair(cfg, ori_set, tgt_set)
+                        pair=ImagePairTrain(cfg, ori_set, tgt_set)
                         model.train(pair)
                 ### set softmax ###
 
@@ -110,7 +110,7 @@ if __name__ == '__main__':
                 xls_file = "Result_%s_%s.xlsx" % (args.pred_dir, model.name)
                 for origin in origins:
                     prd_set=ImageSet(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, train=False)
-                    pair=ImagePredictPair(cfg, prd_set)
+                    pair=ImagePairPredict(cfg, prd_set)
                     res_ind = np.zeros((len(prd_set.images), len(targets)), dtype=np.uint32)
                     res_grp = np.zeros((len(prd_set.groups), len(targets)), dtype=np.uint32)
                     for i, target in enumerate(targets):

@@ -11,7 +11,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.engine.saving import model_from_json
 from skimage.io import imsave
 from scipy import signal
-from image_gen import ImageTrainPair, ImagePredictPair, MetaInfo, ImagePredictGenerator
+from image_gen import ImagePairTrain, ImagePairPredict, MetaInfo, ImagePredictGenerator
 from model_config import ModelConfig
 from process_image import scale_input, scale_input_reverse
 from util import mk_dir_if_nonexist
@@ -181,7 +181,7 @@ class MyModel:
     # def get_export_name(self, pair):
     #     return "%s-%s_%s" % (pair.dir_out, pair.dir_in, self.name)
 
-    def train(self, pair:ImageTrainPair):
+    def train(self, pair:ImagePairTrain):
         print('Generate iterable data set...')
         tr, val=pair.get_tr_val_generator()
 
@@ -216,7 +216,7 @@ class MyModel:
             df['repeat']=r+1
             df.to_csv(export_name + ".csv", mode="a", header=(not os.path.exists(export_name + ".csv")))
 
-    def predict(self, pair:ImagePredictPair):
+    def predict(self, pair:ImagePairPredict):
         i_sum=pair.row_out*pair.col_out
         res_i=np.zeros(len(pair.img_set.images),dtype=np.uint32)
         res_g=np.zeros(len(pair.img_set.groups),dtype=np.uint32)
