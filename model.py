@@ -11,7 +11,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.engine.saving import model_from_json
 from skimage.io import imsave
 from scipy import signal
-from image_gen import ImagePairTrain, ImagePairPredict, MetaInfo, ImagePredictGenerator
+from image_gen import ImagePairTrain, ImagePairPredict, MetaInfo, ImageGenerator
 from model_config import ModelConfig
 from process_image import scale_input, scale_input_reverse
 from util import mk_dir_if_nonexist
@@ -220,7 +220,7 @@ class MyModel:
         i_sum=pair.row_out*pair.col_out
         res_i=np.zeros(len(pair.img_set.images),dtype=np.uint32)
         res_g=np.zeros(len(pair.img_set.groups),dtype=np.uint32)
-        prd:ImagePredictGenerator = pair.get_prd_generator()
+        prd:ImageGenerator = pair.get_prd_generator()
 
         print('Load weights and predicting ...')
         export_name = "%s_%s" % (prd.dir_out, self.name)

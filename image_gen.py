@@ -196,15 +196,16 @@ class ImageSet:
         return view_coord
 
 class ImagePair:
-    def __init__(self, cfg: ModelConfig, ori_set, tgt_set):
-        # self.img_set=ori_set
-        self.img_set = copy.deepcopy(ori_set)
-        # self.msk_set=tgt_set
-        self.msk_set = copy.deepcopy(tgt_set) if tgt_set is not None else None
-        self.train = None  # set in subclass
+    ALL_TARGET='All'
+    def __init__(self, cfg: ModelConfig, ori_set, tgt_set=None):
+        self.img_set=ori_set
+        # self.img_set = copy.deepcopy(ori_set)
+        self.msk_set=tgt_set if tgt_set is not None else None
+        # self.msk_set = copy.deepcopy(tgt_set) if tgt_set is not None else None
+        self.train = self.img_set.train
         self.wd = self.img_set.work_directory
         self.dir_in = self.img_set.sub_folder
-        self.dir_out = self.msk_set.sub_folder if self.msk_set is not None else ALL_TARGET
+        self.dir_out = self.msk_set.sub_folder if self.msk_set is not None else self.ALL_TARGET
         self.row_in, self.col_in, self.dep_in = cfg.row_in, cfg.col_in, cfg.dep_in
         self.row_out, self.col_out, self.dep_out = cfg.row_out, cfg.col_out, cfg.dep_out
         self.resize = cfg.resize
@@ -226,7 +227,6 @@ class ImagePair:
             self.img_set.size_folder_update(None, self.row_in, self.col_in, self.dir_in_ex())
             self.view_coord = self.img_set.view_coord
 
-    ALL_TARGET='All'
     def dir_in_ex(self):
         return "%s-%s_%.1f_%dx%d" % (self.dir_in, self.ALL_TARGET, self.resize, self.row_in, self.col_in) if self.separate else self.dir_in
 
@@ -252,10 +252,6 @@ class ImagePair:
         return list(shared_names)
 
 class ImagePairTrain(ImagePair):
-    def __init__(self, cfg: ModelConfig, ori_set, tgt_set):
-        super().__init__(cfg, ori_set, tgt_set)
-        self.train=True
-
     def get_tr_val_generator(self):
         tr_list, val_list=[], [] # list view_coords, can be from slices
         tr_image, val_image=set(), set() # set whole images
@@ -282,10 +278,6 @@ class ImagePairTrain(ImagePair):
         return ImageGenerator(self, tr_list), ImageGenerator(self, val_list, aug=False)
 
 class ImagePairPredict(ImagePair):
-    def __init__(self, cfg: ModelConfig, ori_set, tgt_set):
-        super().__init__(cfg, ori_set, tgt_set)
-        self.train=False
-
     def change_target(self, tgt):
         self.dir_out=tgt
 
@@ -294,10 +286,10 @@ class ImagePairPredict(ImagePair):
 
 
 class ImageGenerator(keras.utils.Sequence):
-    def __init__(self, pair:ImagePair, view_coord, aug=None):
+    def __init__(self, pair:ImagePair, view_coord=None, aug=None):
         self.view_coord=view_coord if view_coord is not None else pair.view_coord
         self.train = pair.train
-        self.indexes = np.arange(len(view_coord))
+        self.indexes = np.arange(len(self.view_coord))
         self.wd=pair.wd
         self.dir_in, self.dir_out=pair.dir_in_ex(), pair.dir_out_ex()
         self.wd_dir_in = os.path.join(self.wd, self.dir_in)

@@ -13,7 +13,7 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--pred', dest='pred_dir', action='store',
                         default='pred', help='predict sub-directory')
     parser.add_argument('-m', '--mode', dest='mode', action='store',
-                        default='both', help='mode: train pred both')
+                        default='pboth', help='mode: train pred both')
     parser.add_argument('-c', '--width', dest='width', type=int,
                         default='512', help='width/columns')
     parser.add_argument('-r', '--height', dest='height', type=int,
@@ -73,7 +73,7 @@ if __name__ == '__main__':
                     ori_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), origin, train=True, filter_type='rgb')
                     for target in targets:
                         tgt_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), target, train=True, filter_type='rgb')  # filter_type=cfg.mask_color
-                        pair=ImageTrainPair(cfg, ori_set, tgt_set)
+                        pair=ImagePairTrain(cfg, ori_set, tgt_set)
                         model.train(pair)
                 ### set softmax ###
 
@@ -84,7 +84,7 @@ if __name__ == '__main__':
                 xls_file = "Result_%s_%s.xlsx" % (args.pred_dir, model.name)
                 for origin in origins:
                     prd_set=ImageSet(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, train=False)
-                    pair=ImagePredictPair(cfg, prd_set)
+                    pair=ImagePairPredict(cfg, prd_set)
                     res_ind = np.zeros((len(prd_set.images), len(targets)), dtype=np.uint32)
                     res_grp = np.zeros((len(prd_set.groups), len(targets)), dtype=np.uint32)
                     for i, target in enumerate(targets):
