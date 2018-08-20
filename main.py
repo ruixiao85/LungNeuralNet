@@ -1,12 +1,12 @@
 import argparse
 
-from image_gen import ImageSet
+from image_gen import ImageSet, ImagePairMulti
 from util import to_excel_sheet
 from model import *
 
 if __name__ == '__main__':
     # -d "D:\Cel files\2018-07.13 Adam Brenderia 2X LPS CGS" -t "071318 Cleaned 24H post cgs" -p "2018-07.20 Kyle MMP13 Smoke Flu Zander 2X" -o "Paren,InflamMild,InflamSevere"
-    # -d "I:/NonParen" -t "Rui Xiao 2017-09-07 (14332)(27)" -p "Rui Xiao 2017-12-05 (15634)(9)" -o "Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,SmallBloodVessel" -m t
+    # -d "I:/NonParen" -t "Rui Xiao 2017-09-07 (14332)(27)" -p "Rui Xiao 2017-12-05 (15634)(9)" -o "Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,RespiratoryAirway,SmallBloodVessel" -m a
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('-d', '--dir', dest='dir', action='store',
                         default='', help='work directory, empty->current dir')
@@ -56,13 +56,19 @@ if __name__ == '__main__':
         # DenseNet,
     ]
     configs = [
-        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 128, 192, 192, 256, 256, 384], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 128, 192, 192, 256, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 128, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 128, 192, 192, 256, 256, 384], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 128, 192, 192, 256, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 128, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+
+        # ModelConfig((512, 512, 3), (512, 512,6), filter_size=[64, 128, 256, 512, 768], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='softmax', loss_fun='categorical_crossentropy'),
+        # ModelConfig((512, 512, 3), (512, 512,6), filter_size=[64, 128, 256, 256, 512, 512, 768, 768], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='softmax', loss_fun='categorical_crossentropy'),
+        # ModelConfig((768, 768, 3), (768, 768, 6), filter_size=[64, 128, 256, 512, 768], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='softmax', loss_fun='categorical_crossentropy'),
+        # ModelConfig((768, 768, 3), (768, 768, 6), filter_size=[64, 96, 128, 192, 256, 384, 512, 512], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='softmax', loss_fun='categorical_crossentropy'),
+        ModelConfig((768, 768, 3), (768, 768, 6), filter_size=[32, 64, 96, 128, 192, 256, 384, 512], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='softmax', loss_fun='categorical_crossentropy'),
 
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256, 256, 384], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
@@ -95,31 +101,54 @@ if __name__ == '__main__':
                 model= MyModel(mod, cfg, save=False)
                 print("Network specifications: " + model.name.replace("_", " "))
                 ### pair sigmoid ###
+                # for origin in origins:
+                #     ori_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), origin, train=True, filter_type='rgb')
+                #     for target in targets:
+                #         tgt_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), target, train=True, filter_type='rgb')  # filter_type=cfg.mask_color
+                #         pair=ImagePairTrain(cfg, ori_set, tgt_set)
+                #         tr, val = pair.get_tr_val_generator()
+                #         model.train(cfg, tr, val)
+                ### set softmax ###
                 for origin in origins:
                     ori_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), origin, train=True, filter_type='rgb')
+                    tgt_set=[]
                     for target in targets:
-                        tgt_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), target, train=True, filter_type='rgb')  # filter_type=cfg.mask_color
-                        pair=ImagePairTrain(cfg, ori_set, tgt_set)
-                        model.train(pair)
-                ### set softmax ###
+                        tgt_set.append(ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), target, train=True, filter_type='rgb'))  # filter_type=cfg.mask_color
+                    multi_set=ImagePairMulti(cfg, ori_set, tgt_set)
+                    tr, val = multi_set.get_tr_val_generator()
+                    model.train(cfg, tr, val)
 
     if mode != 't':
         for cfg in configs:
             for mod in models:
                 model= MyModel(mod, cfg, save=False)
                 xls_file = "Result_%s_%s.xlsx" % (args.pred_dir, model.name)
+                ## sigmoid
+                # for origin in origins:
+                #     prd_set=ImageSet(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, train=False)
+                #     pair=ImagePairPredict(cfg, prd_set)
+                #     res_ind = np.zeros((len(prd_set.images), len(targets)), dtype=np.uint32)
+                #     res_grp = np.zeros((len(prd_set.groups), len(targets)), dtype=np.uint32)
+                #     for i, target in enumerate(targets):
+                #         pair.change_target(target)
+                #         res_ind[..., i], res_grp[...,i]=model.predict(pair)
+                #     df=pd.DataFrame(res_ind, index=prd_set.images, columns=targets)
+                #     to_excel_sheet(df, xls_file, origin) # per slice
+                #     if cfg.separate:
+                #         df=pd.DataFrame(res_grp, index=prd_set.groups, columns=targets)
+                #         to_excel_sheet(df, xls_file, origin + "_sum")
+                #         # to_excel_sheet(df.groupby([vc.image_file for vc in prd_set.view_coord]).sum(), xls_file, origin + "_sum") # simple sum
+
+                ## softmax
                 for origin in origins:
                     prd_set=ImageSet(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, train=False)
-                    pair=ImagePairPredict(cfg, prd_set)
+                    multi_set=ImagePairMulti(cfg, prd_set, ','.join(targets))
                     res_ind = np.zeros((len(prd_set.images), len(targets)), dtype=np.uint32)
                     res_grp = np.zeros((len(prd_set.groups), len(targets)), dtype=np.uint32)
-                    for i, target in enumerate(targets):
-                        pair.change_target(target)
-                        res_ind[..., i], res_grp[...,i]=model.predict(pair)
+                    res_ind, res_grp =model.predict(multi_set.get_prd_generator())
                     df=pd.DataFrame(res_ind, index=prd_set.images, columns=targets)
                     to_excel_sheet(df, xls_file, origin) # per slice
                     if cfg.separate:
                         df=pd.DataFrame(res_grp, index=prd_set.groups, columns=targets)
                         to_excel_sheet(df, xls_file, origin + "_sum")
                         # to_excel_sheet(df.groupby([vc.image_file for vc in prd_set.view_coord]).sum(), xls_file, origin + "_sum") # simple sum
-

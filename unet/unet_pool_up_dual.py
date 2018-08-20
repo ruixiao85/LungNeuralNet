@@ -70,8 +70,10 @@ def unet_pool_up_dual_2f1(cfg):
     dim_in, dim_out=cfg.dep_in, cfg.dep_out
     # img_input = Input((None, None, dim_in))  # r,c,3
     locals()['pool0']=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3
+    long=len(cfg.filter_size)
+    short=int(long/2)
 
-    for lyr, div in [(5,1),(9,2)]:
+    for lyr, div in [(short,1),(long,1)]:
         for i in range(lyr):
             locals()[str(lyr)+'conv'+str(i)]=Conv2D(int(fs[i]/div), (ks[1], ks[1]), activation=act_fun, padding='same', kernel_initializer=init, name=str(lyr)+'conv' + str(i))\
                     (Conv2D(int(fs[i]/div), (ks[0], ks[0]), activation=act_fun, padding='same', kernel_initializer=init)(locals()[(str(lyr) if i!=0 else '')+'pool'+str(i)]))
@@ -84,7 +86,8 @@ def unet_pool_up_dual_2f1(cfg):
             locals()[str(lyr)+'decon'+str(i)] = Conv2D(int(fs[i]/div), (ks[0], ks[0]), activation=act_fun, kernel_initializer=init, padding='same', name=str(lyr)+'decon'+str(i))(locals()[str(lyr)+'upsamp'+str(i)])
 
 
-    locals()['out0'] = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same',name='out0')(concatenate([locals()['5decon0'],locals()['9decon0']],axis=concat_axis))
+    locals()['out0'] = Conv2D(dim_out, (1, 1), activation=out_fun, padding='same', name='out0')\
+        (Conv2D(dim_out, (1, 1), activation=out_fun, padding='same')(concatenate([locals()[str(short)+'decon0'],locals()[str(long)+'decon0']],axis=concat_axis)))
     return Model(locals()['pool0'], locals()['out0']),  traceback.extract_stack(None, 2)[1].name  + "_" + str(cfg)
 
 def unet_pool_up_dual_2f2(cfg):

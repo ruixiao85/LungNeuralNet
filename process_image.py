@@ -6,7 +6,7 @@ from imgaug import augmenters as iaa
 
 def read_resize_padding(_file, _resize, _padding):
     if _resize < 1.0:
-        img = cv2.resize(cv2.imread(_file), (0, 0), fx=_resize, fy=_resize, interpolation=INTER_AREA)
+        img = cv2.resize(cv2.imread(_file), (0, 0), fx=_resize, fy=_resize, interpolation=cv2.INTER_AREA)
         # print(" Resize [%.1f] applied "%_resize,end='')
     else:
         img =  cv2.imread(_file)
@@ -54,17 +54,8 @@ def scale_input(_array):
 def scale_input_reverse(_array):
     return (_array.astype(np.float32) + 1.0) * 127.5
 
-def scale_output(_array, _color):
-    _array=_array.astype(np.float32) / 255.0
-    code=_color[0].lower()
-    if code=='g':  # green
-        # cv2.imwrite("testd_2f_-0.3.jpg",np.clip(2.0*(_array[..., 1] - _array[..., 0]-0.3), 0, 1)[..., np.newaxis][0]*255.)
-        # cv2.imwrite("testd_2f_-0.4.jpg",np.clip(2.0*(_array[..., 1] - _array[..., 0]-0.4), 0, 1)[..., np.newaxis][0]*255.)
-        # cv2.imwrite("testd_2f_-0.5.jpg",np.clip(2.0*(_array[..., 1] - _array[..., 0]-0.5), 0, 1)[..., np.newaxis][0]*255.)
-        # cv2.imwrite("testd_2f_-0.6.jpg",np.clip(2.0*(_array[..., 1] - _array[..., 0]-0.6), 0, 1)[..., np.newaxis][0]*255.)
-        return np.clip(2.0*(_array[..., 1] - _array[..., 0]-0.4), 0, 1)[..., np.newaxis]
-    else:  # default to white/black from blue channel
-        return _array[...,2][...,np.newaxis]  # blue channel to only channel
+def scale_output(_array):
+    return _array.astype(np.float32) / 255.0
 
 def augment_image_pair(_img, _tgt, _level=1.0):
     seg_both_1 = iaa.Sequential([

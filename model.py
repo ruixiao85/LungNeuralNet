@@ -5,27 +5,44 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
-from keras import backend as K
+from keras import backend as K, metrics
 from keras.backend.tensorflow_backend import _to_tensor
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.engine.saving import model_from_json
+from keras.layers import Activation
+from tensorflow.python.keras.activations import softmax
+from tensorflow.python.ops.image_ops_impl import central_crop
 from skimage.io import imsave
 from scipy import signal
-from image_gen import ImagePairTrain, ImagePairPredict, MetaInfo, ImageGenerator
+from image_gen import ImagePairTrain, ImagePairPredict, MetaInfo, ImageGenerator, ImageGeneratorMulti
 from model_config import ModelConfig
 from process_image import scale_input, scale_input_reverse
 from util import mk_dir_if_nonexist
 
 SMOOTH_LOSS = 1e-5
+# def depth_softmax(matrix, is_tensor=True): # increase temperature to make the softmax more sure of itself
+#     temp = 5.0
+#     if is_tensor:
+#         exp_matrix = K.exp(matrix * temp)
+#         softmax_matrix = exp_matrix / K.sum(exp_matrix, axis=2, keepdims=True)
+#     else:
+#         exp_matrix = np.exp(matrix * temp)
+#         softmax_matrix = exp_matrix / np.sum(exp_matrix, axis=2, keepdims=True)
+#     return softmax_matrix
+# def depth_softmax(matrix):
+#     sigmoid = lambda x: 1 / (1 + K.exp(-x))
+#     sigmoided_matrix = sigmoid(matrix)
+#     softmax_matrix = sigmoided_matrix / K.sum(sigmoided_matrix, axis=0)
+#     return softmax_matrix
 
-def gkern(size,sigma):
+def g_kern(size, sigma):
     gkern1d = signal.gaussian(size, std=sigma).reshape(size, 1)
     gkern2d = np.outer(gkern1d, gkern1d)
     return gkern2d
 
-def g_kern(row, col):
+def g_kern_rect(row, col, rel_sig=0.5):
     l=max(row,col)
-    mat=gkern(l,int(l/2))
+    mat=g_kern(l, int(rel_sig * l))
     r0, c0=int(0.5*(l-row)),int(0.5*(l-col))
     return mat[r0:r0+row,c0:c0+col]
 
@@ -48,33 +65,33 @@ def dice_d(y_true, y_pred):
 def dice(y_true, y_pred):
     return dice_d(y_true, K.round(K.clip(y_pred, 0, 1)))  # integer call
 
-from tensorflow.python.ops.image_ops_impl import central_crop
-def dice_90(y_true, y_pred):
-    return dice(central_crop(y_true,0.9), central_crop(y_pred,0.9))
-
 def dice_80(y_true, y_pred):
     return dice(central_crop(y_true,0.8), central_crop(y_pred,0.8))
-
-def dice_70(y_true, y_pred):
-    return dice(central_crop(y_true,0.7), central_crop(y_pred,0.7))
-
 def dice_60(y_true, y_pred):
     return dice(central_crop(y_true,0.6), central_crop(y_pred,0.6))
-
-def dice_50(y_true, y_pred):
-    return dice(central_crop(y_true,0.5), central_crop(y_pred,0.5))
-
 def dice_40(y_true, y_pred):
     return dice(central_crop(y_true,0.4), central_crop(y_pred,0.4))
-
-def dice_30(y_true, y_pred):
-    return dice(central_crop(y_true,0.3), central_crop(y_pred,0.3))
-
 def dice_20(y_true, y_pred):
     return dice(central_crop(y_true,0.2), central_crop(y_pred,0.2))
 
-def dice_10(y_true, y_pred):
-    return dice(central_crop(y_true,0.1), central_crop(y_pred,0.1))
+def top5_acc(y_true, y_pred, k=5):  # top_N_categorical_accuracy
+    return K.mean(K.in_top_k(y_pred, K.argmax(y_true, axis=-1), k), axis=-1)
+def spar_acc(y_true, y_pred):  # sparse_categorical_accuracy
+    return K.cast(K.equal(K.max(y_true, axis=-1), K.cast(K.argmax(y_pred, axis=-1), K.floatx())),
+                  K.floatx())
+def acc(y_true, y_pred):  # default 'acc'
+    return K.cast(K.equal(K.argmax(y_true, axis=-1), K.argmax(y_pred, axis=-1)),
+                  K.floatx())
+def acc_100(y_true, y_pred):
+    return acc(y_true, y_pred)
+def acc_80(y_true, y_pred):
+    return acc(central_crop(y_true,0.8), central_crop(y_pred,0.8))
+def acc_60(y_true, y_pred):
+    return acc(central_crop(y_true,0.6), central_crop(y_pred,0.6))
+def acc_40(y_true, y_pred):
+    return acc(central_crop(y_true,0.4), central_crop(y_pred,0.4))
+def acc_20(y_true, y_pred):
+    return acc(central_crop(y_true,0.2), central_crop(y_pred,0.2))
 
 def loss_bce(y_true, y_pred):  # bootstrapped binary cross entropy
     target_tensor = y_true
@@ -139,7 +156,6 @@ class MyModel:
         self.continue_train = cfg.continue_train
         self.num_rep = cfg.num_rep
         self.num_epoch = cfg.num_epoch
-        self.model, self.name=None, None
         self.model, self.name=func(cfg)
         self.learning_rate=cfg.learning_rate
         self.loss_fun=cfg.loss_fun
@@ -164,13 +180,13 @@ class MyModel:
         return self.name
 
     def compile_model(self):
-        from keras.optimizers import RMSprop
-        # optimizer = SGD(lr=0.01)
+        from keras.optimizers import Adam, RMSprop, SGD
         self.model.compile(
-            # optimizer=Adam(self.learning_rate),
-            optimizer=RMSprop(self.learning_rate,decay=1e-6),
-            # optimizer=SGD(self.learning_rate),
-           loss=self.loss_fun, metrics=[jac, dice, dice_90, dice_80, dice_70, dice_60, dice_50, dice_40, dice_30, dice_20, dice_10])
+            optimizer=Adam(self.learning_rate),
+            # SGD(lr=0.01)
+            # RMSprop(self.learning_rate, decay=1e-6),
+            loss=self.loss_fun, metrics=[jac, dice, dice_80, dice_60,dice_40, dice_20]\
+                if self.loss_fun is not 'categorical_crossentropy' else [acc,acc_80,acc_60,acc_40,acc_20])
         self.model.summary()
 
     def save_model(self):
@@ -181,29 +197,26 @@ class MyModel:
     # def get_export_name(self, pair):
     #     return "%s-%s_%s" % (pair.dir_out, pair.dir_in, self.name)
 
-    def train(self, pair:ImagePairTrain):
-        print('Generate iterable data set...')
-        tr, val=pair.get_tr_val_generator()
-
+    def train(self, cfg, tr, val):
         export_name = "%s_%s" % (tr.dir_out, self.name)
         weight_file = export_name + ".h5"
         if self.continue_train and os.path.exists(weight_file):
             print("Continue from previous weights")
             self.model.load_weights(weight_file)
 
-        # indicator, trend = 'val_loss', 'min'
-        indicator, trend = 'val_dice', 'max'
+        indicator, trend = 'val_loss', 'min'
+        # indicator, trend = 'val_dice', 'max'
         print('Fitting neural net...')
         for r in range(self.num_rep):
             print("Training %d/%d for %s" % (r + 1, self.num_rep, export_name))
             tr.on_epoch_end()
             val.on_epoch_end()
             history = self.model.fit_generator(tr, validation_data=val, verbose=1,
-                steps_per_epoch=min(pair.max_train_step, len(tr.view_coord)) if isinstance(pair.max_train_step , int) else len(tr.view_coord),
-               validation_steps=min(pair.max_vali_step, len(val.view_coord)) if isinstance(pair.max_vali_step, int) else len(val.view_coord),
+                steps_per_epoch=min(cfg.max_train_step, len(tr.view_coord)) if isinstance(cfg.max_train_step , int) else len(tr.view_coord),
+               validation_steps=min(cfg.max_vali_step, len(val.view_coord)) if isinstance(cfg.max_vali_step, int) else len(val.view_coord),
                 epochs=self.num_epoch, max_queue_size=1, workers=0, use_multiprocessing=False, shuffle=False,
                 callbacks=[
-                    ModelCheckpoint(weight_file, monitor=indicator, mode=trend, save_best_only=True),
+                    ModelCheckpoint(weight_file, monitor=indicator, mode=trend, save_weights_only=False, save_best_only=True),
                     EarlyStopping(monitor=indicator, mode=trend, patience=1, verbose=1),
                     # ReduceLROnPlateau(monitor=indicator, mode=trend, factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
                     # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
@@ -216,39 +229,38 @@ class MyModel:
             df['repeat']=r+1
             df.to_csv(export_name + ".csv", mode="a", header=(not os.path.exists(export_name + ".csv")))
 
-    def predict(self, pair:ImagePairPredict):
-        i_sum=pair.row_out*pair.col_out
-        res_i=np.zeros(len(pair.img_set.images),dtype=np.uint32)
-        res_g=np.zeros(len(pair.img_set.groups),dtype=np.uint32)
-        prd:ImageGenerator = pair.get_prd_generator()
-
+    def predict(self, prd:ImageGeneratorMulti):
+        i_sum = prd.row_out * prd.col_out
+        res_i = np.zeros(len(prd.img_set.images), dtype=np.uint32)
+        res_g = np.zeros(len(prd.img_set.groups), dtype=np.uint32)
         print('Load weights and predicting ...')
         export_name = "%s_%s" % (prd.dir_out, self.name)
         weight_file = export_name + ".h5"
         self.model.load_weights(weight_file)
 
         msks = self.model.predict_generator(prd, max_queue_size=1, workers=0,use_multiprocessing=False, verbose=1)
-        target_dir = os.path.join(pair.wd, export_name)
+        target_dir = os.path.join(prd.wd, export_name)
         print('Saving predicted results [%s] to files...' % export_name)
         mk_dir_if_nonexist(target_dir)
-        merge_dir = os.path.join(pair.wd, "%s_%s" % (prd.dir_out.split('_')[0], self.name))
+        merge_dir = os.path.join(prd.wd, "%s_%s" % (prd.dir_out.split('_')[0], self.name))
         if self.separate:
             mk_dir_if_nonexist(merge_dir)
         for i, msk in enumerate(msks):
-            ind_name=prd.view_coord[i].file_name
-            ind_file = os.path.join(target_dir, ind_name)
-            msk, i_val = self.msk_call(msk, self.call_hardness)
-            res_i[i]=i_val
-            text="%s \nPixels: %.0f / %.0f Percentage: %.0f%%" % (ind_name, i_val, i_sum, 100. * i_val / i_sum)
-            print(text)
-            cv2.imwrite(ind_file, msk*255.)
-            # cv2.imwrite(ind_file, draw_text((msk*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
-            origin=prd.view_coord[i].get_image(os.path.join(pair.wd, pair.dir_in_ex()),pair.separate,pair.resize,pair.padding)
-            if self.separate:
-                self.merge_images(pair.view_coord, i, origin, msk, merge_dir, res_g, pair.img_set.groups)
-            blend=blend_mask(origin,msk,channel=self.overlay_channel,opacity=self.overlay_opacity)
-            markup=draw_text(blend,text) # RGB:3x8-bit dark text
-            imsave(ind_file.replace(".jpg",".jpe"), markup)
+            for dim in range(msk.shape[-1]):
+                ind_name=prd.view_coord[i].file_name.replace('.jpg','_'+str(dim)+'.jpg')
+                ind_file = os.path.join(target_dir, ind_name)
+                msk, i_val = self.msk_call(msk[...,dim], self.call_hardness)
+                res_i[i]=i_val
+                text="%s \nPixels: %.0f / %.0f Percentage: %.0f%%" % (ind_name, i_val, i_sum, 100. * i_val / i_sum)
+                print(text)
+                cv2.imwrite(ind_file, msk * 255.)
+                # cv2.imwrite(ind_file, draw_text((msk*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
+                origin=prd.view_coord[i].get_image(os.path.join(prd.wd, prd.dir_in_ex),prd.separate,prd.resize,prd.padding)
+                if self.separate:
+                    self.merge_images(prd.view_coord, i, origin, msk, merge_dir, res_g, prd.img_set.groups)
+                blend=blend_mask(origin,msk,channel=self.overlay_channel,opacity=self.overlay_opacity)
+                markup=draw_text(blend,text) # RGB:3x8-bit dark text
+                imsave(ind_file.replace(".jpg",".jpe"), markup)
         return res_i, res_g
 
     @staticmethod
@@ -257,7 +269,7 @@ class MyModel:
             msk = np.rint(msk)
         elif 0 < ch < 1:
             msk = (msk + np.rint(msk) * ch) / (1.0 + ch)  # mixed
-        return msk, int(np.sum(msk[..., 0]))
+        return msk, int(np.sum(msk))
 
     def merge_images(self, views, idx, img, msk, folder, res, groups):
         view:MetaInfo=views[idx]
@@ -272,7 +284,7 @@ class MyModel:
             self.mrg_out_wt=np.zeros((view.ori_row,view.ori_col),dtype=np.float32)
         # insert image
         if self.mask_wt is None or self.mask_wt.shape!=self.mrg_out_wt.shape:
-            self.mask_wt=g_kern(view.row_end-view.row_start,view.col_end-view.col_start)
+            self.mask_wt=g_kern_rect(view.row_end - view.row_start, view.col_end - view.col_start)
         self.mrg_in[view.row_start:view.row_end, view.col_start:view.col_end,...] += img
         self.mrg_in_wt[view.row_start:view.row_end, view.col_start:view.col_end] += 1.0
         for d in range(msk_dep):
