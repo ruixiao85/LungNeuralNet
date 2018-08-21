@@ -45,23 +45,23 @@ class MetaInfo:
         return self.image_name.replace(".jpg", "_#%d#%d#%d#%d#%d#%d#.jpg"
                  % (self.ori_row, self.ori_col, self.row_start,self.row_end,self.col_start,self.col_end))
 
-    def get_image(self, _path, _separate, _resize, _padding):
-        return read_resize_padding(os.path.join(_path, self.file_name),_resize=1.0,_padding=1.0) if _separate else\
-            extract_pad_image(read_resize_padding(os.path.join(_path, self.image_name),_resize,_padding), self.row_start, self.row_end, self.col_start, self.col_end)
+    def get_image(self, _path, cfg:ModelConfig):
+        return read_resize_padding(os.path.join(_path, self.file_name),_resize=1.0,_padding=1.0) if cfg.separate else\
+            extract_pad_image(read_resize_padding(os.path.join(_path, self.image_name),cfg.image_resize,cfg.image_padding), self.row_start, self.row_end, self.col_start, self.col_end)
 
-    def get_mask(self, _path, _separate, _resize, _padding, _mask_col):
-        img=self.get_image(_path,_separate,_resize,_padding)
-        # imwrite("img.jpg",img)
-        code=_mask_col[0].lower()
-        if code!='g':  # default to white/black from blue channel
-            return img[...,2]  # blue channel to only channel
-        else: # green
+    def get_mask(self, _path, cfg:ModelConfig):
+        img=self.get_image(_path, cfg)
+        # imwrite("test_img.jpg",img)
+        code=cfg.mask_color[0].lower()
+        if code=='g': # green
             img=img.astype(np.int16)
             # imwrite("testd_2f_-0.3.jpg",np.clip(5*(img[..., 1] - img[..., 0]-100), 0, 255)[..., np.newaxis])
             # imwrite("testd_2f_-0.4.jpg",np.clip(5*(img[..., 1] - img[..., 0]-120), 0, 255)[..., np.newaxis])
             # imwrite("testd_2f_-0.5.jpg",np.clip(5*(img[..., 1] - img[..., 0]-140), 0, 255)[..., np.newaxis])
             # imwrite("testd_2f_-0.6.jpg",np.clip(5*(img[..., 1] - img[..., 0]-160), 0, 255)[..., np.newaxis])
             return np.clip(5*(img[..., 1] - img[..., 0]-110), 0, 255).astype(np.uint8)
+        else: # default to white/black from blue channel
+            return img[...,2]  # blue channel to only channel
 
 
     def __str__(self):
@@ -226,20 +226,25 @@ class ImagePairMulti:
             self.msk_set=targets
 
     def change_target(self, targets):
-        self.targets = targets
-        self.dir_out = targets[0] if len(targets)==1 else ','.join(targets) # [t[:4] for t in targets])
+        if targets is not None:
+            targets=targets if isinstance(targets,list) else [targets]
+            self.targets = targets
+            # self.dir_out = targets[0] if len(targets)==1 else ','.join(targets)
+            self.dir_out = targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
 
     @property
     def dir_in_ex(self, _dir=None):
-        ori_dir=_dir or self.dir_in
+        # ori_dir=_dir or self.dir_in
         ext=ImageSet.ext_folder(self.cfg, True)
-        return ori_dir if ext is None else ori_dir+ext
+        # return ori_dir if ext is None else ori_dir+ext
+        return ext
 
     @property
     def dir_out_ex(self, _dir=None):
-        ori_dir = _dir or self.dir_out
+        # ori_dir = _dir or self.dir_out
         ext = ImageSet.ext_folder(self.cfg, False)
-        return ori_dir if ext is None else ori_dir + ext
+        # return ori_dir if ext is None else ori_dir + ext
+        return ext
 
     def get_prd_generator(self):
         return ImageGeneratorMulti(self, aug=False)
@@ -255,7 +260,7 @@ class ImagePairMulti:
                 val_list.append(vc)
                 val_image.add(vc.image_name)
             else:
-                if (len(val_list)+0.05)/(len(tr_list)+0.05)>self.cfg.train_valid_split:
+                if (len(val_list)+0.05)/(len(tr_list)+0.05)>self.cfg.train_vali_split:
                     tr_list.append(vc)
                     tr_image.add(vc.image_name)
                 else:
@@ -272,26 +277,9 @@ class ImageGeneratorMulti(keras.utils.Sequence):
     def __init__(self, pair:ImagePairMulti, aug, view_coord=None):
         self.pair=pair
         self.cfg=pair.cfg
-        self.img_aug=aug
+        self.train_aug=aug
         self.view_coord=pair.view_coord if view_coord is None else view_coord
         self.indexes = np.arange(len(self.view_coord))
-        # self.img_set=pair.img_set
-        # self.train = pair.train
-        # self.wd=pair.wd
-        # self.org_name=pair.dir_in
-        # self.tgt_names=pair.tgt_names
-        # self.dir_in_ex, self.dir_out_ex= pair.dir_in_ex(), pair.dir_out_ex()
-        # self.dir_out=pair.dir_out
-        # self.wd_dir_in = os.path.join(self.wd, self.dir_in)
-        # self.wd_dir_out = os.path.join(self.wd, self.dir_out)
-        # self.resize=pair.resize
-        # self.padding=pair.padding
-        # self.separate=pair.separate
-        # self.batch_size=pair.batch_size
-        # self.shuffle=pair.shuffle
-        # self.mask_color=pair.mask_color
-        # self.row_in, self.col_in, self.dep_in= pair.row_in, pair.col_in, pair.dep_in
-        # self.row_out, self.col_out, self.dep_out= pair.row_out, pair.col_out, pair.dep_out
 
     def __len__(self):  # Denotes the number of batches per epoch
         return int(np.floor(len(self.view_coord) / self.cfg.batch_size))
@@ -303,16 +291,19 @@ class ImageGeneratorMulti(keras.utils.Sequence):
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.origin + self.pair.dir_in_ex), self.cfg.separate, self.cfg.image_resize, self.cfg.image_padding)
+                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.origin + self.pair.dir_in_ex), self.cfg)
                 for ti,tgt in enumerate(self.pair.targets):
-                    _tgt[vi, ...,ti] = vc.get_mask(os.path.join(self.pair.wd, tgt + self.pair.dir_out_ex), self.cfg.separate, self.cfg.image_resize, self.cfg.image_padding, self.cfg.mask_color)
-            if self.img_aug:
+                    _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, tgt + self.pair.dir_out_ex), self.cfg)
+            if self.train_aug:
                 _img, _tgt = augment_image_pair(_img, _tgt, _level=random.randint(0, 4))  # integer N: a <= N <= b.
+                # imwrite("tr_img.jpg",_img[0])
+                # imwrite("tr_tgt.jpg",_tgt[0])
             return scale_input(_img), scale_output(_tgt)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.origin+self.pair.dir_in_ex), self.cfg.separate, self.cfg.image_resize, self.cfg.image_padding)
+                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.origin+self.pair.dir_in_ex), self.cfg)
+                imwrite("prd_img.jpg",_img[0])
             return scale_input(_img), None
 
     def on_epoch_end(self):  # Updates indexes after each epoch

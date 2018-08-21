@@ -116,15 +116,10 @@ def loss_bce_dice(y_true, y_pred):
 def loss_jac_dice(y_true, y_pred):
     return loss_jac(y_true, y_pred) + loss_dice(y_true, y_pred)
 
-
-def blend_mask(origin, image, channel, opacity):
-    origin=scale_input(origin)
+def blend_mask(image, mask, color, alpha=0.5):
     for c in range(3):
-        if c == channel:
-            origin[..., c] = np.tanh(origin[..., c] + opacity * image[..., 0])
-        else:
-            origin[..., c] = np.tanh(origin[..., c] - opacity * image[..., 0])
-    return scale_input_reverse(origin)
+        image[..., c] = np.where(mask > 0.5, image[..., c] * (1 - alpha) + alpha * color[c] * 255, image[..., c])
+    return image
 
 def draw_text(image,text,mode='RGB',col=(10,10,10)):
     # origin*=255.
@@ -149,25 +144,17 @@ class MyModel:
     # 'binary_crossentropy'
     # 'sparse_categorical_crossentropy' 'categorical_crossentropy'
 
-    #     out_fun = 'softmax'   loss_fun='categorical_crossentropy'
-    #     out_fun='sigmoid'    loss_fun=[loss_bce_dice] 'binary_crossentropy' "bcedice"
+    #     model_out = 'softmax'   model_loss='categorical_crossentropy'
+    #     model_out='sigmoid'    model_loss=[loss_bce_dice] 'binary_crossentropy' "bcedice"
 
     def __init__(self, func, cfg:ModelConfig, save):
-        self.continue_train = cfg.train_continue
-        self.num_rep = cfg.train_rep
-        self.num_epoch = cfg.train_epoch
+        self.cfg=cfg
         self.model, self.name=func(cfg)
-        self.learning_rate=cfg.train_learning_rate
-        self.loss_fun=cfg.model_loss
         self.compile_model()
         if save:
             self.save_model()
         self.mrg_in, self.mrg_out=None, None  # merge input/output
         self.mrg_in_wt, self.mrg_out_wt=None, None  # weight matrix of merge input/output
-        self.separate=cfg.separate
-        self.overlay_color=cfg.overlay_color
-        self.overlay_opacity=cfg.overlay_opacity
-        self.call_hardness=cfg.call_hardness
         self.mask_wt = None
 
     def load_model(self, name:str):  # load model
@@ -182,11 +169,12 @@ class MyModel:
     def compile_model(self):
         from keras.optimizers import Adam, RMSprop, SGD
         self.model.compile(
-            optimizer=Adam(self.learning_rate),
-            # SGD(lr=0.01)
-            # RMSprop(self.learning_rate, decay=1e-6),
-            loss=self.loss_fun, metrics=[jac, dice, dice_80, dice_60,dice_40, dice_20]\
-                if self.loss_fun is not 'categorical_crossentropy' else [acc,acc_80,acc_60,acc_40,acc_20])
+            optimizer=Adam(self.cfg.train_learning_rate),
+            # optimizer=SGD(lr=0.01),
+            # optimizer=RMSprop(self.train_learning_rate, decay=1e-6),
+            loss=self.cfg.model_loss,
+            metrics= [acc,acc_80,acc_60,acc_40,acc_20]\
+                if self.cfg.model_loss is 'categorical_crossentropy' else [jac, dice, dice_80, dice_60,dice_40, dice_20])
         self.model.summary()
 
     def save_model(self):
@@ -194,27 +182,27 @@ class MyModel:
         with open(model_json, "w") as json_file:
             json_file.write(self.model.to_json())
 
-    # def get_export_name(self, pair):
-    #     return "%s-%s_%s" % (pair.dir_out, pair.dir_in, self.name)
+    # def export_name(self, dir, name):
+    #     return "%s_%s" % (dir, name)
 
-    def train(self, cfg, tr, val):
-        export_name = "%s_%s" % (tr.dir_out, self.name)
+    def train(self, cfg, multi:ImagePairMulti):
+        tr, val = multi.get_tr_val_generator()
+        export_name = "%s_%s" % (multi.dir_out, self.name)
         weight_file = export_name + ".h5"
-        if self.continue_train and os.path.exists(weight_file):
+        if self.cfg.train_continue and os.path.exists(weight_file):
             print("Continue from previous weights")
             self.model.load_weights(weight_file)
 
-        indicator, trend = 'val_loss', 'min'
-        # indicator, trend = 'val_dice', 'max'
+        indicator, trend = ('val_dice', 'max') if cfg.dep_out==1 else ('val_acc', 'max')
         print('Fitting neural net...')
-        for r in range(self.num_rep):
-            print("Training %d/%d for %s" % (r + 1, self.num_rep, export_name))
+        for r in range(self.cfg.train_rep):
+            print("Training %d/%d for %s" % (r + 1, self.cfg.train_rep, export_name))
             tr.on_epoch_end()
             val.on_epoch_end()
             history = self.model.fit_generator(tr, validation_data=val, verbose=1,
-                steps_per_epoch=min(cfg.max_train_step, len(tr.view_coord)) if isinstance(cfg.max_train_step , int) else len(tr.view_coord),
-               validation_steps=min(cfg.max_vali_step, len(val.view_coord)) if isinstance(cfg.max_vali_step, int) else len(val.view_coord),
-                epochs=self.num_epoch, max_queue_size=1, workers=0, use_multiprocessing=False, shuffle=False,
+                steps_per_epoch=min(cfg.train_step, len(tr.view_coord)) if isinstance(cfg.train_step , int) else len(tr.view_coord),
+               validation_steps=min(cfg.train_vali_step, len(val.view_coord)) if isinstance(cfg.train_vali_step, int) else len(val.view_coord),
+                epochs=self.cfg.train_epoch, max_queue_size=1, workers=0, use_multiprocessing=False, shuffle=False,
                 callbacks=[
                     ModelCheckpoint(weight_file, monitor=indicator, mode=trend, save_weights_only=False, save_best_only=True),
                     EarlyStopping(monitor=indicator, mode=trend, patience=1, verbose=1),
@@ -229,46 +217,50 @@ class MyModel:
             df['repeat']=r+1
             df.to_csv(export_name + ".csv", mode="a", header=(not os.path.exists(export_name + ".csv")))
 
-    def predict(self, prd:ImageGeneratorMulti):
-        i_sum = prd.row_out * prd.col_out
-        res_i = np.zeros(len(prd.img_set.images), dtype=np.uint32)
-        res_g = np.zeros(len(prd.img_set.groups), dtype=np.uint32)
+    def predict(self, multi:ImagePairMulti):
+        # TODO split generator into image groups, iterate through
+        prd:ImageGeneratorMulti=multi.get_prd_generator()
+        i_sum = prd.cfg.row_out * prd.cfg.col_out
+        res_i = np.zeros((len(multi.img_set.images),self.cfg.dep_out), dtype=np.uint32)
+        res_g = np.zeros((len(multi.img_set.groups),self.cfg.dep_out), dtype=np.uint32)
         print('Load weights and predicting ...')
-        export_name = "%s_%s" % (prd.dir_out, self.name)
+        export_name = "%s_%s" % (multi.dir_out, self.name)
         weight_file = export_name + ".h5"
         self.model.load_weights(weight_file)
 
         msks = self.model.predict_generator(prd, max_queue_size=1, workers=0,use_multiprocessing=False, verbose=1)
-        target_dir = os.path.join(prd.wd, export_name)
+        target_dir = os.path.join(multi.wd, export_name)
         print('Saving predicted results [%s] to files...' % export_name)
         mk_dir_if_nonexist(target_dir)
-        merge_dir = os.path.join(prd.wd, "%s_%s" % (prd.dir_out.split('_')[0], self.name))
-        if self.separate:
+        merge_dir = os.path.join(multi.wd, "%s_%s" % (multi.dir_out.split('_')[0], self.name))
+        if self.cfg.separate:
             mk_dir_if_nonexist(merge_dir)
         for i, msk in enumerate(msks):
+            ind_name=prd.view_coord[i].file_name
+            ind_file = os.path.join(target_dir, ind_name)
+            origin=prd.view_coord[i].get_image(os.path.join(multi.wd,multi.origin+multi.dir_in_ex),self.cfg)
+            blend=origin.copy()
+            print(ind_name); text_list=[ind_name]
             for dim in range(msk.shape[-1]):
-                ind_name=prd.view_coord[i].file_name.replace('.jpg','_'+str(dim)+'.jpg')
-                ind_file = os.path.join(target_dir, ind_name)
-                msk, i_val = self.msk_call(msk[...,dim], self.call_hardness)
+                msk, i_val = self.msk_call(msk[...,dim], self.cfg.call_hardness)
                 res_i[i]=i_val
-                text="%s \nPixels: %.0f / %.0f Percentage: %.0f%%" % (ind_name, i_val, i_sum, 100. * i_val / i_sum)
-                print(text)
-                cv2.imwrite(ind_file, msk * 255.)
+                text=" [%d: %s] %d / %d  %.0f%%" % (dim, multi.targets[dim], i_val, i_sum, 100. * i_val / i_sum)
+                print(text); text_list.append(text)
+                cv2.imwrite(ind_file.replace(self.cfg.image_format[1:],'_'+str(dim)+self.cfg.image_format[1:]), msk * 255.)
                 # cv2.imwrite(ind_file, draw_text((msk*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
-                origin=prd.view_coord[i].get_image(os.path.join(prd.wd, prd.dir_in_ex),prd.separate,prd.resize,prd.padding)
-                if self.separate:
-                    self.merge_images(prd.view_coord, i, origin, msk, merge_dir, res_g, prd.img_set.groups)
-                blend=blend_mask(origin,msk,channel=self.overlay_color,opacity=self.overlay_opacity)
-                markup=draw_text(blend,text) # RGB:3x8-bit dark text
-                imsave(ind_file.replace(".jpg",".jpe"), markup)
+                blend=blend_mask(blend,msk,self.cfg.overlay_color[dim],self.cfg.overlay_opacity)
+            # if self.cfg.separate:
+            #     self.merge_images(prd.view_coord, i, origin, msk, merge_dir, res_g, multi.img_set.groups)
+            markup=draw_text(blend,'\n'.join(text_list)) # RGB:3x8-bit dark text
+            imsave(ind_file.replace(".jpg",".jpe"), markup)
         return res_i, res_g
 
     @staticmethod
-    def msk_call(msk, ch):
-        if ch == 1:  # hard sign
+    def msk_call(msk, hard):
+        if hard == 1:  # hard sign
             msk = np.rint(msk)
-        elif 0 < ch < 1:
-            msk = (msk + np.rint(msk) * ch) / (1.0 + ch)  # mixed
+        elif 0 < hard < 1:
+            msk = (msk + np.rint(msk) * hard) / (1.0 + hard)  # mixed
         return msk, int(np.sum(msk))
 
     def merge_images(self, views, idx, img, msk, folder, res, groups):
@@ -296,7 +288,7 @@ class MyModel:
             for d in range(msk_dep):
                 self.mrg_out[...,d]/=self.mrg_out_wt
             self.mrg_in_wt, self.mrg_out_wt=None,None
-            self.mrg_out, _val=self.msk_call(self.mrg_out, self.call_hardness)
+            self.mrg_out, _val=self.msk_call(self.mrg_out, self.cfg.call_hardness)
             _sum=view.ori_row*view.ori_col
             text = "%s %dx%d \nPixels: %.0f / %.0f Percentage: %.0f%%" % (view.image_name, view.ori_row, view.ori_col, _val, _sum, 100. * _val / _sum)
             print(text)
@@ -304,7 +296,7 @@ class MyModel:
             merge_file=os.path.join(folder, this_file)
             cv2.imwrite(merge_file, self.mrg_out * 255.)
             # cv2.imwrite(merge_file, draw_text((msk*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
-            blend = blend_mask(self.mrg_in, self.mrg_out, channel=self.overlay_color, opacity=self.overlay_opacity)
+            blend = blend_mask(self.mrg_in, self.mrg_out, self.cfg.overlay_color, self.cfg.overlay_opacity)
             markup = draw_text(blend, text)  # RGB:3x8-bit dark text
             imsave(merge_file.replace(".jpg", ".jpe"), markup)
             self.mrg_in,self.mrg_out=None,None

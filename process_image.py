@@ -2,8 +2,17 @@ import numpy as np
 import imgaug as ia
 from cv2 import cv2
 from imgaug import augmenters as iaa
-
-
+'''
+Image format supported by opencv (cv2)
+Windows bitmaps - *.bmp, *.dib (always supported)
+JPEG files - *.jpeg, *.jpg, *.jpe (see the Notes section)
+JPEG 2000 files - *.jp2 (see the Notes section)
+Portable Network Graphics - *.png (see the Notes section)
+WebP - *.webp (see the Notes section)
+Portable image format - *.pbm, *.pgm, *.ppm (always supported)
+Sun rasters - *.sr, *.ras (always supported)
+TIFF files - *.tiff, *.tif (see the Notes section)
+'''
 def read_resize_padding(_file, _resize, _padding):
     if _resize < 1.0:
         img = cv2.resize(cv2.imread(_file), (0, 0), fx=_resize, fy=_resize, interpolation=cv2.INTER_AREA)

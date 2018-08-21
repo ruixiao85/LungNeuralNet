@@ -54,13 +54,13 @@ if __name__ == '__main__':
         # DenseNet,
     ]
     configs = [
-        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 128, 192, 192, 256, 256, 384], kernel_size=(3,3), mask_color="white", separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 128, 192, 192, 256, 256], kernel_size=(3,3), mask_color="white", separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256, 256], kernel_size=(3,3), mask_color="white", separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256], kernel_size=(3,3), mask_color="white", separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,3), mask_color="white", separate=True, coverage_tr=1.5, coverage_prd=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192], kernel_size=(3,3), mask_color="white", separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
-        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 128, 256], kernel_size=(3,3), mask_color="white", separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 128, 192, 192, 256, 256, 384], kernel_size=(3,3), mask_color="white", separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 128, 192, 192, 256, 256], kernel_size=(3,3), mask_color="white", separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256, 256], kernel_size=(3,3), mask_color="white", separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256], kernel_size=(3,3), mask_color="white", separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
+        ModelConfig((512, 512, 3), (512, 512, 1), model_filter=[64, 96, 128, 192, 256], model_kernel=[3,3], mask_color="white", separate=True, coverage_tr=1.5, coverage_prd=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192], kernel_size=(3,3), mask_color="white", separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
+        # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 128, 256], kernel_size=(3,3), mask_color="white", separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
     ]
     mode = args.mode[0].lower()
     if mode != 'p':
@@ -68,12 +68,14 @@ if __name__ == '__main__':
             for mod in models:
                 model= MyModel(mod, cfg, save=False)
                 print("Network specifications: " + model.name.replace("_", " "))
-                ### pair sigmoid ###
                 for origin in origins:
-                    for target in targets:
-                        multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
-                        tr, val = multi_set.get_tr_val_generator()
-                        model.train(cfg, tr, val)
+                    if cfg.dep_out==1:
+                        for target in targets:
+                            multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
+                            model.train(cfg, multi_set)
+                    else:
+                        multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
+                        model.train(cfg, multi_set)
 
     if mode != 't':
         for cfg in configs:
@@ -82,16 +84,23 @@ if __name__ == '__main__':
                 xls_file = "Result_%s_%s.xlsx" % (args.pred_dir, model.name)
                 for origin in origins:
                     multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, None, is_train=False)
-                    prd_set=multi_set.get_prd_generator()
-                    res_ind = np.zeros((len(multi_set.img_set.images), len(targets)), dtype=np.uint32)
-                    res_grp = np.zeros((len(multi_set.img_set.groups), len(targets)), dtype=np.uint32)
-                    for i, target in enumerate(targets):
-                        multi_set.change_target(target)
-                        res_ind[..., i], res_grp[...,i]=model.predict(prd_set)
+                    res_ind = np.zeros((len(multi_set.img_set.images), 0), dtype=np.uint32)
+                    res_grp = np.zeros((len(multi_set.img_set.groups), 0), dtype=np.uint32)
+                    if cfg.dep_out==1:
+                        for i, target in enumerate(targets):
+                            multi_set.change_target([target])
+                            ind, grp=model.predict(multi_set)
+                            res_ind=np.concatenate((res_ind,ind),axis=-1)
+                            res_grp=np.concatenate((res_grp,grp),axis=-1)
+                    else:
+                        multi_set.change_target(targets)
+                        ind, grp = model.predict(multi_set)
+                        res_ind = np.concatenate((res_ind, ind), axis=-1)
+                        res_grp = np.concatenate((res_grp, grp), axis=-1)
                     df=pd.DataFrame(res_ind, index=multi_set.img_set.images, columns=targets)
                     to_excel_sheet(df, xls_file, origin) # per slice
                     if cfg.separate:
-                        df=pd.DataFrame(res_grp, index=prd_set.groups, columns=targets)
+                        df=pd.DataFrame(res_grp, index=multi_set.img_set.groups, columns=targets)
                         to_excel_sheet(df, xls_file, origin + "_sum")
                         # to_excel_sheet(df.groupby([vc.image_file for vc in prd_set.view_coord]).sum(), xls_file, origin + "_sum") # simple sum
 
