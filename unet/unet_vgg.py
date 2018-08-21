@@ -24,7 +24,7 @@ K.set_image_data_format("channels_last")
 # FC-4096 -> FC-4096 -> FC-1000 -> softmax
 
 def unet_vgg_7conv(cfg):
-    act_fun, out_fun = cfg.act_fun, cfg.out_fun
+    act_fun, out_fun = cfg.model_act, cfg.model_out
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
     # f1, f2, f3, f4, f5 = 64, 96, 128, 192, 256
     input_shape=(cfg.row_in, cfg.col_in, dim_in)

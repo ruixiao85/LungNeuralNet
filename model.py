@@ -14,7 +14,7 @@ from tensorflow.python.keras.activations import softmax
 from tensorflow.python.ops.image_ops_impl import central_crop
 from skimage.io import imsave
 from scipy import signal
-from image_gen import ImagePairTrain, ImagePairPredict, MetaInfo, ImageGenerator, ImageGeneratorMulti
+from image_gen import MetaInfo, ImagePairMulti, ImageGeneratorMulti
 from model_config import ModelConfig
 from process_image import scale_input, scale_input_reverse
 from util import mk_dir_if_nonexist
@@ -153,19 +153,19 @@ class MyModel:
     #     out_fun='sigmoid'    loss_fun=[loss_bce_dice] 'binary_crossentropy' "bcedice"
 
     def __init__(self, func, cfg:ModelConfig, save):
-        self.continue_train = cfg.continue_train
-        self.num_rep = cfg.num_rep
-        self.num_epoch = cfg.num_epoch
+        self.continue_train = cfg.train_continue
+        self.num_rep = cfg.train_rep
+        self.num_epoch = cfg.train_epoch
         self.model, self.name=func(cfg)
-        self.learning_rate=cfg.learning_rate
-        self.loss_fun=cfg.loss_fun
+        self.learning_rate=cfg.train_learning_rate
+        self.loss_fun=cfg.model_loss
         self.compile_model()
         if save:
             self.save_model()
         self.mrg_in, self.mrg_out=None, None  # merge input/output
         self.mrg_in_wt, self.mrg_out_wt=None, None  # weight matrix of merge input/output
         self.separate=cfg.separate
-        self.overlay_channel=cfg.overlay_channel
+        self.overlay_color=cfg.overlay_color
         self.overlay_opacity=cfg.overlay_opacity
         self.call_hardness=cfg.call_hardness
         self.mask_wt = None
@@ -258,7 +258,7 @@ class MyModel:
                 origin=prd.view_coord[i].get_image(os.path.join(prd.wd, prd.dir_in_ex),prd.separate,prd.resize,prd.padding)
                 if self.separate:
                     self.merge_images(prd.view_coord, i, origin, msk, merge_dir, res_g, prd.img_set.groups)
-                blend=blend_mask(origin,msk,channel=self.overlay_channel,opacity=self.overlay_opacity)
+                blend=blend_mask(origin,msk,channel=self.overlay_color,opacity=self.overlay_opacity)
                 markup=draw_text(blend,text) # RGB:3x8-bit dark text
                 imsave(ind_file.replace(".jpg",".jpe"), markup)
         return res_i, res_g
@@ -304,7 +304,7 @@ class MyModel:
             merge_file=os.path.join(folder, this_file)
             cv2.imwrite(merge_file, self.mrg_out * 255.)
             # cv2.imwrite(merge_file, draw_text((msk*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
-            blend = blend_mask(self.mrg_in, self.mrg_out, channel=self.overlay_channel, opacity=self.overlay_opacity)
+            blend = blend_mask(self.mrg_in, self.mrg_out, channel=self.overlay_color, opacity=self.overlay_opacity)
             markup = draw_text(blend, text)  # RGB:3x8-bit dark text
             imsave(merge_file.replace(".jpg", ".jpe"), markup)
             self.mrg_in,self.mrg_out=None,None

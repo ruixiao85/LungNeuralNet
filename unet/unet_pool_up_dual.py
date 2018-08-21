@@ -28,17 +28,17 @@ def get_crop_shape(target, refer):
 
 
 def unet_pool_up_dual_1f1(cfg):
-    if cfg.filter_size is None:
-        # cfg.filter_size = [64, 96, 128, 192]
-        cfg.filter_size = [64, 96, 128, 192, 256]
-        # cfg.filter_size = [96, 128, 192, 256, 384]
-        # cfg.filter_size = [64, 96, 128, 192, 256, 384]
-        # cfg.filter_size = [64, 96, 128, 192, 256, 384, 512]
-    if cfg.kernel_size is None or len(cfg.kernel_size) != 1:
-        cfg.kernel_size=[3]
-    fs = cfg.filter_size
-    ks = cfg.kernel_size # 0-conv, 1-resample
-    act_fun, out_fun=cfg.act_fun, cfg.out_fun
+    if cfg.model_filter is None:
+        # cfg.model_filter = [64, 96, 128, 192]
+        cfg.model_filter = [64, 96, 128, 192, 256]
+        # cfg.model_filter = [96, 128, 192, 256, 384]
+        # cfg.model_filter = [64, 96, 128, 192, 256, 384]
+        # cfg.model_filter = [64, 96, 128, 192, 256, 384, 512]
+    if cfg.model_kernel is None or len(cfg.model_kernel) != 1:
+        cfg.model_kernel=[3]
+    fs = cfg.model_filter
+    ks = cfg.model_kernel # 0-conv, 1-resample
+    act_fun, out_fun=cfg.model_act, cfg.model_out
     dim_in, dim_out=cfg.dep_in, cfg.dep_out
     # img_input = Input((None, None, dim_in))  # r,c,3
     locals()['pool0']=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3
@@ -56,21 +56,21 @@ def unet_pool_up_dual_1f1(cfg):
     return Model(locals()['pool0'], locals()['out0']),  traceback.extract_stack(None, 2)[1].name  + "_" + str(cfg)
 
 def unet_pool_up_dual_2f1(cfg):
-    if cfg.filter_size is None:
-        # cfg.filter_size = [64, 96, 128, 192]
-        # cfg.filter_size = [64, 96, 128, 192, 256]
-        # cfg.filter_size = [96, 128, 192, 256, 384]
-        # cfg.filter_size = [64, 96, 128, 192, 256, 384]
-        cfg.filter_size = [64, 96, 128, 192, 256, 320, 384, 460]
-    if cfg.kernel_size is None or len(cfg.kernel_size) != 2:
-        cfg.kernel_size=[3,3]
-    fs = cfg.filter_size
-    ks = cfg.kernel_size # 0-conv, 1-resample
-    act_fun, out_fun=cfg.act_fun, cfg.out_fun
+    if cfg.model_filter is None:
+        # cfg.model_filter = [64, 96, 128, 192]
+        # cfg.model_filter = [64, 96, 128, 192, 256]
+        # cfg.model_filter = [96, 128, 192, 256, 384]
+        # cfg.model_filter = [64, 96, 128, 192, 256, 384]
+        cfg.model_filter = [64, 96, 128, 192, 256, 320, 384, 460]
+    if cfg.model_kernel is None or len(cfg.model_kernel) != 2:
+        cfg.model_kernel=[3,3]
+    fs = cfg.model_filter
+    ks = cfg.model_kernel # 0-conv, 1-resample
+    act_fun, out_fun=cfg.model_act, cfg.model_out
     dim_in, dim_out=cfg.dep_in, cfg.dep_out
     # img_input = Input((None, None, dim_in))  # r,c,3
     locals()['pool0']=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3
-    long=len(cfg.filter_size)
+    long=len(cfg.model_filter)
     short=int(long/2)
 
     for lyr, div in [(short,1),(long,1)]:
@@ -91,17 +91,17 @@ def unet_pool_up_dual_2f1(cfg):
     return Model(locals()['pool0'], locals()['out0']),  traceback.extract_stack(None, 2)[1].name  + "_" + str(cfg)
 
 def unet_pool_up_dual_2f2(cfg):
-    if cfg.filter_size is None:
-        # cfg.filter_size = [64, 96, 128, 192]
-        cfg.filter_size = [64, 96, 128, 192, 256]
-        # cfg.filter_size = [96, 128, 192, 256, 384]
-        # cfg.filter_size = [64, 96, 128, 192, 256, 384]
-        # cfg.filter_size = [64, 96, 128, 192, 256, 384, 512]
-    if cfg.kernel_size is None or len(cfg.kernel_size) != 2:
-        cfg.kernel_size=[3,3]
-    fs = cfg.filter_size
-    ks = cfg.kernel_size # 0-conv, 1-resample
-    act_fun, out_fun=cfg.act_fun, cfg.out_fun
+    if cfg.model_filter is None:
+        # cfg.model_filter = [64, 96, 128, 192]
+        cfg.model_filter = [64, 96, 128, 192, 256]
+        # cfg.model_filter = [96, 128, 192, 256, 384]
+        # cfg.model_filter = [64, 96, 128, 192, 256, 384]
+        # cfg.model_filter = [64, 96, 128, 192, 256, 384, 512]
+    if cfg.model_kernel is None or len(cfg.model_kernel) != 2:
+        cfg.model_kernel=[3,3]
+    fs = cfg.model_filter
+    ks = cfg.model_kernel # 0-conv, 1-resample
+    act_fun, out_fun=cfg.model_act, cfg.model_out
     dim_in, dim_out=cfg.dep_in, cfg.dep_out
     # img_input = Input((None, None, dim_in))  # r,c,3
     locals()['pool0']=Input((cfg.row_in, cfg.col_in, dim_in))  # r,c,3

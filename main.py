@@ -68,7 +68,7 @@ if __name__ == '__main__':
         # ModelConfig((512, 512, 3), (512, 512,6), filter_size=[64, 128, 256, 256, 512, 512, 768, 768], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='softmax', loss_fun='categorical_crossentropy'),
         # ModelConfig((768, 768, 3), (768, 768, 6), filter_size=[64, 128, 256, 512, 768], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='softmax', loss_fun='categorical_crossentropy'),
         # ModelConfig((768, 768, 3), (768, 768, 6), filter_size=[64, 96, 128, 192, 256, 384, 512, 512], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='softmax', loss_fun='categorical_crossentropy'),
-        ModelConfig((768, 768, 3), (768, 768, 6), filter_size=[32, 64, 96, 128, 192, 256, 384, 512], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='softmax', loss_fun='categorical_crossentropy'),
+        ModelConfig((768, 768, 3), (768, 768, 6), filter_size=[32, 64, 96, 128, 192, 256, 384, 512], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0, out_fun='softmax', loss_fun='categorical_crossentropy'),
 
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256, 256, 384], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, out_fun='sigmoid', loss_fun=loss_bce_dice),
@@ -110,11 +110,7 @@ if __name__ == '__main__':
                 #         model.train(cfg, tr, val)
                 ### set softmax ###
                 for origin in origins:
-                    ori_set=ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), origin, train=True, filter_type='rgb')
-                    tgt_set=[]
-                    for target in targets:
-                        tgt_set.append(ImageSet(cfg, os.path.join(os.getcwd(), args.train_dir), target, train=True, filter_type='rgb'))  # filter_type=cfg.mask_color
-                    multi_set=ImagePairMulti(cfg, ori_set, tgt_set)
+                    multi_set=ImagePairMulti(cfg, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
                     tr, val = multi_set.get_tr_val_generator()
                     model.train(cfg, tr, val)
 
@@ -141,7 +137,7 @@ if __name__ == '__main__':
 
                 ## softmax
                 for origin in origins:
-                    prd_set=ImageSet(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, train=False)
+                    prd_set=ImageSet(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, is_train=False)
                     multi_set=ImagePairMulti(cfg, prd_set, ','.join(targets))
                     res_ind = np.zeros((len(prd_set.images), len(targets)), dtype=np.uint32)
                     res_grp = np.zeros((len(prd_set.groups), len(targets)), dtype=np.uint32)

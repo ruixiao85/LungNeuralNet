@@ -47,17 +47,17 @@ def level_block(m, filters, index, actfun, maxpool, upconv, batchnorm, dropout, 
 	return m
 
 def unet_recursive(cfg):
-	if cfg.filter_size is None:
-		# cfg.filter_size = [64, 96, 128, 192]
-		cfg.filter_size = [64, 96, 128, 192, 256]
-		# cfg.filter_size = [96, 128, 192, 256, 384]
-		# cfg.filter_size = [64, 96, 128, 192, 256, 384]
-		# cfg.filter_size = [64, 96, 128, 192, 256, 384, 512]
-	if cfg.kernel_size is None or len(cfg.kernel_size) != 2:
-		cfg.kernel_size = [3, 3]
+	if cfg.model_filter is None:
+		# cfg.model_filter = [64, 96, 128, 192]
+		cfg.model_filter = [64, 96, 128, 192, 256]
+		# cfg.model_filter = [96, 128, 192, 256, 384]
+		# cfg.model_filter = [64, 96, 128, 192, 256, 384]
+		# cfg.model_filter = [64, 96, 128, 192, 256, 384, 512]
+	if cfg.model_kernel is None or len(cfg.model_kernel) != 2:
+		cfg.model_kernel = [3, 3]
 
 	i = Input(shape=(cfg.row_in, cfg.col_in, cfg.dep_in))
-	o = level_block(i, cfg.filter_size, index=0, actfun=cfg.act_fun,
+	o = level_block(i, cfg.model_filter, index=0, actfun=cfg.model_act,
 					maxpool=True, upconv=True, batchnorm=True, dropout=0.5, residual=False)
 	o = Conv2D(cfg.dep_out, (1, 1), activation='sigmoid')(o)
 	return Model(inputs=i, outputs=o), traceback.extract_stack(None, 2)[1].name + "_" + str(cfg)
