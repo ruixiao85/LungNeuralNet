@@ -17,7 +17,7 @@ from scipy import signal
 from image_gen import MetaInfo, ImagePairMulti, ImageGeneratorMulti
 from model_config import ModelConfig
 from process_image import scale_input, scale_input_reverse
-from util import mk_dir_if_nonexist
+from util import mk_dir_if_nonexist, to_excel_sheet
 
 SMOOTH_LOSS = 1e-5
 # def depth_softmax(matrix, is_tensor=True): # increase temperature to make the softmax more sure of itself
@@ -116,22 +116,6 @@ def loss_bce_dice(y_true, y_pred):
 def loss_jac_dice(y_true, y_pred):
     return loss_jac(y_true, y_pred) + loss_dice(y_true, y_pred)
 
-def blend_mask(image, mask, color, alpha=0.5):
-    for c in range(3):
-        image[..., c] = np.where(mask > 0.5, image[..., c] * (1 - alpha) + alpha * color[c] * 255, image[..., c])
-    return image
-
-def draw_text(image,text,mode='RGB',col=(10,10,10)):
-    # origin*=255.
-    # cv2.putText(origin,text.replace("Pixel","\nPixel"),(20,20),cv2.FONT_HERSHEY_SIMPLEX,0.3,
-    #             (255 if oc == 0 else 10, 255 if oc == 1 else 10, 255 if oc == 2 else 10), 1, cv2.LINE_AA, bottomLeftOrigin=False)
-    # imwrite(ind_file, origin)
-    origin = Image.fromarray(image.astype(np.uint8), mode) # L RGB
-    draw = ImageDraw.Draw(origin)
-    draw.text((0, 0), text, col, ImageFont.truetype("arial.ttf", 22))  # font type size)
-    return origin
-
-
 class MyModel:
     # 'relu6'  # min(max(features, 0), 6)
     # 'crelu'  # Concatenates ReLU (only positive part) with ReLU (only the negative part). Note that this non-linearity doubles the depth of the activations
@@ -153,9 +137,6 @@ class MyModel:
         self.compile_model()
         if save:
             self.save_model()
-        self.mrg_in, self.mrg_out=None, None  # merge input/output
-        self.mrg_in_wt, self.mrg_out_wt=None, None  # weight matrix of merge input/output
-        self.mask_wt = None
 
     def load_model(self, name:str):  # load model
         self.name=name
@@ -186,7 +167,29 @@ class MyModel:
     #     return "%s_%s" % (dir, name)
 
     def train(self, cfg, multi:ImagePairMulti):
-        tr, val = multi.get_tr_val_generator()
+        tr_list, val_list = [], []  # list view_coords, can be from slices
+        tr_image, val_image = set(), set()  # set whole images
+        for vc in multi.view_coord:
+            if vc.image_name in tr_image:
+                tr_list.append(vc)
+                tr_image.add(vc.image_name)
+            elif vc.image_name in val_image:
+                val_list.append(vc)
+                val_image.add(vc.image_name)
+            else:
+                if (len(val_list) + 0.05) / (len(tr_list) + 0.05) > self.cfg.train_vali_split:
+                    tr_list.append(vc)
+                    tr_image.add(vc.image_name)
+                else:
+                    val_list.append(vc)
+                    val_image.add(vc.image_name)
+        print("From %d split into train: %d views %d images; validation %d views %d images" %
+              (len(multi.view_coord), len(tr_list), len(tr_image), len(val_list), len(val_image)))
+        print("Training Images:"); print(tr_image)
+        print("Validation Images:"); print(val_image)
+        tr=ImageGeneratorMulti(multi, self.cfg.train_aug, tr_list)
+        val=ImageGeneratorMulti(multi, False, val_list)
+
         export_name = "%s_%s" % (multi.dir_out, self.name)
         weight_file = export_name + ".h5"
         if self.cfg.train_continue and os.path.exists(weight_file):
@@ -217,87 +220,102 @@ class MyModel:
             df['repeat']=r+1
             df.to_csv(export_name + ".csv", mode="a", header=(not os.path.exists(export_name + ".csv")))
 
-    def predict(self, multi:ImagePairMulti):
-        # TODO split generator into image groups, iterate through
-        prd:ImageGeneratorMulti=multi.get_prd_generator()
-        i_sum = prd.cfg.row_out * prd.cfg.col_out
-        res_i = np.zeros((len(multi.img_set.images),self.cfg.dep_out), dtype=np.uint32)
-        res_g = np.zeros((len(multi.img_set.groups),self.cfg.dep_out), dtype=np.uint32)
+    def predict(self, multi:ImagePairMulti, xls_file):
         print('Load weights and predicting ...')
         export_name = "%s_%s" % (multi.dir_out, self.name)
         weight_file = export_name + ".h5"
         self.model.load_weights(weight_file)
+        img_ext=self.cfg.image_format[1:]
+        mrg_in,mrg_out,mrg_out_wt,merge_dir,mask_wt=None,None,None,None,None
+        r_i, r_g, sum_g, res_i, res_g=None,None,None,None,None
 
-        msks = self.model.predict_generator(prd, max_queue_size=1, workers=0,use_multiprocessing=False, verbose=1)
         target_dir = os.path.join(multi.wd, export_name)
-        print('Saving predicted results [%s] to files...' % export_name)
         mk_dir_if_nonexist(target_dir)
-        merge_dir = os.path.join(multi.wd, "%s_%s" % (multi.dir_out.split('_')[0], self.name))
+        sum_i = self.cfg.row_out * self.cfg.col_out
+        batch=multi.img_set.view_coord_batch()  # image/1batch -> view_coord
         if self.cfg.separate:
+            merge_dir = os.path.join(multi.wd, "%s_%s" % (multi.dir_out.split('_')[0], self.name))
             mk_dir_if_nonexist(merge_dir)
-        for i, msk in enumerate(msks):
-            ind_name=prd.view_coord[i].file_name
-            ind_file = os.path.join(target_dir, ind_name)
-            origin=prd.view_coord[i].get_image(os.path.join(multi.wd,multi.origin+multi.dir_in_ex),self.cfg)
-            blend=origin.copy()
-            print(ind_name); text_list=[ind_name]
-            for dim in range(msk.shape[-1]):
-                msk, i_val = self.msk_call(msk[...,dim], self.cfg.call_hardness)
-                res_i[i]=i_val
-                text=" [%d: %s] %d / %d  %.0f%%" % (dim, multi.targets[dim], i_val, i_sum, 100. * i_val / i_sum)
-                print(text); text_list.append(text)
-                cv2.imwrite(ind_file.replace(self.cfg.image_format[1:],'_'+str(dim)+self.cfg.image_format[1:]), msk * 255.)
-                # cv2.imwrite(ind_file, draw_text((msk*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
-                blend=blend_mask(blend,msk,self.cfg.overlay_color[dim],self.cfg.overlay_opacity)
-            # if self.cfg.separate:
-            #     self.merge_images(prd.view_coord, i, origin, msk, merge_dir, res_g, multi.img_set.groups)
-            markup=draw_text(blend,'\n'.join(text_list)) # RGB:3x8-bit dark text
-            imsave(ind_file.replace(".jpg",".jpe"), markup)
-        return res_i, res_g
+            mask_wt = g_kern_rect(self.cfg.row_out, self.cfg.col_out)
+        for grp, view in batch.items():
+            prd=ImageGeneratorMulti(multi, False, view)
+            msks = self.model.predict_generator(prd, max_queue_size=1, workers=0, use_multiprocessing=False, verbose=1)
+            print('Saving predicted results [%s] to folder [%s]...' % (grp, export_name))
+            # r_i=np.zeros((len(multi.img_set.images),self.cfg.dep_out), dtype=np.uint32)
+            if self.cfg.separate:
+                mrg_in = np.zeros((view[0].ori_row, view[0].ori_col, self.cfg.dep_in), dtype=np.float32)
+                mrg_out = np.zeros((view[0].ori_row, view[0].ori_col, self.cfg.dep_out), dtype=np.float32)
+                mrg_out_wt = np.zeros((view[0].ori_row, view[0].ori_col), dtype=np.float32)
+                sum_g = view[0].ori_row * view[0].ori_col
+                # r_g=np.zeros((1,self.cfg.dep_out), dtype=np.uint32)
+            for i, msk in enumerate(msks):
+                ind_name = view[i].file_name
+                ind_file = os.path.join(target_dir, ind_name)
+                origin = view[i].get_image(os.path.join(multi.wd, multi.origin + multi.dir_in_ex), self.cfg)
+                print(ind_name); text_list = [ind_name]
+                blend, r_i=self.mask_call(origin, msk)
+                for d in range(self.cfg.dep_out):
+                    text = " [%d: %s] %d / %d  %.0f%%" % ( d, multi.targets[d], r_i[d], sum_i, 100. * r_i[d] / sum_i)
+                    print(text); text_list.append(text)
+                # cv2.imwrite(ind_file, msk[...,np.newaxis] * 255.)
+                blend = self.draw_text(blend, '\n'.join(text_list))  # RGB:3x8-bit dark text
+                imsave(ind_file.replace(img_ext, ".jpe"), blend)
+                res_i = r_i if res_i is None else np.vstack((res_i, r_i))
 
-    @staticmethod
-    def msk_call(msk, hard):
-        if hard == 1:  # hard sign
-            msk = np.rint(msk)
-        elif 0 < hard < 1:
-            msk = (msk + np.rint(msk) * hard) / (1.0 + hard)  # mixed
-        return msk, int(np.sum(msk))
+                if self.cfg.separate:
+                    mrg_in[view[i].row_start:view[i].row_end, view[i].col_start:view[i].col_end] = origin
+                    for d in range(self.cfg.dep_out):
+                        mrg_out[view[i].row_start:view[i].row_end, view[i].col_start:view[i].col_end, d] += msk[...,d] * mask_wt
+                    mrg_out_wt[view[i].row_start:view[i].row_end, view[i].col_start:view[i].col_end] += mask_wt
+            if self.cfg.separate:
+                for d in range(self.cfg.dep_out):
+                    mrg_out[...,d] /= mrg_out_wt
+                print(grp); text_list=[grp]
+                merge_name = view[0].image_name
+                merge_file = os.path.join(merge_dir, merge_name)
+                blend, r_g = self.mask_call(mrg_in, mrg_out)
+                for d in range(self.cfg.dep_out):
+                    text = " [%d: %s] %d / %d  %.0f%%" % (d, multi.targets[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
+                    print(text); text_list.append(text)
+                # cv2.imwrite(merge_file, mrg_out[..., np.newaxis] * 255.)
+                blend = self.draw_text(blend, '\n'.join(text_list))  # RGB:3x8-bit dark text
+                imsave(merge_file.replace(img_ext, ".jpe"), blend)
+                res_g=r_g if res_g is None else np.vstack((res_g, r_g))
+        df = pd.DataFrame(res_i, index=multi.img_set.images, columns=multi.targets)
+        to_excel_sheet(df, xls_file, multi.origin)  # per slice
+        if self.cfg.separate:
+            df = pd.DataFrame(res_g, index=batch.keys(), columns=multi.targets)
+            to_excel_sheet(df, xls_file, multi.origin + "_sum")
 
-    def merge_images(self, views, idx, img, msk, folder, res, groups):
-        view:MetaInfo=views[idx]
-        this_file=view.image_name
-        last_file=None if idx<1 else views[idx-1].image_name
-        next_file=views[idx+1].image_name if idx<len(views)-1 else "LastImage!@#$%^&*()_+"
-        mrg_dep, msk_dep=3, 1
-        if this_file != last_file:  # create new
-            self.mrg_in=np.zeros((view.ori_row,view.ori_col,mrg_dep),dtype=np.float32)
-            self.mrg_in_wt=np.zeros((view.ori_row,view.ori_col),dtype=np.float32)
-            self.mrg_out=np.zeros((view.ori_row,view.ori_col,msk_dep),dtype=np.float32)
-            self.mrg_out_wt=np.zeros((view.ori_row,view.ori_col),dtype=np.float32)
-        # insert image
-        if self.mask_wt is None or self.mask_wt.shape!=self.mrg_out_wt.shape:
-            self.mask_wt=g_kern_rect(view.row_end - view.row_start, view.col_end - view.col_start)
-        self.mrg_in[view.row_start:view.row_end, view.col_start:view.col_end,...] += img
-        self.mrg_in_wt[view.row_start:view.row_end, view.col_start:view.col_end] += 1.0
-        for d in range(msk_dep):
-            self.mrg_out[view.row_start:view.row_end, view.col_start:view.col_end, d] += msk[...,d]*self.mask_wt
-        self.mrg_out_wt[view.row_start:view.row_end, view.col_start:view.col_end] += self.mask_wt
-        if this_file!=next_file:  # export new
-            for d in range(mrg_dep):
-                self.mrg_in[...,d]/=self.mrg_in_wt
-            for d in range(msk_dep):
-                self.mrg_out[...,d]/=self.mrg_out_wt
-            self.mrg_in_wt, self.mrg_out_wt=None,None
-            self.mrg_out, _val=self.msk_call(self.mrg_out, self.cfg.call_hardness)
-            _sum=view.ori_row*view.ori_col
-            text = "%s %dx%d \nPixels: %.0f / %.0f Percentage: %.0f%%" % (view.image_name, view.ori_row, view.ori_col, _val, _sum, 100. * _val / _sum)
-            print(text)
-            res[groups.index(view.image_name)]=_val
-            merge_file=os.path.join(folder, this_file)
-            cv2.imwrite(merge_file, self.mrg_out * 255.)
-            # cv2.imwrite(merge_file, draw_text((msk*255.)[...,0],text.replace("Pixel","\nPixel"),mode='L')) # L:8-bit B&W gray text
-            blend = blend_mask(self.mrg_in, self.mrg_out, self.cfg.overlay_color, self.cfg.overlay_opacity)
-            markup = draw_text(blend, text)  # RGB:3x8-bit dark text
-            imsave(merge_file.replace(".jpg", ".jpe"), markup)
-            self.mrg_in,self.mrg_out=None,None
 
+    def draw_text(self, img, text, mode='RGB', col=(10, 10, 10)):
+        # origin*=255.
+        # cv2.putText(origin,text.replace("Pixel","\nPixel"),(20,20),cv2.FONT_HERSHEY_SIMPLEX,0.3,
+        #             (255 if oc == 0 else 10, 255 if oc == 1 else 10, 255 if oc == 2 else 10), 1, cv2.LINE_AA, bottomLeftOrigin=False)
+        # imwrite(ind_file, origin)
+        origin = Image.fromarray(img.astype(np.uint8), mode)  # L RGB
+        draw = ImageDraw.Draw(origin)
+        draw.text((0, 0), text, col, ImageFont.truetype("arial.ttf", 22))  # font type size)
+        return origin
+
+    def mask_call(self, img, msk):  # blend, np result
+        blend=img.copy()
+        opa=self.cfg.overlay_opacity
+        col=self.cfg.overlay_color
+        dim=self.cfg.dep_out
+        if dim==1: # sigmoid r x c x 1
+            d=0
+            msk=np.rint(msk[...,d])  # round to  0/1
+            for c in range(3):
+                blend[..., c] = np.where(msk >= 0.5, blend[..., c] * (1 - opa) + 255 * col[d][c] * opa, blend[..., c])
+            return blend, np.sum(msk)
+        else: # softmax r x c x multi_label
+            msk=np.argmax(msk, axis=-1)
+            uni, count=np.unique(msk, return_counts=True)
+            map_count=dict(zip(uni,count))
+            count_vec=[]
+            for d in range(dim):
+                count_vec.append(map_count.get(d) or 0)
+                for c in range(3):
+                    blend[..., c] = np.where(msk == d, blend[..., c] * (1 - opa) + 255 *col[d][c] * opa, blend[..., c])
+            return blend, count_vec

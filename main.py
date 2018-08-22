@@ -65,7 +65,11 @@ if __name__ == '__main__':
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 128, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
 
 
-        ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[32, 64, 96, 128, 192, 256, 384, 512, 512], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0, model_out='softmax', model_loss='categorical_crossentropy'),
+        # ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[8, 16, 32, 64, 128, 256, 512, 1024], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0, model_out='softmax', model_loss='categorical_crossentropy'),
+        # ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[32, 64, 128, 256, 512, 1024, 2048, 4096], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0, model_out='softmax', model_loss='categorical_crossentropy'),
+        ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0, model_out='softmax', model_loss='categorical_crossentropy'),
+        # ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[64,80,100,125,156,195,244,305], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0, model_out='softmax', model_loss='categorical_crossentropy'),
+        # ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[80,95,113,134,159,189,225,268], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0, model_out='softmax', model_loss='categorical_crossentropy'),
 
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192, 192, 256, 256, 384], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
@@ -111,32 +115,11 @@ if __name__ == '__main__':
             for mod in models:
                 model= MyModel(mod, cfg, save=False)
                 xls_file = "Result_%s_%s.xlsx" % (args.pred_dir, model.name)
-                ## sigmoid
-                # for origin in origins:
-                #     prd_set=ImageSet(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, train=False)
-                #     pair=ImagePairPredict(cfg, prd_set)
-                #     res_ind = np.zeros((len(prd_set.images), len(targets)), dtype=np.uint32)
-                #     res_grp = np.zeros((len(prd_set.groups), len(targets)), dtype=np.uint32)
-                #     for i, target in enumerate(targets):
-                #         pair.change_target(target)
-                #         res_ind[..., i], res_grp[...,i]=model.predict(pair)
-                #     df=pd.DataFrame(res_ind, index=prd_set.images, columns=targets)
-                #     to_excel_sheet(df, xls_file, origin) # per slice
-                #     if cfg.separate:
-                #         df=pd.DataFrame(res_grp, index=prd_set.groups, columns=targets)
-                #         to_excel_sheet(df, xls_file, origin + "_sum")
-                #         # to_excel_sheet(df.groupby([vc.image_file for vc in prd_set.view_coord]).sum(), xls_file, origin + "_sum") # simple sum
-
-                ## softmax
                 for origin in origins:
-                    prd_set=ImageSet(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, is_train=False)
-                    multi_set=ImagePairMulti(cfg, prd_set, ','.join(targets))
-                    res_ind = np.zeros((len(prd_set.images), len(targets)), dtype=np.uint32)
-                    res_grp = np.zeros((len(prd_set.groups), len(targets)), dtype=np.uint32)
-                    res_ind, res_grp =model.predict(multi_set.get_prd_generator())
-                    df=pd.DataFrame(res_ind, index=prd_set.images, columns=targets)
-                    to_excel_sheet(df, xls_file, origin) # per slice
-                    if cfg.separate:
-                        df=pd.DataFrame(res_grp, index=prd_set.groups, columns=targets)
-                        to_excel_sheet(df, xls_file, origin + "_sum")
-                        # to_excel_sheet(df.groupby([vc.image_file for vc in prd_set.view_coord]).sum(), xls_file, origin + "_sum") # simple sum
+                    if cfg.dep_out==1:
+                        for target in targets:
+                            multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, [target], is_train=False)
+                            model.predict(multi_set, xls_file)
+                    else:
+                        multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
+                        model.predict(multi_set, xls_file)

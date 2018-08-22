@@ -79,24 +79,30 @@ class ImageSet:
         self.cfg=cfg
         self.work_directory=wd
         self.sub_folder=sf
-        self.images, self.total=[], None
-        self.groups = []
-        self.scan_image()
+        self.images=None
         self.is_train=is_train
         self.coverage=cfg.coverage_train if is_train else cfg.coverage_predict
         self.is_image=is_image
         self.row=self.cfg.row_in if is_image else self.cfg.row_out
         self.col=self.cfg.col_in if is_image else self.cfg.col_out
-        self.view_coord=[]
+        self.view_coord=None  # list
 
-    def scan_image(self):
-        path = os.path.join(self.work_directory, self.sub_folder)
-        self.images, self.total = self.find_file_recursive(path, self.cfg.image_format)
-        for i in range(len(self.images)):
-            self.images[i] = os.path.relpath(self.images[i], path)
-            group=self.file_to_whole_image(self.images[i])
-            if group not in self.groups:
-                self.groups.append(group)
+    def view_coord_batch(self):
+        view_batch={}
+        if self.cfg.separate:
+            for view in self.view_coord:
+                key=self.file_to_whole_image(view.file_name)
+                sub_list=view_batch.get(key) or []
+                sub_list.append(view)
+                view_batch[key]=sub_list
+            return view_batch
+        else:
+            n = self.cfg.train_step
+            return { x:self.view_coord[x:x + n] for x in range(0, len(self.view_coord), n)}  # break into sub-lists
+
+    def find_file_recursive_rel(self):
+        path=os.path.join(self.work_directory,self.sub_folder)
+        self.images=[os.path.relpath(absp,path) for absp in self.find_file_recursive(path, self.cfg.image_format)]
 
     @staticmethod
     def file_to_whole_image(text):
@@ -112,7 +118,7 @@ class ImageSet:
         _images = [path for fn in os.walk(_path) for path in glob(os.path.join(fn[0], _ext))]
         _total = len(_images)
         print("Found [%d] file from [%s]" % (_total, _path))
-        return _images, _total
+        return _images
 
     @staticmethod
     def ext_folder(cfg, is_image):
@@ -123,21 +129,24 @@ class ImageSet:
             return None
 
     def size_folder_update(self):
+        self.find_file_recursive_rel()
         ext=self.ext_folder(self.cfg, self.is_image)
-        if ext is not None:
+        if ext is None:
+            self.single_image_coord()
+        else:
             new_dir=self.sub_folder+ext
             new_path=os.path.join(self.work_directory, new_dir)
             # shutil.rmtree(new_path)  # force delete
             if not os.path.exists(new_path): # change folder and not found
                 os.makedirs(new_path)
-                self.view_coord=self.split_image_coord(new_path)
+                self.split_image_coord(new_path)
             self.sub_folder=new_dir
-            self.scan_image()
-        self.view_coord=self.single_image_coord()
+            self.find_file_recursive_rel()
+            self.single_image_coord()
         return self
 
     def single_image_coord(self):
-        view_coord=[]
+        self.view_coord=[]
         for image_name in self.images:
             _img = read_resize_padding(os.path.join(self.work_directory, self.sub_folder, image_name),self.cfg.image_resize,self.cfg.image_padding)
             print(image_name)
@@ -154,11 +163,11 @@ class ImageSet:
                     ro-=lg_row-self.row-rd
                     co-=lg_col-self.col-cd
                 entry.update_coord(lg_row, lg_col, ri, ro, ci, co)
-            view_coord.append(entry)
-        return view_coord
+            self.view_coord.append(entry)
+
 
     def split_image_coord(self, ex_dir):
-        view_coord=[]
+        self.view_coord=[]
         for image_name in self.images:
             _img = read_resize_padding(os.path.join(self.work_directory, self.sub_folder, image_name),self.cfg.image_resize,self.cfg.image_padding)
             lg_row, lg_col, lg_dep = _img.shape
@@ -201,8 +210,7 @@ class ImageSet:
                     entry = MetaInfo.from_whole(image_name, lg_row, lg_col, ri, ro, ci, co)
                     imwrite(os.path.join(ex_dir, entry.file_name), s_img)
                     # entry.ri, entry.ro, entry.ci, entry.co = 0, self.row, 0, self.col
-                    view_coord.append(entry)  # updated to target single exported file
-        return view_coord
+                    self.view_coord.append(entry)  # updated to target single exported file
 
 class ImagePairMulti:
     def __init__(self, cfg: ModelConfig, wd, origin, targets, is_train):
@@ -212,7 +220,7 @@ class ImagePairMulti:
         self.targets, self.dir_out = None, None
         self.change_target(targets)
         self.img_set=ImageSet(cfg, wd, origin, is_train, is_image=True).size_folder_update()
-        self.view_coord=self.img_set.view_coord
+        self.view_coord=self.img_set.view_coord  # refer modify directly
         self.is_train = is_train
         if self.is_train:
             views=set(self.view_coord)
@@ -233,44 +241,14 @@ class ImagePairMulti:
             self.dir_out = targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
 
     @property
-    def dir_in_ex(self, _dir=None):
-        # ori_dir=_dir or self.dir_in
+    def dir_in_ex(self):
         ext=ImageSet.ext_folder(self.cfg, True)
-        # return ori_dir if ext is None else ori_dir+ext
-        return ext
+        return "" if ext is None else ext
 
     @property
-    def dir_out_ex(self, _dir=None):
-        # ori_dir = _dir or self.dir_out
+    def dir_out_ex(self):
         ext = ImageSet.ext_folder(self.cfg, False)
-        # return ori_dir if ext is None else ori_dir + ext
-        return ext
-
-    def get_prd_generator(self):
-        return ImageGeneratorMulti(self, aug=False)
-
-    def get_tr_val_generator(self):
-        tr_list, val_list=[], [] # list view_coords, can be from slices
-        tr_image, val_image=set(), set() # set whole images
-        for vc in self.view_coord:
-            if vc.image_name in tr_image:
-                tr_list.append(vc)
-                tr_image.add(vc.image_name)
-            elif vc.image_name in val_image:
-                val_list.append(vc)
-                val_image.add(vc.image_name)
-            else:
-                if (len(val_list)+0.05)/(len(tr_list)+0.05)>self.cfg.train_vali_split:
-                    tr_list.append(vc)
-                    tr_image.add(vc.image_name)
-                else:
-                    val_list.append(vc)
-                    val_image.add(vc.image_name)
-        print("From %d split into train: %d views %d images; validation %d views %d images"%
-              (len(self.view_coord),len(tr_list),len(tr_image),len(val_list),len(val_image)))
-        print("Training Images:"); print(tr_image)
-        print("Validation Images:"); print(val_image)
-        return ImageGeneratorMulti(self, self.cfg.train_aug, tr_list), ImageGeneratorMulti(self, False, val_list)
+        return "" if ext is None else ext
 
 
 class ImageGeneratorMulti(keras.utils.Sequence):
@@ -303,7 +281,7 @@ class ImageGeneratorMulti(keras.utils.Sequence):
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
                 _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.origin+self.pair.dir_in_ex), self.cfg)
-                imwrite("prd_img.jpg",_img[0])
+                # imwrite("prd_img.jpg",_img[0])
             return scale_input(_img), None
 
     def on_epoch_end(self):  # Updates indexes after each epoch

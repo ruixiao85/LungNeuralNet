@@ -2,7 +2,7 @@ import colorsys
 import random
 
 def generate_colors(n, shuffle=False):
-    hsv = [(i / n, 1, 0.8) for i in range(n)] # last number 0.8 the brightness; reverse to start with blue
+    hsv = [(i / n, 1, 0.5) for i in range(n)] # last number = brightness
     colors = list(map(lambda c: colorsys.hsv_to_rgb(*c), hsv))
     if shuffle:
         random.shuffle(colors)
@@ -26,9 +26,9 @@ class ModelConfig:
         self.image_resize= image_resize or 1.0  # default 1.0, reduce size <=1.0
         self.image_padding= image_padding or 1.0  # default 1.0, padding proportionally >=1.0
         self.mask_color=mask_color or "green"  # green/white
-        self.separate = separate or True  # True: split into multiple smaller views; False: take one view only
-        self.coverage_train = coverage_tr or 0.9  #
-        self.coverage_predict = coverage_prd or 1.4
+        self.separate = separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
+        self.coverage_train = coverage_tr or 0.9
+        self.coverage_predict = coverage_prd or 1.5
         self.model_filter = model_filter or [96, 128, 192, 256, 384]
         self.model_kernel = model_kernel or [3, 3]
         self.model_act = model_act or 'elu'
@@ -36,7 +36,7 @@ class ModelConfig:
         self.model_loss = model_loss or ('binary_crossentropy' if self.dep_out == 1 else 'categorical_crossentropy')
         self.call_hardness = call_hardness or 1.0  # 0-smooth 1-hard binary call
         self.overlay_color = overlay_color or generate_colors(self.dep_out)
-        self.overlay_opacity = overlay_opacity or 0.6
+        self.overlay_opacity = overlay_opacity or 0.4
         self.batch_size = batch_size or 1
         self.train_rep = train_rep or 3  # times to repeat during training
         self.train_epoch = train_epoch or 12  # max epoches during training
@@ -44,9 +44,9 @@ class ModelConfig:
         self.train_vali_step = train_vali_step or 200
         self.train_learning_rate = train_learning_rate or 1e-4
         self.train_vali_split = train_vali_split or 0.33
-        self.train_aug = train_aug or True  # only to training set, not validation or prediction mode
-        self.train_shuffle = train_shuffle or True  # only to training set, not validation or prediction mode
-        self.train_continue = train_continue or True  # continue training by loading previous weights
+        self.train_aug = train_aug if train_aug is not None else True  # only to training set, not validation or prediction mode
+        self.train_shuffle = train_shuffle if train_shuffle is not None else True  # only to training set, not validation or prediction mode
+        self.train_continue = train_continue if train_continue is not None else True  # continue training by loading previous weights
 
 
     def __str__(self):
