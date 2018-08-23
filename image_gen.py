@@ -8,7 +8,7 @@ import keras
 from cv2.cv2 import imread, resize, imwrite, INTER_AREA
 
 from model_config import ModelConfig
-from process_image import scale_input, scale_output, augment_image_pair, read_resize_padding, extract_pad_image
+from process_image import augment_image_pair, read_resize_padding, extract_pad_image
 
 ALL_TARGET = 'All'
 class MetaInfo:
@@ -123,8 +123,8 @@ class ImageSet:
     @staticmethod
     def ext_folder(cfg, is_image):
         if cfg.separate:
-            return "_%.1f_%dx%d" % (cfg.image_resize, cfg.row_in, cfg.col_in)\
-                if is_image else "_%.1f_%dx%d" % (cfg.image_resize, cfg.row_out, cfg.col_out)
+            return "%.1f_%dx%d" % (cfg.image_resize, cfg.row_in, cfg.col_in)\
+                if is_image else "%.1f_%dx%d" % (cfg.image_resize, cfg.row_out, cfg.col_out)
         else:
             return None
 
@@ -134,7 +134,7 @@ class ImageSet:
         if ext is None:
             self.single_image_coord()
         else:
-            new_dir=self.sub_folder+ext
+            new_dir="%s_%s" % (self.sub_folder,ext)
             new_path=os.path.join(self.work_directory, new_dir)
             # shutil.rmtree(new_path)  # force delete
             if not os.path.exists(new_path): # change folder and not found
@@ -252,6 +252,16 @@ class ImagePairMulti:
 
 
 class ImageGeneratorMulti(keras.utils.Sequence):
+    def scale_input(self,_array):
+        return _array.astype(np.float32) / 127.5 - 1.0  # TODO other normalization methods
+
+    def scale_input_reverse(self,_array):
+        return (_array.astype(np.float32) + 1.0) * 127.5
+
+    def scale_output(self,_array):
+        return _array.astype(np.float32) / 255.0 # 0~1
+        # return _array.astype(np.float32) / 127.5 - 1.0  # tanh
+
     def __init__(self, pair:ImagePairMulti, aug, view_coord=None):
         self.pair=pair
         self.cfg=pair.cfg
@@ -269,20 +279,20 @@ class ImageGeneratorMulti(keras.utils.Sequence):
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.origin + self.pair.dir_in_ex), self.cfg)
+                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, "%s_%s"%(self.pair.origin, self.pair.dir_in_ex)), self.cfg)
                 for ti,tgt in enumerate(self.pair.targets):
-                    _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, tgt + self.pair.dir_out_ex), self.cfg)
+                    _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, "%s_%s"%(tgt, self.pair.dir_out_ex)), self.cfg)
             if self.train_aug:
                 _img, _tgt = augment_image_pair(_img, _tgt, _level=random.randint(0, 4))  # integer N: a <= N <= b.
                 # imwrite("tr_img.jpg",_img[0])
                 # imwrite("tr_tgt.jpg",_tgt[0])
-            return scale_input(_img), scale_output(_tgt)
+            return self.scale_input(_img), self.scale_output(_tgt)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.origin+self.pair.dir_in_ex), self.cfg)
+                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, "%s_%s"%(self.pair.origin, self.pair.dir_in_ex)), self.cfg)
                 # imwrite("prd_img.jpg",_img[0])
-            return scale_input(_img), None
+            return self.scale_input(_img), None
 
     def on_epoch_end(self):  # Updates indexes after each epoch
         self.indexes = np.arange(len(self.view_coord))

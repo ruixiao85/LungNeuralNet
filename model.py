@@ -1,39 +1,18 @@
-import cv2
 import os
 
 from datetime import datetime
 import numpy as np
 import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
-from keras import backend as K, metrics
-from keras.backend.tensorflow_backend import _to_tensor
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.engine.saving import model_from_json
-from tensorflow.python.ops.image_ops_impl import central_crop
 from skimage.io import imsave
-from scipy import signal
 from image_gen import MetaInfo, ImagePairMulti, ImageGeneratorMulti
 from model_config import ModelConfig
-from process_image import scale_input, scale_input_reverse
 from util import mk_dir_if_nonexist, to_excel_sheet
 
-SMOOTH_LOSS = 1e-5
-# def depth_softmax(matrix, is_tensor=True): # increase temperature to make the softmax more sure of itself
-#     temp = 5.0
-#     if is_tensor:
-#         exp_matrix = K.exp(matrix * temp)
-#         softmax_matrix = exp_matrix / K.sum(exp_matrix, axis=2, keepdims=True)
-#     else:
-#         exp_matrix = np.exp(matrix * temp)
-#         softmax_matrix = exp_matrix / np.sum(exp_matrix, axis=2, keepdims=True)
-#     return softmax_matrix
-# def depth_softmax(matrix):
-#     sigmoid = lambda x: 1 / (1 + K.exp(-x))
-#     sigmoided_matrix = sigmoid(matrix)
-#     softmax_matrix = sigmoided_matrix / K.sum(sigmoided_matrix, axis=0)
-#     return softmax_matrix
-
 def g_kern(size, sigma):
+    from scipy import signal
     gkern1d = signal.gaussian(size, std=sigma).reshape(size, 1)
     gkern2d = np.outer(gkern1d, gkern1d)
     return gkern2d
@@ -44,75 +23,6 @@ def g_kern_rect(row, col, rel_sig=0.5):
     r0, c0=int(0.5*(l-row)),int(0.5*(l-col))
     return mat[r0:r0+row,c0:c0+col]
 
-def jac_d(y_true, y_pred):
-    y_true_f, y_pred_f = K.flatten(y_true), K.flatten(y_pred)  # smooth differentiable
-    intersection = K.sum(y_true_f * y_pred_f)
-    return (intersection + SMOOTH_LOSS) / (K.sum(y_true_f + y_pred_f) - intersection + SMOOTH_LOSS)  # flatten
-    # intersection = K.sum(y_true * y_pred, axis=sum_axis)
-    # sum_ = K.sum(y_true + y_pred, axis=sum_axis)
-    # return K.mean((intersection + SMOOTH_LOSS) / (sum_ - intersection + SMOOTH_LOSS))  # dimensional
-
-def jac(y_true, y_pred):
-    return jac_d(y_true, K.round(K.clip(y_pred, 0, 1)))  # integer call
-
-def dice_d(y_true, y_pred):
-    y_true_f, y_pred_f = K.flatten(y_true), K.flatten(y_pred)  # smooth differentiable
-    intersection = K.sum(y_true_f * y_pred_f)
-    return (2. * intersection + SMOOTH_LOSS) / (K.sum(y_true_f) + K.sum(y_pred_f) + SMOOTH_LOSS)
-
-def dice(y_true, y_pred):
-    return dice_d(y_true, K.round(K.clip(y_pred, 0, 1)))  # integer call
-
-def dice_80(y_true, y_pred):
-    return dice(central_crop(y_true,0.8), central_crop(y_pred,0.8))
-def dice_60(y_true, y_pred):
-    return dice(central_crop(y_true,0.6), central_crop(y_pred,0.6))
-def dice_40(y_true, y_pred):
-    return dice(central_crop(y_true,0.4), central_crop(y_pred,0.4))
-def dice_20(y_true, y_pred):
-    return dice(central_crop(y_true,0.2), central_crop(y_pred,0.2))
-
-def top5_acc(y_true, y_pred, k=5):  # top_N_categorical_accuracy
-    return K.mean(K.in_top_k(y_pred, K.argmax(y_true, axis=-1), k), axis=-1)
-def spar_acc(y_true, y_pred):  # sparse_categorical_accuracy
-    return K.cast(K.equal(K.max(y_true, axis=-1), K.cast(K.argmax(y_pred, axis=-1), K.floatx())),
-                  K.floatx())
-def acc(y_true, y_pred):  # default 'acc'
-    return K.cast(K.equal(K.argmax(y_true, axis=-1), K.argmax(y_pred, axis=-1)),
-                  K.floatx())
-def acc_100(y_true, y_pred):
-    return acc(y_true, y_pred)
-def acc_80(y_true, y_pred):
-    return acc(central_crop(y_true,0.8), central_crop(y_pred,0.8))
-def acc_60(y_true, y_pred):
-    return acc(central_crop(y_true,0.6), central_crop(y_pred,0.6))
-def acc_40(y_true, y_pred):
-    return acc(central_crop(y_true,0.4), central_crop(y_pred,0.4))
-def acc_20(y_true, y_pred):
-    return acc(central_crop(y_true,0.2), central_crop(y_pred,0.2))
-
-def loss_bce(y_true, y_pred):  # bootstrapped binary cross entropy
-    target_tensor = y_true
-    prediction_tensor = y_pred
-    _epsilon = _to_tensor(K.epsilon(), prediction_tensor.dtype.base_dtype)
-    prediction_tensor = K.tf.clip_by_value(prediction_tensor, _epsilon, 1 - _epsilon)
-    prediction_tensor = K.tf.log(prediction_tensor / (1 - prediction_tensor))
-    alpha = 0.95
-    # bootstrap_target_tensor = alpha * target_tensor + (1.0 - alpha) * K.unet_tf.sigmoid(prediction_tensor)  # soft bootstrap
-    bootstrap_target_tensor = alpha * target_tensor + (1.0 - alpha) * K.tf.cast(K.tf.sigmoid(prediction_tensor) > 0.5, K.tf.float32)  # hard bootstrap
-    return K.mean(K.tf.nn.sigmoid_cross_entropy_with_logits(labels=bootstrap_target_tensor, logits=prediction_tensor))
-
-def loss_jac(y_true, y_pred):
-    return 1. - jac_d(y_true, y_pred)
-
-def loss_dice(y_true, y_pred):
-    return 1. - dice_d(y_true, y_pred)
-
-def loss_bce_dice(y_true, y_pred):
-    return 0.5 * (loss_bce(y_true, y_pred) + loss_dice(y_true, y_pred))
-
-def loss_jac_dice(y_true, y_pred):
-    return loss_jac(y_true, y_pred) + loss_dice(y_true, y_pred)
 
 class MyModel:
     # 'relu6'  # min(max(features, 0), 6)
@@ -152,8 +62,7 @@ class MyModel:
             # optimizer=SGD(lr=0.01),
             # optimizer=RMSprop(self.train_learning_rate, decay=1e-6),
             loss=self.cfg.model_loss,
-            metrics= [acc,acc_80,acc_60,acc_40,acc_20]\
-                if self.cfg.model_loss is 'categorical_crossentropy' else [jac, dice, dice_80, dice_60,dice_40, dice_20])
+            metrics= self.cfg.metrics)
         self.model.summary()
 
     def save_model(self):
@@ -188,7 +97,7 @@ class MyModel:
         tr=ImageGeneratorMulti(multi, self.cfg.train_aug, tr_list)
         val=ImageGeneratorMulti(multi, False, val_list)
 
-        export_name = "%s_%s" % (multi.dir_out, self.name)
+        export_name = "%s_%s_%s" % (multi.dir_out,multi.dir_out_ex, self.name)
         weight_file = export_name + ".h5"
         if self.cfg.train_continue and os.path.exists(weight_file):
             print("Continue from previous weights")
@@ -218,20 +127,20 @@ class MyModel:
             df.to_csv(export_name + ".csv", mode="a", header=(not os.path.exists(export_name + ".csv")))
 
     def predict(self, multi:ImagePairMulti, xls_file):
-        print('Load weights and predicting ...')
-        export_name = "%s_%s" % (multi.dir_out, self.name)
-        weight_file = export_name + ".h5"
-        self.model.load_weights(weight_file)
         img_ext=self.cfg.image_format[1:]
         mrg_in,mrg_out,mrg_out_wt,merge_dir,mask_wt=None,None,None,None,None
         r_i, r_g, sum_g, res_i, res_g=None,None,None,None,None
+        print('Load weights and predicting ...')
+        export_name = "%s_%s_%s" % (multi.dir_out, multi.dir_out_ex, self.name)
+        weight_file = export_name + ".h5"
+        self.model.load_weights(weight_file)  # TODO switch networks for multi-label
 
         target_dir = os.path.join(multi.wd, export_name)
         mk_dir_if_nonexist(target_dir)
         sum_i = self.cfg.row_out * self.cfg.col_out
         batch=multi.img_set.view_coord_batch()  # image/1batch -> view_coord
         if self.cfg.separate:
-            merge_dir = os.path.join(multi.wd, "%s_%s" % (multi.dir_out.split('_')[0], self.name))
+            merge_dir = os.path.join(multi.wd, "%s_%s_s_%s" % (multi.dir_out, multi.dir_out_ex, self.name))
             mk_dir_if_nonexist(merge_dir)
             mask_wt = g_kern_rect(self.cfg.row_out, self.cfg.col_out)
         for grp, view in batch.items():
@@ -248,7 +157,7 @@ class MyModel:
             for i, msk in enumerate(msks):
                 ind_name = view[i].file_name
                 ind_file = os.path.join(target_dir, ind_name)
-                origin = view[i].get_image(os.path.join(multi.wd, multi.origin + multi.dir_in_ex), self.cfg)
+                origin = view[i].get_image(os.path.join(multi.wd, "%s_%s"%(multi.origin, multi.dir_in_ex)), self.cfg)
                 print(ind_name); text_list = [ind_name]
                 blend, r_i=self.mask_call(origin, msk)
                 for d in range(self.cfg.dep_out):
@@ -256,14 +165,32 @@ class MyModel:
                     print(text); text_list.append(text)
                 # cv2.imwrite(ind_file, msk[...,np.newaxis] * 255.)
                 blend = self.draw_text(blend, text_list)  # RGB:3x8-bit dark text
-                imsave(ind_file.replace(img_ext, ".jpe"), blend)
+                if not self.cfg.separate:
+                    imsave(ind_file.replace(img_ext, ".jpe"), blend)
                 res_i = r_i if res_i is None else np.vstack((res_i, r_i))
 
                 if self.cfg.separate:
-                    mrg_in[view[i].row_start:view[i].row_end, view[i].col_start:view[i].col_end] = origin
+                    ri,ro=view[i].row_start, view[i].row_end
+                    ci,co=view[i].col_start, view[i].col_end
+                    ra,ca=view[i].ori_row,view[i].ori_col
+                    tri, tro = 0, self.cfg.row_out
+                    tci, tco = 0, self.cfg.col_out
+                    if ri<0:
+                        tri=-ri
+                        ri=0
+                    if ci<0:
+                        tci=-ci
+                        ci=0
+                    if ro>ra:
+                        tro=tro-(ro-ra)
+                        ro=ra
+                    if co>ca:
+                        tco=tco-(co-ca)
+                        co=ca
+                    mrg_in[ri:ro,ci:co] = origin[tri:tro,tci:tco]
                     for d in range(self.cfg.dep_out):
-                        mrg_out[view[i].row_start:view[i].row_end, view[i].col_start:view[i].col_end, d] += msk[...,d] * mask_wt
-                    mrg_out_wt[view[i].row_start:view[i].row_end, view[i].col_start:view[i].col_end] += mask_wt
+                        mrg_out[ri:ro,ci:co,d] += (msk[...,d] * mask_wt)[tri:tro,tci:tco]
+                    mrg_out_wt[ri:ro,ci:co] += mask_wt[tri:tro,tci:tco]
             if self.cfg.separate:
                 for d in range(self.cfg.dep_out):
                     mrg_out[...,d] /= mrg_out_wt
@@ -275,7 +202,7 @@ class MyModel:
                     text = "[  %d: %s] %d / %d  %.0f%%" % (d, multi.targets[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
                     print(text); text_list.append(text)
                 # cv2.imwrite(merge_file, mrg_out[..., np.newaxis] * 255.)
-                blend = self.draw_text(blend, text_list, 3)  # RGB:3x8-bit dark text
+                blend = self.draw_text(blend, text_list, 3.0)  # RGB:3x8-bit dark text
                 imsave(merge_file.replace(img_ext, ".jpe"), blend)
                 res_g=r_g if res_g is None else np.vstack((res_g, r_g))
         df = pd.DataFrame(res_i, index=multi.img_set.images, columns=multi.targets)
@@ -286,7 +213,7 @@ class MyModel:
 
 
     def draw_text(self, img, text_list, size_multiple=1.0):
-        size=int(0.25*(3.0*26+0.002*(self.cfg.row_out+self.cfg.col_out))*size_multiple) # space=1.15
+        size=int(0.25*(3.0*30+0.003*(self.cfg.row_out+self.cfg.col_out))*size_multiple) # space=1.15
         mode = 'RGB'
         col = (10, 10, 10)
         origin = Image.fromarray(img.astype(np.uint8), mode)  # L RGB
@@ -301,11 +228,10 @@ class MyModel:
         opa=self.cfg.overlay_opacity
         col=self.cfg.overlay_color
         dim=self.cfg.dep_out
-        if dim==1: # sigmoid r x c x 1
-            d=0
-            msk=np.rint(msk[...,d])  # round to  0/1
+        if dim==1: # r x c x 1
+            msk=np.rint(msk[...,0])  # sigmoid round to  0/1
             for c in range(3):
-                blend[..., c] = np.where(msk >= 0.5, blend[..., c] * (1 - opa) + col[d][c] * opa, blend[..., c])
+                blend[..., c] = np.where(msk >= 0.5, blend[..., c] * (1 - opa) + col[0][c] * opa, blend[..., c])
             return blend, np.sum(msk, keepdims=True)
         else: # softmax r x c x multi_label
             msk=np.argmax(msk, axis=-1)

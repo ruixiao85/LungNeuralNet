@@ -33,10 +33,11 @@ if __name__ == '__main__':
     origins = args.input.split(',')
     targets = args.output.split(',')
     from densenet.dn121 import DenseNet
-    from unet_pool_up_deep import unet_pool_up_deep_2f2
+    from unet_pool_up_resd import unet_pool_up_deep_2f2
     from unet.unet_pool_up import unet_pool_up_2f1
     from unet.unet_pool_up_dual import unet_pool_up_dual_2f1
     from unet.unet_pool_up_dual_residual import unet_pool_up_dual_residual_2f1, unet_pool_up_dual_residual_c13_2f1
+    from unet.unet_pool_up_resf import unet_pool_up_res_1f1, unet_pool_up_res_2f1, unet_pool_up_res_2f2
     models = [
         # unet_conv_trans_1f1,
         # unet_conv_trans_2f1,
@@ -47,6 +48,7 @@ if __name__ == '__main__':
         # unet_pool_up_dual_2f1, #very good
         # unet_pool_up_1f1,
         unet_pool_up_2f1,
+        unet_pool_up_res_2f1,
         # unet_pool_up_2f2,
         # unet_pool_up_dual_residual_c13_2f1,
         # unet_pool_up_dual_residual_2f1,
@@ -65,9 +67,24 @@ if __name__ == '__main__':
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 128, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
 
 
+        # ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        # ModelConfig((512, 512, 3), (512, 512, 6), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        # ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], model_kernel=[3, 3], image_resize=0.2, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        # ModelConfig((512, 512, 3), (512, 512, 6), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], model_kernel=[3, 3], image_resize=0.2, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+
+        ModelConfig((2048, 2048, 3), (2048, 2048, 1), model_filter=[20,28,40,57,81,115,163,231,327,462], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        ModelConfig((768, 768, 3), (768, 768, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        ModelConfig((512, 512, 3), (512, 512, 1), model_filter=[32, 64, 96, 128, 192], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        # ModelConfig((768, 768, 3), (768, 768, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], model_kernel=[3, 3], image_resize=0.2, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        # ModelConfig((512, 512, 3), (512, 512, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], model_kernel=[3, 3], image_resize=0.2, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+
+        # ModelConfig((768, 768, 3), (768, 768, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        # ModelConfig((512, 512, 3), (512, 512, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        # ModelConfig((768, 768, 3), (768, 768, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], model_kernel=[3, 3], image_resize=0.2, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        # ModelConfig((512, 512, 3), (512, 512, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], model_kernel=[3, 3], image_resize=0.2, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+
         # ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[8, 16, 32, 64, 128, 256, 512, 1024], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0, model_out='softmax', model_loss='categorical_crossentropy'),
         # ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[32, 64, 128, 256, 512, 1024, 2048, 4096], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0, model_out='softmax', model_loss='categorical_crossentropy'),
-        ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0, model_out='softmax', model_loss='categorical_crossentropy'),
         # ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[64,80,100,125,156,195,244,305], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0, model_out='softmax', model_loss='categorical_crossentropy'),
         # ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[80,95,113,134,159,189,225,268], model_kernel=[3, 3], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0, model_out='softmax', model_loss='categorical_crossentropy'),
 

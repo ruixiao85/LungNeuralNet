@@ -31,7 +31,7 @@ if __name__ == '__main__':
     origins = args.input.split(',')
     targets = args.output.split(',')
     from densenet.dn121 import DenseNet
-    from unet_pool_up_deep import unet_pool_up_deep_2f2
+    from unet_pool_up_resd import unet_pool_up_deep_2f2
     from unet.unet_pool_up import unet_pool_up_2f1
     from unet.unet_pool_up_dual import unet_pool_up_dual_2f1
     from unet.unet_pool_up_dual_residual import unet_pool_up_dual_residual_2f1, unet_pool_up_dual_residual_c13_2f1

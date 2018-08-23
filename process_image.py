@@ -67,20 +67,6 @@ def skip_image(s_img, mode, if_print=True):
         if_skip = std < 15.0
         return print_return(if_skip, "checking tile for contrast (std=%.1f)" % std) if if_print else if_skip
 
-def scale_input(_array):
-    return _array.astype(np.float32) / 127.5 - 1.0
-    # mean = np.mean(_array)
-    # std = np.std(_array)
-    # mean_per_channel = _array.mean(axis=(0, 1), keepdims=True)
-    # print("  mean %.2f std %.2f" % (mean, std))
-    # _array -= ((mean + 0.6) / 2.0)
-    # _array /= _array.std(axis=(0, 1), keepdims=True)
-    # return _array
-def scale_input_reverse(_array):
-    return (_array.astype(np.float32) + 1.0) * 127.5
-
-def scale_output(_array):
-    return _array.astype(np.float32) / 255.0
 
 def augment_image_pair(_img, _tgt, _level=1.0):
     seg_both_1 = iaa.Sequential([
