@@ -9,8 +9,6 @@ from keras import backend as K, metrics
 from keras.backend.tensorflow_backend import _to_tensor
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.engine.saving import model_from_json
-from keras.layers import Activation
-from tensorflow.python.keras.activations import softmax
 from tensorflow.python.ops.image_ops_impl import central_crop
 from skimage.io import imsave
 from scipy import signal
@@ -196,7 +194,6 @@ class MyModel:
             print("Continue from previous weights")
             self.model.load_weights(weight_file)
 
-        indicator, trend = ('val_dice', 'max') if cfg.dep_out==1 else ('val_acc', 'max')
         print('Fitting neural net...')
         for r in range(self.cfg.train_rep):
             print("Training %d/%d for %s" % (r + 1, self.cfg.train_rep, export_name))
@@ -207,8 +204,8 @@ class MyModel:
                validation_steps=min(cfg.train_vali_step, len(val.view_coord)) if isinstance(cfg.train_vali_step, int) else len(val.view_coord),
                 epochs=self.cfg.train_epoch, max_queue_size=1, workers=0, use_multiprocessing=False, shuffle=False,
                 callbacks=[
-                    ModelCheckpoint(weight_file, monitor=indicator, mode=trend, save_weights_only=False, save_best_only=True),
-                    EarlyStopping(monitor=indicator, mode=trend, patience=1, verbose=1),
+                    ModelCheckpoint(weight_file, monitor=cfg.train_indicator, mode='max', save_weights_only=False, save_best_only=True),
+                    EarlyStopping(monitor=cfg.train_indicator, mode='max', patience=1, verbose=1),
                     # ReduceLROnPlateau(monitor=indicator, mode=trend, factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
                     # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                 ]).history
@@ -255,10 +252,10 @@ class MyModel:
                 print(ind_name); text_list = [ind_name]
                 blend, r_i=self.mask_call(origin, msk)
                 for d in range(self.cfg.dep_out):
-                    text = " [%d: %s] %d / %d  %.0f%%" % ( d, multi.targets[d], r_i[d], sum_i, 100. * r_i[d] / sum_i)
+                    text = "[  %d: %s] %d / %d  %.0f%%" % ( d, multi.targets[0], r_i[d], sum_i, 100. * r_i[d] / sum_i)
                     print(text); text_list.append(text)
                 # cv2.imwrite(ind_file, msk[...,np.newaxis] * 255.)
-                blend = self.draw_text(blend, '\n'.join(text_list))  # RGB:3x8-bit dark text
+                blend = self.draw_text(blend, text_list)  # RGB:3x8-bit dark text
                 imsave(ind_file.replace(img_ext, ".jpe"), blend)
                 res_i = r_i if res_i is None else np.vstack((res_i, r_i))
 
@@ -275,10 +272,10 @@ class MyModel:
                 merge_file = os.path.join(merge_dir, merge_name)
                 blend, r_g = self.mask_call(mrg_in, mrg_out)
                 for d in range(self.cfg.dep_out):
-                    text = " [%d: %s] %d / %d  %.0f%%" % (d, multi.targets[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
+                    text = "[  %d: %s] %d / %d  %.0f%%" % (d, multi.targets[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
                     print(text); text_list.append(text)
                 # cv2.imwrite(merge_file, mrg_out[..., np.newaxis] * 255.)
-                blend = self.draw_text(blend, '\n'.join(text_list))  # RGB:3x8-bit dark text
+                blend = self.draw_text(blend, text_list, 3)  # RGB:3x8-bit dark text
                 imsave(merge_file.replace(img_ext, ".jpe"), blend)
                 res_g=r_g if res_g is None else np.vstack((res_g, r_g))
         df = pd.DataFrame(res_i, index=multi.img_set.images, columns=multi.targets)
@@ -288,14 +285,15 @@ class MyModel:
             to_excel_sheet(df, xls_file, multi.origin + "_sum")
 
 
-    def draw_text(self, img, text, mode='RGB', col=(10, 10, 10)):
-        # origin*=255.
-        # cv2.putText(origin,text.replace("Pixel","\nPixel"),(20,20),cv2.FONT_HERSHEY_SIMPLEX,0.3,
-        #             (255 if oc == 0 else 10, 255 if oc == 1 else 10, 255 if oc == 2 else 10), 1, cv2.LINE_AA, bottomLeftOrigin=False)
-        # imwrite(ind_file, origin)
+    def draw_text(self, img, text_list, size_multiple=1.0):
+        size=int(0.25*(3.0*26+0.002*(self.cfg.row_out+self.cfg.col_out))*size_multiple) # space=1.15
+        mode = 'RGB'
+        col = (10, 10, 10)
         origin = Image.fromarray(img.astype(np.uint8), mode)  # L RGB
         draw = ImageDraw.Draw(origin)
-        draw.text((0, 0), text, col, ImageFont.truetype("arial.ttf", 22))  # font type size)
+        draw.text((0, 0), '\n'.join(text_list), col, ImageFont.truetype("arial.ttf",size))  # font type size)
+        for i in range(self.cfg.dep_out):
+            draw.text((0, round(size*(i+1))), ' X', self.cfg.overlay_color[i], ImageFont.truetype("arial.ttf", size))  # font type size)
         return origin
 
     def mask_call(self, img, msk):  # blend, np result
@@ -307,8 +305,8 @@ class MyModel:
             d=0
             msk=np.rint(msk[...,d])  # round to  0/1
             for c in range(3):
-                blend[..., c] = np.where(msk >= 0.5, blend[..., c] * (1 - opa) + 255 * col[d][c] * opa, blend[..., c])
-            return blend, np.sum(msk)
+                blend[..., c] = np.where(msk >= 0.5, blend[..., c] * (1 - opa) + col[d][c] * opa, blend[..., c])
+            return blend, np.sum(msk, keepdims=True)
         else: # softmax r x c x multi_label
             msk=np.argmax(msk, axis=-1)
             uni, count=np.unique(msk, return_counts=True)
@@ -317,5 +315,5 @@ class MyModel:
             for d in range(dim):
                 count_vec.append(map_count.get(d) or 0)
                 for c in range(3):
-                    blend[..., c] = np.where(msk == d, blend[..., c] * (1 - opa) + 255 *col[d][c] * opa, blend[..., c])
+                    blend[..., c] = np.where(msk == d, blend[..., c] * (1 - opa) + col[d][c] * opa, blend[..., c])
             return blend, count_vec

@@ -1,9 +1,11 @@
 import colorsys
 import random
+import numpy as np
 
 def generate_colors(n, shuffle=False):
     hsv = [(i / n, 1, 0.5) for i in range(n)] # last number = brightness
-    colors = list(map(lambda c: colorsys.hsv_to_rgb(*c), hsv))
+    # colors = list(map(lambda c: colorsys.hsv_to_rgb(*c), hsv))
+    colors = [tuple((255*np.array(col)).astype(np.uint8)) for col in map(lambda c: colorsys.hsv_to_rgb(*c), hsv)]
     if shuffle:
         random.shuffle(colors)
     return colors
@@ -18,7 +20,7 @@ class ModelConfig:
                  overlay_color=None, overlay_opacity=None, call_hardness=None,
                  train_rep=None, train_epoch=None, train_step=None, train_vali_step=None,
                  train_learning_rate=None, train_vali_split=None, train_aug=None, train_continue=None,
-                 train_shuffle=None
+                 train_shuffle=None, train_indicator=None
                  ):
         self.row_in, self.col_in, self.dep_in = dim_in or (512,512,3)
         self.row_out, self.col_out, self.dep_out = dim_out or (512,512,1)
@@ -47,7 +49,7 @@ class ModelConfig:
         self.train_aug = train_aug if train_aug is not None else True  # only to training set, not validation or prediction mode
         self.train_shuffle = train_shuffle if train_shuffle is not None else True  # only to training set, not validation or prediction mode
         self.train_continue = train_continue if train_continue is not None else True  # continue training by loading previous weights
-
+        self.train_indicator = train_indicator or ('val_dice' if self.dep_out == 1 else 'val_acc')  # indicator to maximize
 
     def __str__(self):
         return '_'.join([
