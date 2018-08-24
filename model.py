@@ -163,7 +163,7 @@ class MyModel:
                 print(ind_name); text_list = [ind_name]
                 blend, r_i=self.mask_call(origin, msk)
                 for d in range(self.cfg.dep_out):
-                    text = "[  %d: %s] %d / %d  %.0f%%" % ( d, multi.targets[0], r_i[d], sum_i, 100. * r_i[d] / sum_i)
+                    text = "[  %d: %s] %d / %d  %.2f%%" % ( d, multi.targets[0], r_i[d], sum_i, 100. * r_i[d] / sum_i)
                     print(text); text_list.append(text)
                 # cv2.imwrite(ind_file, msk[...,np.newaxis] * 255.)
                 blend = self.draw_text(blend, text_list)  # RGB:3x8-bit dark text
@@ -197,7 +197,7 @@ class MyModel:
                 merge_file = os.path.join(merge_dir, merge_name)
                 blend, r_g = self.mask_call(mrg_in, mrg_out)
                 for d in range(self.cfg.dep_out):
-                    text = "[  %d: %s] %d / %d  %.0f%%" % (d, multi.targets[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
+                    text = "[  %d: %s] %d / %d  %.2f%%" % (d, multi.targets[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
                     print(text); text_list.append(text)
                 # cv2.imwrite(merge_file, mrg_out[..., np.newaxis] * 255.)
                 blend = self.draw_text(blend, text_list, 2.0)  # RGB:3x8-bit dark text

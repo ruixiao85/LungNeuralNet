@@ -6,10 +6,9 @@ from model import *
 
 if __name__ == '__main__':
     # -d "D:\Cel files\2018-07.13 Adam Brenderia 2X LPS CGS" -t "071318 Cleaned 24H post cgs" -p "2018-07.20 Kyle MMP13 Smoke Flu Zander 2X" -o "Paren,InflamMild,InflamSevere"
-    # -d "I:/NonParen" -t "Rui Xiao 2017-09-07 (14332)(27)" -p "Rui Xiao 2017-12-05 (15634)(9)" -o "Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,RespiratoryAirway,SmallBloodVessel" -m a
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('-d', '--dir', dest='dir', action='store',
-                        default='', help='work directory, empty->current dir')
+                        default='10x_scan_lung_smoke', help='work directory, empty->current dir')
     parser.add_argument('-t', '--train', dest='train_dir', action='store',
                         default='train', help='train sub-directory')
     parser.add_argument('-p', '--pred', dest='pred_dir', action='store',
@@ -21,14 +20,21 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--height', dest='height', type=int,
                         default='512', help='height/rows')
     parser.add_argument('-e', '--ext', dest='ext', action='store',
-                        default='jpg', help='extension')
+                        default='*.jpg', help='extension')
     parser.add_argument('-i', '--input', dest='input', type=str,
                         default='Original', help='input: Original')
     parser.add_argument('-o', '--output', dest='output', type=str,
-                        default='Paren,InflamMild,InflamSevere', help='output: targets separated by comma')
+                        default='ConductingAirway,ConnectiveTissue,LargeBloodVessel', help='output: targets separated by comma')
     args = parser.parse_args()
 
-    os.chdir(os.getcwd() if (args.dir == '') else args.dir)
+    script_dir = os.path.realpath(__file__)
+    rel_dir = os.path.join(script_dir, args.dir)
+    if os.path.exists(args.dir):
+        os.chdir(args.dir)
+    elif os.path.exists(rel_dir):
+        os.chdir(rel_dir)
+    else:
+        os.chdir(script_dir)
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
@@ -38,25 +44,6 @@ if __name__ == '__main__':
     from unet.unet_pool_up_dual import unet_pool_up_dual_2f1
     from unet.unet_pool_up_dual_residual import unet_pool_up_dual_residual_2f1, unet_pool_up_dual_residual_c13_2f1
     from unet.unet_pool_up_resf import unet_pool_up_res_1f1, unet_pool_up_res_2f1, unet_pool_up_res_2f2
-    models = [
-        # unet_conv_trans_1f1,
-        # unet_conv_trans_2f1,
-        # unet_conv_trans_2f2,
-        # unet_pool_trans_1f1,
-        # unet_pool_trans_2f1,
-        # unet_pool_trans_2f2,
-        # unet_pool_up_dual_2f1, #very good
-        # unet_pool_up_1f1,
-        unet_pool_up_2f1,
-        unet_pool_up_res_2f1,
-        # unet_pool_up_2f2,
-        # unet_pool_up_dual_residual_c13_2f1,
-        # unet_pool_up_dual_residual_2f1,
-        # unet_pool_up_deep_2f2,
-        # unet_vgg_7conv,
-        # unet_recursive, # not working
-        # DenseNet,
-    ]
     configs = [
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 128, 192, 192, 256, 256, 384], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 128, 192, 192, 256, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
@@ -66,15 +53,9 @@ if __name__ == '__main__':
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 128, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
 
-
-        # ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], mask_color='green', image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
-        # ModelConfig((512, 512, 3), (512, 512, 6), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], mask_color='green', image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
-        # ModelConfig((768, 768, 3), (768, 768, 6), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], mask_color='green', image_resize=0.2, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
-        # ModelConfig((512, 512, 3), (512, 512, 6), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], mask_color='green', image_resize=0.2, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
-
-        ModelConfig((2048, 2048, 3), (2048, 2048, 1), model_filter=[20,28,40,57,81,115,163,231,327,462], mask_color='green', image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
-        ModelConfig((768, 768, 3), (768, 768, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], mask_color='green', image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
-        ModelConfig((512, 512, 3), (512, 512, 1), model_filter=[32, 64, 96, 128, 192], mask_color='green', image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        ModelConfig((2048, 2048, 3), (2048, 2048, 1), model_filter=[20,28,40,57,81,115,163,231,327,462], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        ModelConfig((768, 768, 3), (768, 768, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        ModelConfig((512, 512, 3), (512, 512, 1), model_filter=[32, 64, 96, 128, 192], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
         # ModelConfig((768, 768, 3), (768, 768, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], mask_color='green', image_resize=0.2, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
         # ModelConfig((512, 512, 3), (512, 512, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], mask_color='green', image_resize=0.2, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
 

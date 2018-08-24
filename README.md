@@ -21,7 +21,7 @@ The prediction performed on a new image was shown as an example below.
 ![alt text](2x_field_lung_flu/pred/Parenchyma_1.0_512x512_s_unet_pool_up_2f1_5f32-512_2k33_elu_sigmoid_o1_loss_bce_dice/36_KO_FLU_1.jpe?raw=true "lung parenchymal region")
 
 <dl>
-    <dt>Predicted to be mild inflammation in the lung</dt>
+    <dt>Predicted to be severe inflammation in the lung</dt>
     <dd>sum of pixels: 238843 (16% of the entire image)</dd>
 </dl>
 
