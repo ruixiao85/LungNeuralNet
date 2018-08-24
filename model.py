@@ -4,11 +4,11 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
-from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.engine.saving import model_from_json
 from skimage.io import imsave
 from image_gen import MetaInfo, ImagePairMulti, ImageGeneratorMulti
 from model_config import ModelConfig
+from tensorboard_train_val import TensorBoardTrainVal
 from util import mk_dir_if_nonexist, to_excel_sheet
 
 def g_kern(size, sigma):
@@ -39,9 +39,9 @@ class MyModel:
     #     model_out = 'softmax'   model_loss='categorical_crossentropy'
     #     model_out='sigmoid'    model_loss=[loss_bce_dice] 'binary_crossentropy' "bcedice"
 
-    def __init__(self, func, cfg:ModelConfig, save):
+    def __init__(self, cfg:ModelConfig, save):
         self.cfg=cfg
-        self.model, self.name=func(cfg)
+        self.model, self.name=cfg.model_name(cfg)
         self.compile_model()
         if save:
             self.save_model()
@@ -108,6 +108,7 @@ class MyModel:
             print("Training %d/%d for %s" % (r + 1, self.cfg.train_rep, export_name))
             tr.on_epoch_end()
             val.on_epoch_end()
+            from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
             history = self.model.fit_generator(tr, validation_data=val, verbose=1,
                 steps_per_epoch=min(cfg.train_step, len(tr.view_coord)) if isinstance(cfg.train_step , int) else len(tr.view_coord),
                validation_steps=min(cfg.train_vali_step, len(val.view_coord)) if isinstance(cfg.train_vali_step, int) else len(val.view_coord),
@@ -115,8 +116,8 @@ class MyModel:
                 callbacks=[
                     ModelCheckpoint(weight_file, monitor=cfg.train_indicator, mode='max', save_weights_only=False, save_best_only=True),
                     EarlyStopping(monitor=cfg.train_indicator, mode='max', patience=1, verbose=1),
-                    # ReduceLROnPlateau(monitor=indicator, mode=trend, factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
-                    # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
+                    ReduceLROnPlateau(monitor=cfg.train_indicator, mode='max', factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
+                    TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                 ]).history
             if not os.path.exists(export_name + ".txt"):
                 with open(export_name + ".txt", "w") as net_summary:
@@ -136,7 +137,8 @@ class MyModel:
         self.model.load_weights(weight_file)  # TODO switch networks for multi-label
 
         target_dir = os.path.join(multi.wd, export_name)
-        mk_dir_if_nonexist(target_dir)
+        if not self.cfg.separate: # skip saving individual images
+            mk_dir_if_nonexist(target_dir)
         sum_i = self.cfg.row_out * self.cfg.col_out
         batch=multi.img_set.view_coord_batch()  # image/1batch -> view_coord
         if self.cfg.separate:
@@ -165,7 +167,7 @@ class MyModel:
                     print(text); text_list.append(text)
                 # cv2.imwrite(ind_file, msk[...,np.newaxis] * 255.)
                 blend = self.draw_text(blend, text_list)  # RGB:3x8-bit dark text
-                if not self.cfg.separate:
+                if not self.cfg.separate: # skip saving individual images
                     imsave(ind_file.replace(img_ext, ".jpe"), blend)
                 res_i = r_i if res_i is None else np.vstack((res_i, r_i))
 
@@ -176,17 +178,13 @@ class MyModel:
                     tri, tro = 0, self.cfg.row_out
                     tci, tco = 0, self.cfg.col_out
                     if ri<0:
-                        tri=-ri
-                        ri=0
+                        tri=-ri; ri=0
                     if ci<0:
-                        tci=-ci
-                        ci=0
+                        tci=-ci; ci=0
                     if ro>ra:
-                        tro=tro-(ro-ra)
-                        ro=ra
+                        tro=tro-(ro-ra); ro=ra
                     if co>ca:
-                        tco=tco-(co-ca)
-                        co=ca
+                        tco=tco-(co-ca); co=ca
                     mrg_in[ri:ro,ci:co] = origin[tri:tro,tci:tco]
                     for d in range(self.cfg.dep_out):
                         mrg_out[ri:ro,ci:co,d] += (msk[...,d] * mask_wt)[tri:tro,tci:tco]
@@ -202,7 +200,7 @@ class MyModel:
                     text = "[  %d: %s] %d / %d  %.0f%%" % (d, multi.targets[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
                     print(text); text_list.append(text)
                 # cv2.imwrite(merge_file, mrg_out[..., np.newaxis] * 255.)
-                blend = self.draw_text(blend, text_list, 3.0)  # RGB:3x8-bit dark text
+                blend = self.draw_text(blend, text_list, 2.0)  # RGB:3x8-bit dark text
                 imsave(merge_file.replace(img_ext, ".jpe"), blend)
                 res_g=r_g if res_g is None else np.vstack((res_g, r_g))
         df = pd.DataFrame(res_i, index=multi.img_set.images, columns=multi.targets)
@@ -213,14 +211,15 @@ class MyModel:
 
 
     def draw_text(self, img, text_list, size_multiple=1.0):
-        size=int(0.25*(3.0*30+0.003*(self.cfg.row_out+self.cfg.col_out))*size_multiple) # space=1.15
-        mode = 'RGB'
-        col = (10, 10, 10)
-        origin = Image.fromarray(img.astype(np.uint8), mode)  # L RGB
+        size=int(0.25*(3.0*25+0.003*(self.cfg.row_out+self.cfg.col_out))*size_multiple) # space=1.15
+        op=self.cfg.overlay_opacity
+        txt_col = (10, 10, 10, int((1.0+op)*127))
+        origin = Image.fromarray(img.astype(np.uint8),'RGB') # L RGB
         draw = ImageDraw.Draw(origin)
-        draw.text((0, 0), '\n'.join(text_list), col, ImageFont.truetype("arial.ttf",size))  # font type size)
+        draw.text((0, 0), '\n'.join(text_list), txt_col, ImageFont.truetype("arial.ttf",size))  # font type size)
         for i in range(self.cfg.dep_out):
-            draw.text((0, round(size*(i+1))), ' X', self.cfg.overlay_color[i], ImageFont.truetype("arial.ttf", size))  # font type size)
+            sym_col = self.cfg.overlay_color[i]+(int(op*255),)
+            draw.text((0, round(size*(i+1))), ' X', sym_col, ImageFont.truetype("arial.ttf", size))  # font type size)
         return origin
 
     def mask_call(self, img, msk):  # blend, np result

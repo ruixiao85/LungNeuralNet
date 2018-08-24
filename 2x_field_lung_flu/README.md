@@ -11,21 +11,21 @@ The prediction performed on a new image was shown as an example below.
     <dl></dl>
 </dl>
 
-![alt text](2x_field_lung_flu/pred/Original/36_KO_FLU_1.jpg?raw=true "original Image")
+![alt text](pred/Original/36_KO_FLU_1.jpg?raw=true "original Image")
 
 <dl>
     <dt>Predicted to be lung parenchymal region</dt>
     <dd>sum of pixels: 877389 (61% of the entire image)</dd>
 </dl>
 
-![alt text](2x_field_lung_flu/pred/Parenchyma_1.0_512x512_s_unet_pool_up_2f1_5f32-512_2k33_elu_sigmoid_o1_loss_bce_dice/36_KO_FLU_1.jpe?raw=true "lung parenchymal region")
+![alt text](pred/Parenchyma_1.0_512x512_s_unet_pool_up_2f1_5f32-512_2k33_elu_sigmoid_o1_loss_bce_dice/36_KO_FLU_1.jpe?raw=true "lung parenchymal region")
 
 <dl>
     <dt>Predicted to be mild inflammation in the lung</dt>
     <dd>sum of pixels: 238843 (16% of the entire image)</dd>
 </dl>
 
-![alt text](2x_field_lung_flu/pred/SevereInflammation_1.0_512x512_s_unet_pool_up_2f1_5f32-512_2k33_elu_sigmoid_o1_loss_bce_dice/36_KO_FLU_1.jpe?raw=true "severe inflammation in the lung")
+![alt text](pred/SevereInflammation_1.0_512x512_s_unet_pool_up_2f1_5f32-512_2k33_elu_sigmoid_o1_loss_bce_dice/36_KO_FLU_1.jpe?raw=true "severe inflammation in the lung")
 
 <dl>
     <dt>Exported results</dt>    
@@ -36,8 +36,8 @@ The prediction performed on a new image was shown as an example below.
 | 36_KO_FLU_1.jpg | 877389 | 238843 |
 
 # Training
-![alt text](2x_field_lung_flu/log/dice.png?raw=true "dice coefficient during training")
-![alt text](2x_field_lung_flu/log/jac.png?raw=true "jaccard coefficient during training")
+![alt text](log/dice.png?raw=true "dice coefficient during training")
+![alt text](log/jac.png?raw=true "jaccard coefficient during training")
 ```
 Using TensorFlow backend.
 Network specifications: unet pool up 2f1 5f32-512 2k33 elu sigmoid o1 loss bce dice

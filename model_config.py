@@ -16,7 +16,7 @@ class ModelConfig:
 
     def __init__(self, dim_in=None, dim_out=None, image_format=None, image_resize=None, image_padding=None, mask_color=None,
                  coverage_tr=None, coverage_prd=None, batch_size=None, separate=None,
-                 model_filter=None, model_kernel=None,
+                 model_name=None, model_filter=None, model_kernel=None,
                  model_act=None, model_out=None, model_loss=None, metrics=None,
                  overlay_color=None, overlay_opacity=None, call_hardness=None,
                  train_rep=None, train_epoch=None, train_step=None, train_vali_step=None,
@@ -28,11 +28,13 @@ class ModelConfig:
         self.image_format=image_format or "*.jpg"
         self.image_resize= image_resize or 1.0  # default 1.0, reduce size <=1.0
         self.image_padding= image_padding or 1.0  # default 1.0, padding proportionally >=1.0
-        self.mask_color=mask_color or "green"  # green/white
+        self.mask_color=mask_color or "white"  # green/white
         self.separate = separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
-        self.coverage_train = coverage_tr or 0.9
-        self.coverage_predict = coverage_prd or 1.5
-        self.model_filter = model_filter or [96, 128, 192, 256, 384]
+        self.coverage_train = coverage_tr or 0.99
+        self.coverage_predict = coverage_prd or 1.50
+        from unet_pool_up import unet_pool_up_2f1, unet_pool_up_2f2
+        self.model_name = model_name or unet_pool_up_2f1
+        self.model_filter = model_filter or [32, 64, 128, 256, 512]
         self.model_kernel = model_kernel or [3, 3]
         from metrics import jac,dice,dice_80,dice_60,dice_40,dice_20,acc,acc_80,acc_60,acc_40,acc_20,\
             loss_bce_dice, enable_custom_activation
@@ -45,7 +47,7 @@ class ModelConfig:
         self.overlay_color = overlay_color or generate_colors(self.dep_out)
         self.overlay_opacity = overlay_opacity or 0.4
         self.batch_size = batch_size or 1
-        self.train_rep = train_rep or 2  # times to repeat during training
+        self.train_rep = train_rep or 3  # times to repeat during training
         self.train_epoch = train_epoch or 12  # max epoches during training
         self.train_step = train_step or 500
         self.train_vali_step = train_vali_step or 200
