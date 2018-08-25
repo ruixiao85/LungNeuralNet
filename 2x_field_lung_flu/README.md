@@ -6,6 +6,8 @@ http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/
 After training on 14 image pairs, the neural network is able to reach 80%~90% accuracy (dice coefficient) in identifying lung parenchymal region and severe inflammation in the lung in the validation set.
 The prediction performed on a new image was shown as an example below.
 
+Image credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia University Medical Center
+
 <dl>
     <dt>Original Image</dt>
     <dl></dl>

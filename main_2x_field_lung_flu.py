@@ -3,7 +3,7 @@ import argparse
 from model import *
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Process some integers.')
+    parser = argparse.ArgumentParser(description='train and predict with biomedical images.')
     parser.add_argument('-d', '--dir', dest='dir', action='store',
                         default='2x_field_lung_flu', help='work directory, empty->current dir')
     parser.add_argument('-t', '--train', dest='train_dir', action='store',
@@ -41,15 +41,15 @@ if __name__ == '__main__':
     mode = args.mode[0].lower()
     if mode != 'p':
         for cfg in configs:
-            model= MyModel(cfg, save=False)
-            print("Network specifications: " + model.name.replace("_", " "))
+            model = MyModel(cfg, save=False)
+            print("Network specifications: " + model.name)
             for origin in origins:
-                if cfg.dep_out==1:
+                if cfg.dep_out == 1:
                     for target in targets:
-                        multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
+                        multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
                         model.train(cfg, multi_set)
                 else:
-                    multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
+                    multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
                     model.train(cfg, multi_set)
 
     if mode != 't':
@@ -59,8 +59,8 @@ if __name__ == '__main__':
             for origin in origins:
                 if cfg.dep_out == 1:
                     for target in targets:
-                        multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, [target], is_train=False)
+                        multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, [target], is_train=False)
                         model.predict(multi_set, xls_file)
                 else:
-                    multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
+                    multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
                     model.predict(multi_set, xls_file)

@@ -6,7 +6,7 @@ import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
 from keras.engine.saving import model_from_json
 from skimage.io import imsave
-from image_gen import MetaInfo, ImagePairMulti, ImageGeneratorMulti
+from image_gen import MetaInfo, ImagePair, ImageGenerator
 from model_config import ModelConfig
 from tensorboard_train_val import TensorBoardTrainVal
 from util import mk_dir_if_nonexist, to_excel_sheet
@@ -73,7 +73,7 @@ class MyModel:
     # def export_name(self, dir, name):
     #     return "%s_%s" % (dir, name)
 
-    def train(self, cfg, multi:ImagePairMulti):
+    def train(self, cfg, multi:ImagePair):
         tr_list, val_list = [], []  # list view_coords, can be from slices
         tr_image, val_image = set(), set()  # set whole images
         for vc in multi.view_coord:
@@ -94,8 +94,8 @@ class MyModel:
               (len(multi.view_coord), len(tr_list), len(tr_image), len(val_list), len(val_image)))
         print("Training Images:"); print(tr_image)
         print("Validation Images:"); print(val_image)
-        tr=ImageGeneratorMulti(multi, self.cfg.train_aug, tr_list)
-        val=ImageGeneratorMulti(multi, False, val_list)
+        tr=ImageGenerator(multi, self.cfg.train_aug, tr_list)
+        val=ImageGenerator(multi, False, val_list)
 
         export_name = "%s_%s_%s" % (multi.dir_out,multi.dir_out_ex, self.name)
         weight_file = export_name + ".h5"
@@ -127,7 +127,7 @@ class MyModel:
             df['repeat']=r+1
             df.to_csv(export_name + ".csv", mode="a", header=(not os.path.exists(export_name + ".csv")))
 
-    def predict(self, multi:ImagePairMulti, xls_file):
+    def predict(self, multi:ImagePair, xls_file):
         img_ext=self.cfg.image_format[1:]
         mrg_in,mrg_out,mrg_out_wt,merge_dir,mask_wt=None,None,None,None,None
         r_i, r_g, sum_g, res_i, res_g=None,None,None,None,None
@@ -146,7 +146,7 @@ class MyModel:
             mk_dir_if_nonexist(merge_dir)
             mask_wt = g_kern_rect(self.cfg.row_out, self.cfg.col_out)
         for grp, view in batch.items():
-            prd=ImageGeneratorMulti(multi, False, view)
+            prd=ImageGenerator(multi, False, view)
             msks = self.model.predict_generator(prd, max_queue_size=1, workers=0, use_multiprocessing=False, verbose=1)
             print('Saving predicted results [%s] to folder [%s]...' % (grp, export_name))
             # r_i=np.zeros((len(multi.img_set.images),self.cfg.dep_out), dtype=np.uint32)
@@ -236,9 +236,9 @@ class MyModel:
             msk=np.argmax(msk, axis=-1)
             uni, count=np.unique(msk, return_counts=True)
             map_count=dict(zip(uni,count))
-            count_vec=[]
+            count_vec=np.zeros(dim)
             for d in range(dim):
-                count_vec.append(map_count.get(d) or 0)
+                count_vec[d]=map_count.get(d) or 0
                 for c in range(3):
                     blend[..., c] = np.where(msk == d, blend[..., c] * (1 - opa) + col[d][c] * opa, blend[..., c])
             return blend, count_vec

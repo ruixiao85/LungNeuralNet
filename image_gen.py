@@ -7,6 +7,7 @@ import numpy as np
 import keras
 from cv2.cv2 import imread, resize, imwrite, INTER_AREA
 
+import util
 from model_config import ModelConfig
 from process_image import augment_image_pair, read_resize_padding, extract_pad_image
 
@@ -102,7 +103,7 @@ class ImageSet:
 
     def find_file_recursive_rel(self):
         path=os.path.join(self.work_directory,self.sub_folder)
-        self.images=[os.path.relpath(absp,path) for absp in self.find_file_recursive(path, self.cfg.image_format)]
+        self.images=[os.path.relpath(absp,path) for absp in util.find_file_recursive(path, self.cfg.image_format)]
 
     @staticmethod
     def file_to_whole_image(text):
@@ -113,14 +114,6 @@ class ImageSet:
         return text
 
     @staticmethod
-    def find_file_recursive(_path, _ext):
-        from glob import glob
-        _images = [path for fn in os.walk(_path) for path in glob(os.path.join(fn[0], _ext))]
-        _total = len(_images)
-        print("Found [%d] file from [%s]" % (_total, _path))
-        return _images
-
-    @staticmethod
     def ext_folder(cfg, is_image):
         if cfg.separate:
             return "%.1f_%dx%d" % (cfg.image_resize, cfg.row_in, cfg.col_in)\
@@ -129,7 +122,7 @@ class ImageSet:
             return None
 
     def size_folder_update(self):
-        self.find_file_recursive_rel()
+        util.find_file_recursive_rel()
         ext=self.ext_folder(self.cfg, self.is_image)
         if ext is None:
             self.single_image_coord()
@@ -141,7 +134,7 @@ class ImageSet:
                 os.makedirs(new_path)
                 self.split_image_coord(new_path)
             self.sub_folder=new_dir
-            self.find_file_recursive_rel()
+            util.find_file_recursive_rel()
             self.single_image_coord()
         return self
 
@@ -212,7 +205,7 @@ class ImageSet:
                     # entry.ri, entry.ro, entry.ci, entry.co = 0, self.row, 0, self.col
                     self.view_coord.append(entry)  # updated to target single exported file
 
-class ImagePairMulti:
+class ImagePair:
     def __init__(self, cfg: ModelConfig, wd, origin, targets, is_train):
         self.cfg=cfg
         self.wd = wd
@@ -251,7 +244,7 @@ class ImagePairMulti:
         return "" if ext is None else ext
 
 
-class ImageGeneratorMulti(keras.utils.Sequence):
+class ImageGenerator(keras.utils.Sequence):
     def scale_input(self,_array):
         return _array.astype(np.float32) / 127.5 - 1.0  # TODO other normalization methods
 
@@ -262,7 +255,7 @@ class ImageGeneratorMulti(keras.utils.Sequence):
         return _array.astype(np.float32) / 255.0 # 0~1
         # return _array.astype(np.float32) / 127.5 - 1.0  # tanh
 
-    def __init__(self, pair:ImagePairMulti, aug, view_coord=None):
+    def __init__(self, pair:ImagePair, aug, view_coord=None):
         self.pair=pair
         self.cfg=pair.cfg
         self.train_aug=aug

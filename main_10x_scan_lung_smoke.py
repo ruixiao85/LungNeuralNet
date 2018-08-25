@@ -1,12 +1,11 @@
 import argparse
 
-from image_gen import ImageSet, ImagePairMulti
+from image_gen import ImageSet, ImagePair
 from util import to_excel_sheet
 from model import *
 
 if __name__ == '__main__':
-    # -d "D:\Cel files\2018-07.13 Adam Brenderia 2X LPS CGS" -t "071318 Cleaned 24H post cgs" -p "2018-07.20 Kyle MMP13 Smoke Flu Zander 2X" -o "Paren,InflamMild,InflamSevere"
-    parser = argparse.ArgumentParser(description='Process some integers.')
+    parser = argparse.ArgumentParser(description='train and predict with biomedical images.')
     parser.add_argument('-d', '--dir', dest='dir', action='store',
                         default='10x_scan_lung_smoke', help='work directory, empty->current dir')
     parser.add_argument('-t', '--train', dest='train_dir', action='store',
@@ -24,7 +23,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--input', dest='input', type=str,
                         default='Original', help='input: Original')
     parser.add_argument('-o', '--output', dest='output', type=str,
-                        default='ConductingAirway,ConnectiveTissue,LargeBloodVessel', help='output: targets separated by comma')
+                        default='Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,RespiratoryAirway,SmallBloodVessel', help='output: targets separated by comma')
     args = parser.parse_args()
 
     script_dir = os.path.realpath(__file__)
@@ -53,9 +52,9 @@ if __name__ == '__main__':
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 96, 128, 192], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
         # ModelConfig((512, 512, 3), (512, 512, 1), filter_size=[64, 128, 256], kernel_size=(3,3), resize=0.6, padding=1.0, separate=True, tr_coverage=1.5, prd_coverage=2.0, model_out='sigmoid', model_loss=loss_bce_dice),
 
-        ModelConfig((2048, 2048, 3), (2048, 2048, 1), model_filter=[20,28,40,57,81,115,163,231,327,462], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
-        ModelConfig((768, 768, 3), (768, 768, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
-        ModelConfig((512, 512, 3), (512, 512, 1), model_filter=[32, 64, 96, 128, 192], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        ModelConfig((512, 512, 3), (512, 512, 1)),
+        # ModelConfig((2048, 2048, 3), (2048, 2048, 1), model_filter=[20,28,40,57,81,115,163,231,327,462], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
+        # ModelConfig((768, 768, 3), (768, 768, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], image_resize=0.6, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
         # ModelConfig((768, 768, 3), (768, 768, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], mask_color='green', image_resize=0.2, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
         # ModelConfig((512, 512, 3), (512, 512, 1), model_filter=[32, 64, 96, 128, 192, 256, 384, 512], mask_color='green', image_resize=0.2, image_padding=1.0, separate=True, coverage_tr=1.5, coverage_prd=2.0),
 
@@ -97,14 +96,14 @@ if __name__ == '__main__':
     if mode != 'p':
         for cfg in configs:
             model= MyModel(cfg, save=False)
-            print("Network specifications: " + model.name.replace("_", " "))
+            print("Network specifications: " + model.name)
             for origin in origins:
                 if cfg.dep_out==1:
                     for target in targets:
-                        multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
+                        multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
                         model.train(cfg, multi_set)
                 else:
-                    multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
+                    multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
                     model.train(cfg, multi_set)
 
     if mode != 't':
@@ -114,8 +113,8 @@ if __name__ == '__main__':
             for origin in origins:
                 if cfg.dep_out==1:
                     for target in targets:
-                        multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, [target], is_train=False)
+                        multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, [target], is_train=False)
                         model.predict(multi_set, xls_file)
                 else:
-                    multi_set = ImagePairMulti(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
+                    multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
                     model.predict(multi_set, xls_file)
