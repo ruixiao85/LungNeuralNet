@@ -3,6 +3,7 @@ import math
 import os
 import random
 
+import cv2
 import numpy as np
 import keras
 from cv2.cv2 import imread, resize, imwrite, INTER_AREA
@@ -122,7 +123,7 @@ class ImageSet:
             return None
 
     def size_folder_update(self):
-        util.find_file_recursive_rel()
+        self.find_file_recursive_rel()
         ext=self.ext_folder(self.cfg, self.is_image)
         if ext is None:
             self.single_image_coord()
@@ -134,7 +135,7 @@ class ImageSet:
                 os.makedirs(new_path)
                 self.split_image_coord(new_path)
             self.sub_folder=new_dir
-            util.find_file_recursive_rel()
+            self.find_file_recursive_rel()
             self.single_image_coord()
         return self
 
@@ -164,12 +165,8 @@ class ImageSet:
         for image_name in self.images:
             _img = read_resize_padding(os.path.join(self.work_directory, self.sub_folder, image_name),self.cfg.image_resize,self.cfg.image_padding)
             lg_row, lg_col, lg_dep = _img.shape
-            if self.is_train:
-                r_len = max(1, 1+int(math.floor((lg_row - self.row) / self.row * self.coverage)))
-                c_len = max(1, 1+int(math.floor((lg_col - self.col) / self.col * self.coverage)))
-            else:
-                r_len = max(1, 1+int(math.ceil((lg_row - self.row) / self.row * self.coverage)))
-                c_len = max(1, 1+int(math.ceil((lg_col - self.col) / self.col * self.coverage)))
+            r_len = max(1, 1+int(round((lg_row - self.row) / self.row * self.coverage)))
+            c_len = max(1, 1+int(round((lg_col - self.col) / self.col * self.coverage)))
             print("%s target %d x %d (coverage %.1f): original %d x %d ->  row /%d col /%d" %
                   (image_name, self.row, self.col, self.coverage, lg_row, lg_col, r_len, c_len))
             r0, c0, r_step, c_step = 0, 0, 0, 0  # start position and step default to (0,0)
@@ -197,11 +194,12 @@ class ImageSet:
                         #         continue
                         # else: # default white/black or rgb
                         std=float(np.std(s_img))
-                        if std<15.0:
+                        if std<10.0:
                             print("skip tile r%d_c%d for low contrast (std=%.1f) for %s" % (r_index, c_index, std, image_name))
                             continue
                     entry = MetaInfo.from_whole(image_name, lg_row, lg_col, ri, ro, ci, co)
-                    imwrite(os.path.join(ex_dir, entry.file_name), s_img)
+                    imwrite(os.path.join(ex_dir, entry.file_name), s_img,
+                        [int(cv2.IMWRITE_JPEG_QUALITY), 100] if self.is_image else [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                     # entry.ri, entry.ro, entry.ci, entry.co = 0, self.row, 0, self.col
                     self.view_coord.append(entry)  # updated to target single exported file
 

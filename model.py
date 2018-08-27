@@ -41,19 +41,18 @@ class MyModel:
 
     def __init__(self, cfg:ModelConfig, save):
         self.cfg=cfg
-        self.model, self.name=cfg.model_name(cfg)
+        self.model=cfg.model_name(cfg)
         self.compile_model()
         if save:
             self.save_model()
 
-    def load_model(self, name:str):  # load model
-        self.name=name
-        with open(self.name + ".json", 'r') as json_file:
+    def load_model(self):  # load model
+        with open(str(self.cfg) + ".json", 'r') as json_file:
             self.model = model_from_json(json_file.read())
         self.compile_model()
 
     def __str__(self):
-        return self.name
+        return str(self.cfg)
 
     def compile_model(self):
         from keras.optimizers import Adam, RMSprop, SGD
@@ -66,7 +65,7 @@ class MyModel:
         self.model.summary()
 
     def save_model(self):
-        model_json = self.name + ".json"
+        model_json = str(self.cfg) + ".json"
         with open(model_json, "w") as json_file:
             json_file.write(self.model.to_json())
 
@@ -97,7 +96,7 @@ class MyModel:
         tr=ImageGenerator(multi, self.cfg.train_aug, tr_list)
         val=ImageGenerator(multi, False, val_list)
 
-        export_name = "%s_%s_%s" % (multi.dir_out,multi.dir_out_ex, self.name)
+        export_name = "%s_%s_%s" % (multi.dir_out,multi.dir_out_ex, self.cfg)
         weight_file = export_name + ".h5"
         if self.cfg.train_continue and os.path.exists(weight_file):
             print("Continue from previous weights")
@@ -117,7 +116,7 @@ class MyModel:
                     ModelCheckpoint(weight_file, monitor=cfg.train_indicator, mode='max', save_weights_only=False, save_best_only=True),
                     EarlyStopping(monitor=cfg.train_indicator, mode='max', patience=1, verbose=1),
                     ReduceLROnPlateau(monitor=cfg.train_indicator, mode='max', factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
-                    TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
+                    # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                 ]).history
             if not os.path.exists(export_name + ".txt"):
                 with open(export_name + ".txt", "w") as net_summary:
@@ -132,7 +131,7 @@ class MyModel:
         mrg_in,mrg_out,mrg_out_wt,merge_dir,mask_wt=None,None,None,None,None
         r_i, r_g, sum_g, res_i, res_g=None,None,None,None,None
         print('Load weights and predicting ...')
-        export_name = "%s_%s_%s" % (multi.dir_out, multi.dir_out_ex, self.name)
+        export_name = "%s_%s_%s" % (multi.dir_out, multi.dir_out_ex, self.cfg)
         weight_file = export_name + ".h5"
         self.model.load_weights(weight_file)  # TODO switch networks for multi-label
 
@@ -142,7 +141,7 @@ class MyModel:
         sum_i = self.cfg.row_out * self.cfg.col_out
         batch=multi.img_set.view_coord_batch()  # image/1batch -> view_coord
         if self.cfg.separate:
-            merge_dir = os.path.join(multi.wd, "%s_%s_s_%s" % (multi.dir_out, multi.dir_out_ex, self.name))
+            merge_dir = os.path.join(multi.wd, "%s_%s_s_%s" % (multi.dir_out, multi.dir_out_ex, self.cfg))
             mk_dir_if_nonexist(merge_dir)
             mask_wt = g_kern_rect(self.cfg.row_out, self.cfg.col_out)
         for grp, view in batch.items():
