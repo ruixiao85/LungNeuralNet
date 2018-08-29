@@ -70,12 +70,9 @@ class MyModel:
         with open(model_json, "w") as json_file:
             json_file.write(self.model.to_json())
 
-    # def export_name(self, dir, name):
-    #     return "%s_%s" % (dir, name)
-
     def train(self, cfg, multi:ImagePair):
         for tr, val, dir_out in multi.train_generator():
-            export_name = "%s_%s_%s" % (dir_out, multi.dir_out_ex, self.cfg)
+            export_name = multi.dir_out_ex(dir_out) +'_'+str(self.cfg)
             weight_file = export_name + ".h5"
             if self.cfg.train_continue and os.path.exists(weight_file):
                 print("Continue from previous weights")
@@ -110,21 +107,23 @@ class MyModel:
         msks, mask_wt, r_i, r_g,  res_i, res_g= None, None, None, None, None, None
         mrg_in, mrg_out, mrg_out_wt, merge_dir = None, None, None, None
         batch=multi.img_set.view_coord_batch()  # image/1batch -> view_coord
+        dir_ex=multi.dir_out_ex()
+        dir_cfg_append=str(self.cfg) if dir_ex is None else dir_ex+'_'+str(self.cfg)
         for dir_out, tgt_list in multi.predict_generator():
             print('Load weights and predicting ...')
-            export_name = "%s_%s_%s" % (dir_out, multi.dir_out_ex, self.cfg)
+            export_name = dir_out+'_'+dir_cfg_append
             target_dir = os.path.join(multi.wd, export_name)
             if not self.cfg.separate: # skip saving individual images
                 mk_dir_if_nonexist(target_dir)
             if self.cfg.separate:
-                merge_dir = os.path.join(multi.wd, "%s_%s_s_%s" % (dir_out, multi.dir_out_ex, self.cfg))
+                merge_dir = os.path.join(multi.wd, dir_out+'__'+dir_cfg_append) # double-under group
                 mk_dir_if_nonexist(merge_dir)
-                mask_wt = g_kern_rect(self.cfg.row_out, self.cfg.col_out)*10.0
+                mask_wt = g_kern_rect(self.cfg.row_out, self.cfg.col_out)
             for grp, view in batch.items():
                 msks,res_i,res_g = None,None,None
                 for tgt in tgt_list:
                     prd=ImageGenerator(multi, False, [tgt], view)
-                    weight_file="%s_%s_%s.h5" % (tgt, multi.dir_out_ex, self.cfg) # TODO reduce dir_out_ex and cfg toString
+                    weight_file=tgt+'_'+dir_cfg_append+'.h5'
                     print(weight_file)
                     self.model.load_weights(weight_file)
                     msk=self.model.predict_generator(prd, max_queue_size=1, workers=0, use_multiprocessing=False, verbose=1)
@@ -134,14 +133,14 @@ class MyModel:
                 if self.cfg.separate:
                     mrg_in = np.zeros((view[0].ori_row, view[0].ori_col, self.cfg.dep_in), dtype=np.float32)
                     mrg_out = np.zeros((view[0].ori_row, view[0].ori_col, len(tgt_list)), dtype=np.float32)
-                    mrg_out_wt = np.ones((view[0].ori_row, view[0].ori_col), dtype=np.float32)
+                    mrg_out_wt = np.zeros((view[0].ori_row, view[0].ori_col), dtype=np.float32) + np.finfo(np.float32).eps
                     sum_g = view[0].ori_row * view[0].ori_col
                     # r_g=np.zeros((1,len(tgt_list)), dtype=np.uint32)
                 for i, msk in enumerate(msks):
                     # if i>=len(multi.view_coord): break # last batch may have unused entries
                     ind_name = view[i].file_name
                     ind_file = os.path.join(target_dir, ind_name)
-                    origin = view[i].get_image(os.path.join(multi.wd, "%s_%s"%(multi.origin, multi.dir_in_ex)), self.cfg)
+                    origin = view[i].get_image(os.path.join(multi.wd, multi.dir_in_ex()), self.cfg)
                     print(ind_name); text_list = [ind_name]
                     blend, r_i=self.mask_call(origin, msk)
                     for d in range(len(tgt_list)):
@@ -185,7 +184,7 @@ class MyModel:
                     blend = self.draw_text(blend, text_list, 2.0)  # RGB:3x8-bit dark text
                     imsave(merge_file.replace(img_ext, ".jpe"), blend)
                     res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g, r_g[np.newaxis,...]))
-            df = pd.DataFrame(res_i, index=multi.img_set.images, columns=tgt_list)
+            df = pd.DataFrame(res_i, index=[view.file_name for view in sum(batch.values(),[])], columns=tgt_list)
             to_excel_sheet(df, xls_file, multi.origin)  # per slice
             if self.cfg.separate:
                 df = pd.DataFrame(res_g, index=batch.keys(), columns=tgt_list)

@@ -4,8 +4,7 @@ import numpy as np
 
 
 def generate_colors(n, shuffle=False):
-    hsv = [(i / n, 1, 0.5) for i in range(n)] # last number = brightness
-    # colors = list(map(lambda c: colorsys.hsv_to_rgb(*c), hsv))
+    hsv = [(i / n, 1.0, 0.85) for i in range(n)]
     colors = [tuple((255*np.array(col)).astype(np.uint8)) for col in map(lambda c: colorsys.hsv_to_rgb(*c), hsv)]
     if shuffle:
         random.shuffle(colors)
@@ -53,7 +52,7 @@ class ModelConfig:
         self.overlay_color = overlay_color if isinstance(overlay_color, list) else\
                             generate_colors(overlay_color) if isinstance(overlay_color, int) else\
                             generate_colors(self.num_targets)
-        self.overlay_opacity = overlay_opacity or 0.3
+        self.overlay_opacity = overlay_opacity or 0.2
         self.predict_size = predict_size or num_targets
         self.batch_size = batch_size or 1
         self.train_rep = train_rep or 3  # times to repeat during training

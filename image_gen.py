@@ -116,19 +116,13 @@ class ImageSet:
 
     @staticmethod
     def ext_folder(cfg, is_image):
-        if cfg.separate:
-            return "%.1f_%dx%d" % (cfg.image_resize, cfg.row_in, cfg.col_in)\
-                if is_image else "%.1f_%dx%d" % (cfg.image_resize, cfg.row_out, cfg.col_out)
-        else:
-            return None
+        return "%.1f_%dx%d" % (cfg.image_resize, cfg.row_in, cfg.col_in)\
+            if is_image else "%.1f_%dx%d" % (cfg.image_resize, cfg.row_out, cfg.col_out)
 
     def size_folder_update(self):
         self.find_file_recursive_rel()
-        ext=self.ext_folder(self.cfg, self.is_image)
-        if ext is None:
-            self.single_image_coord()
-        else:
-            new_dir="%s_%s" % (self.sub_folder,ext)
+        if self.cfg.separate:
+            new_dir="%s_%s" % (self.sub_folder, self.ext_folder(self.cfg, self.is_image))
             new_path=os.path.join(self.work_directory, new_dir)
             # shutil.rmtree(new_path)  # force delete
             if not os.path.exists(new_path): # change folder and not found
@@ -136,7 +130,7 @@ class ImageSet:
                 self.split_image_coord(new_path)
             self.sub_folder=new_dir
             self.find_file_recursive_rel()
-            self.single_image_coord()
+        self.single_image_coord()
         return self
 
     def single_image_coord(self):
@@ -270,16 +264,16 @@ class ImagePair:
         # maxchar=9999 # include all
         return ','.join(tgt[:maxchar] for tgt in tgt_list)
 
-    @property
-    def dir_in_ex(self):
+    def dir_in_ex(self,txt=None):
         ext=ImageSet.ext_folder(self.cfg, True)
-        return "" if ext is None else ext
+        txt=txt or self.origin
+        return txt+'_'+ext if self.cfg.separate else txt
 
-    @property
-    def dir_out_ex(self):
-        ext = ImageSet.ext_folder(self.cfg, False)
-        return "" if ext is None else ext
-
+    def dir_out_ex(self,txt=None):
+        ext=ImageSet.ext_folder(self.cfg, False)
+        if txt is None:
+            return ext if self.cfg.separate else None
+        return txt+'_'+ext if self.cfg.separate else txt
 
 class ImageGenerator(keras.utils.Sequence):
     def __init__(self, pair:ImagePair, aug, tgt_list, view_coord=None):
@@ -300,9 +294,9 @@ class ImageGenerator(keras.utils.Sequence):
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, "%s_%s"%(self.pair.origin, self.pair.dir_in_ex)), self.cfg)
+                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex()), self.cfg)
                 for ti,tgt in enumerate(self.target_list):
-                    _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, "%s_%s"%(tgt, self.pair.dir_out_ex)), self.cfg)
+                    _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg)
             if self.train_aug:
                 _img, _tgt = augment_image_pair(_img, _tgt, _level=random.randint(0, 4))  # integer N: a <= N <= b.
                 # imwrite("tr_img.jpg",_img[0])
@@ -311,7 +305,7 @@ class ImageGenerator(keras.utils.Sequence):
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, "%s_%s"%(self.pair.origin, self.pair.dir_in_ex)), self.cfg)
+                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex()), self.cfg)
                 # imwrite("prd_img.jpg",_img[0])
             return self.scale_input(_img), None
 
