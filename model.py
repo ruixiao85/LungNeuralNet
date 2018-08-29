@@ -73,140 +73,122 @@ class MyModel:
     #     return "%s_%s" % (dir, name)
 
     def train(self, cfg, multi:ImagePair):
-        tr_list, val_list = [], []  # list view_coords, can be from slices
-        tr_image, val_image = set(), set()  # set whole images
-        for vc in multi.view_coord:
-            if vc.image_name in tr_image:
-                tr_list.append(vc)
-                tr_image.add(vc.image_name)
-            elif vc.image_name in val_image:
-                val_list.append(vc)
-                val_image.add(vc.image_name)
-            else:
-                if (len(val_list) + 0.05) / (len(tr_list) + 0.05) > self.cfg.train_vali_split:
-                    tr_list.append(vc)
-                    tr_image.add(vc.image_name)
-                else:
-                    val_list.append(vc)
-                    val_image.add(vc.image_name)
-        print("From %d split into train: %d views %d images; validation %d views %d images" %
-              (len(multi.view_coord), len(tr_list), len(tr_image), len(val_list), len(val_image)))
-        print("Training Images:"); print(tr_image)
-        print("Validation Images:"); print(val_image)
-        tr=ImageGenerator(multi, self.cfg.train_aug, tr_list)
-        val=ImageGenerator(multi, False, val_list)
-
-        export_name = "%s_%s_%s" % (multi.dir_out,multi.dir_out_ex, self.cfg)
-        weight_file = export_name + ".h5"
-        if self.cfg.train_continue and os.path.exists(weight_file):
-            print("Continue from previous weights")
-            self.model.load_weights(weight_file)
-
-        print('Fitting neural net...')
-        for r in range(self.cfg.train_rep):
-            print("Training %d/%d for %s" % (r + 1, self.cfg.train_rep, export_name))
-            tr.on_epoch_end()
-            val.on_epoch_end()
-            from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
-            history = self.model.fit_generator(tr, validation_data=val, verbose=1,
-                steps_per_epoch=min(cfg.train_step, len(tr.view_coord)) if isinstance(cfg.train_step , int) else len(tr.view_coord),
-               validation_steps=min(cfg.train_vali_step, len(val.view_coord)) if isinstance(cfg.train_vali_step, int) else len(val.view_coord),
-                epochs=self.cfg.train_epoch, max_queue_size=1, workers=0, use_multiprocessing=False, shuffle=False,
-                callbacks=[
-                    ModelCheckpoint(weight_file, monitor=cfg.train_indicator, mode='max', save_weights_only=False, save_best_only=True),
-                    EarlyStopping(monitor=cfg.train_indicator, mode='max', patience=1, verbose=1),
-                    ReduceLROnPlateau(monitor=cfg.train_indicator, mode='max', factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
-                    # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
-                ]).history
-            if not os.path.exists(export_name + ".txt"):
-                with open(export_name + ".txt", "w") as net_summary:
-                    self.model.summary(print_fn=lambda x: net_summary.write(x + '\n'))
-            df=pd.DataFrame(history).round(4)
-            df['time']=datetime.now().strftime("%Y-%m-%d %H:%M")
-            df['repeat']=r+1
-            df.to_csv(export_name + ".csv", mode="a", header=(not os.path.exists(export_name + ".csv")))
+        for tr, val, dir_out in multi.train_generator():
+            export_name = "%s_%s_%s" % (dir_out, multi.dir_out_ex, self.cfg)
+            weight_file = export_name + ".h5"
+            if self.cfg.train_continue and os.path.exists(weight_file):
+                print("Continue from previous weights")
+                self.model.load_weights(weight_file)
+            print('Fitting neural net...')
+            for r in range(self.cfg.train_rep):
+                print("Training %d/%d for %s" % (r + 1, self.cfg.train_rep, export_name))
+                tr.on_epoch_end()
+                val.on_epoch_end()
+                from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
+                history = self.model.fit_generator(tr, validation_data=val, verbose=1,
+                    steps_per_epoch=min(cfg.train_step, len(tr.view_coord)) if isinstance(cfg.train_step , int) else len(tr.view_coord),
+                   validation_steps=min(cfg.train_vali_step, len(val.view_coord)) if isinstance(cfg.train_vali_step, int) else len(val.view_coord),
+                    epochs=self.cfg.train_epoch, max_queue_size=1, workers=0, use_multiprocessing=False, shuffle=False,
+                    callbacks=[
+                        ModelCheckpoint(weight_file, monitor=cfg.train_indicator, mode='max', save_weights_only=False, save_best_only=True),
+                        EarlyStopping(monitor=cfg.train_indicator, mode='max', patience=1, verbose=1),
+                        ReduceLROnPlateau(monitor=cfg.train_indicator, mode='max', factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
+                        # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
+                    ]).history
+                if not os.path.exists(export_name + ".txt"):
+                    with open(export_name + ".txt", "w") as net_summary:
+                        self.model.summary(print_fn=lambda x: net_summary.write(x + '\n'))
+                df=pd.DataFrame(history).round(4)
+                df['time']=datetime.now().strftime("%Y-%m-%d %H:%M")
+                df['repeat']=r+1
+                df.to_csv(export_name + ".csv", mode="a", header=(not os.path.exists(export_name + ".csv")))
 
     def predict(self, multi:ImagePair, xls_file):
-        img_ext=self.cfg.image_format[1:]
-        mrg_in,mrg_out,mrg_out_wt,merge_dir,mask_wt=None,None,None,None,None
-        r_i, r_g, sum_g, res_i, res_g=None,None,None,None,None
-        print('Load weights and predicting ...')
-        export_name = "%s_%s_%s" % (multi.dir_out, multi.dir_out_ex, self.cfg)
-        weight_file = export_name + ".h5"
-        self.model.load_weights(weight_file)  # TODO switch networks for multi-label
-
-        target_dir = os.path.join(multi.wd, export_name)
-        if not self.cfg.separate: # skip saving individual images
-            mk_dir_if_nonexist(target_dir)
+        img_ext=self.cfg.image_format[1:] # *.jpg -> .jpg
         sum_i = self.cfg.row_out * self.cfg.col_out
+        msks, r_i, r_g, sum_g, res_i, res_g = None, None, None, None, None, None
+        mrg_in, mrg_out, mrg_out_wt, merge_dir, mask_wt = None, None, None, None, None
         batch=multi.img_set.view_coord_batch()  # image/1batch -> view_coord
-        if self.cfg.separate:
-            merge_dir = os.path.join(multi.wd, "%s_%s_s_%s" % (multi.dir_out, multi.dir_out_ex, self.cfg))
-            mk_dir_if_nonexist(merge_dir)
-            mask_wt = g_kern_rect(self.cfg.row_out, self.cfg.col_out)
-        for grp, view in batch.items():
-            prd=ImageGenerator(multi, False, view)
-            msks = self.model.predict_generator(prd, max_queue_size=1, workers=0, use_multiprocessing=False, verbose=1)
-            print('Saving predicted results [%s] to folder [%s]...' % (grp, export_name))
-            # r_i=np.zeros((len(multi.img_set.images),self.cfg.dep_out), dtype=np.uint32)
+        for dir_out, tgt_list in multi.predict_generator():
+            print('Load weights and predicting ...')
+            export_name = "%s_%s_%s" % (dir_out, multi.dir_out_ex, self.cfg)
+            target_dir = os.path.join(multi.wd, export_name)
+            if not self.cfg.separate: # skip saving individual images
+                mk_dir_if_nonexist(target_dir)
             if self.cfg.separate:
-                mrg_in = np.zeros((view[0].ori_row, view[0].ori_col, self.cfg.dep_in), dtype=np.float32)
-                mrg_out = np.zeros((view[0].ori_row, view[0].ori_col, self.cfg.dep_out), dtype=np.float32)
-                mrg_out_wt = np.zeros((view[0].ori_row, view[0].ori_col), dtype=np.float32)
-                sum_g = view[0].ori_row * view[0].ori_col
-                # r_g=np.zeros((1,self.cfg.dep_out), dtype=np.uint32)
-            for i, msk in enumerate(msks):
-                ind_name = view[i].file_name
-                ind_file = os.path.join(target_dir, ind_name)
-                origin = view[i].get_image(os.path.join(multi.wd, "%s_%s"%(multi.origin, multi.dir_in_ex)), self.cfg)
-                print(ind_name); text_list = [ind_name]
-                blend, r_i=self.mask_call(origin, msk)
-                for d in range(self.cfg.dep_out):
-                    text = "[  %d: %s] %d / %d  %.2f%%" % ( d, multi.targets[0], r_i[d], sum_i, 100. * r_i[d] / sum_i)
-                    print(text); text_list.append(text)
-                # cv2.imwrite(ind_file, msk[...,np.newaxis] * 255.)
-                blend = self.draw_text(blend, text_list)  # RGB:3x8-bit dark text
-                if not self.cfg.separate: # skip saving individual images
-                    imsave(ind_file.replace(img_ext, ".jpe"), blend)
-                res_i = r_i if res_i is None else np.vstack((res_i, r_i))
-
+                merge_dir = os.path.join(multi.wd, "%s_%s_s_%s" % (dir_out, multi.dir_out_ex, self.cfg))
+                mk_dir_if_nonexist(merge_dir)
+                mask_wt = g_kern_rect(self.cfg.row_out, self.cfg.col_out)
+            for grp, view in batch.items():
+                msks, r_i, r_g, sum_g, res_i, res_g = None, None, None, None, None, None
+                mrg_in, mrg_out, mrg_out_wt, merge_dir, mask_wt = None, None, None, None, None
+                prd=ImageGenerator(multi, False, tgt_list, view)
+                for tgt in tgt_list:
+                    weight_file="%s_%s_%s.h5" % (tgt, multi.dir_out_ex, self.cfg)
+                    print(weight_file)
+                    self.model.load_weights(weight_file)
+                    msk=self.model.predict_generator(prd, max_queue_size=1, workers=0, use_multiprocessing=False, verbose=1)
+                    msks = msk if msks is None else np.concatenate((msks, msk),axis=-1)
+                print('Saving predicted results [%s] to folder [%s]...' % (grp, export_name))
+                # r_i=np.zeros((len(multi.img_set.images),len(tgt_list)), dtype=np.uint32)
                 if self.cfg.separate:
-                    ri,ro=view[i].row_start, view[i].row_end
-                    ci,co=view[i].col_start, view[i].col_end
-                    ra,ca=view[i].ori_row,view[i].ori_col
-                    tri, tro = 0, self.cfg.row_out
-                    tci, tco = 0, self.cfg.col_out
-                    if ri<0:
-                        tri=-ri; ri=0
-                    if ci<0:
-                        tci=-ci; ci=0
-                    if ro>ra:
-                        tro=tro-(ro-ra); ro=ra
-                    if co>ca:
-                        tco=tco-(co-ca); co=ca
-                    mrg_in[ri:ro,ci:co] = origin[tri:tro,tci:tco]
-                    for d in range(self.cfg.dep_out):
-                        mrg_out[ri:ro,ci:co,d] += (msk[...,d] * mask_wt)[tri:tro,tci:tco]
-                    mrg_out_wt[ri:ro,ci:co] += mask_wt[tri:tro,tci:tco]
+                    mrg_in = np.zeros((view[0].ori_row, view[0].ori_col, self.cfg.dep_in), dtype=np.float32)
+                    mrg_out = np.zeros((view[0].ori_row, view[0].ori_col, len(tgt_list)), dtype=np.float32)
+                    mrg_out_wt = np.zeros((view[0].ori_row, view[0].ori_col), dtype=np.float32)
+                    sum_g = view[0].ori_row * view[0].ori_col
+                    # r_g=np.zeros((1,len(tgt_list)), dtype=np.uint32)
+                for i, msk in enumerate(msks):
+                    ind_name = view[i].file_name
+                    ind_file = os.path.join(target_dir, ind_name)
+                    origin = view[i].get_image(os.path.join(multi.wd, "%s_%s"%(multi.origin, multi.dir_in_ex)), self.cfg)
+                    print(ind_name); text_list = [ind_name]
+                    blend, r_i=self.mask_call(origin, msk)
+                    for d in range(len(tgt_list)):
+                        text = "[  %d: %s] %d / %d  %.2f%%" % ( d, tgt_list[d], r_i[d], sum_i, 100. * r_i[d] / sum_i)
+                        print(text); text_list.append(text)
+                    # cv2.imwrite(ind_file, msk[...,np.newaxis] * 255.)
+                    blend = self.draw_text(blend, text_list)  # RGB:3x8-bit dark text
+                    if not self.cfg.separate: # skip saving individual images
+                        imsave(ind_file.replace(img_ext, ".jpe"), blend)
+                    res_i = r_i if res_i is None else np.vstack((res_i, r_i))
+
+                    if self.cfg.separate:
+                        ri,ro=view[i].row_start, view[i].row_end
+                        ci,co=view[i].col_start, view[i].col_end
+                        ra,ca=view[i].ori_row,view[i].ori_col
+                        tri, tro = 0, self.cfg.row_out
+                        tci, tco = 0, self.cfg.col_out
+                        if ri<0:
+                            tri=-ri; ri=0
+                        if ci<0:
+                            tci=-ci; ci=0
+                        if ro>ra:
+                            tro=tro-(ro-ra); ro=ra
+                        if co>ca:
+                            tco=tco-(co-ca); co=ca
+                        mrg_in[ri:ro,ci:co] = origin[tri:tro,tci:tco]
+                        for d in range(len(tgt_list)):
+                            mrg_out[ri:ro,ci:co,d] += (msk[...,d] * mask_wt)[tri:tro,tci:tco]
+                        mrg_out_wt[ri:ro,ci:co] += mask_wt[tri:tro,tci:tco]
+                if self.cfg.separate:
+                    for d in range(len(tgt_list)):
+                        mrg_out[...,d] /= mrg_out_wt
+                    print(grp); text_list=[grp]
+                    merge_name = view[0].image_name
+                    merge_file = os.path.join(merge_dir, merge_name)
+                    blend, r_g = self.mask_call(mrg_in, mrg_out)
+                    for d in range(len(tgt_list)):
+                        text = "[  %d: %s] %d / %d  %.2f%%" % (d, multi.targets[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
+                        print(text); text_list.append(text)
+                    # cv2.imwrite(merge_file, mrg_out[..., np.newaxis] * 255.)
+                    blend = self.draw_text(blend, text_list, 2.0)  # RGB:3x8-bit dark text
+                    imsave(merge_file.replace(img_ext, ".jpe"), blend)
+                    res_g=r_g if res_g is None else np.vstack((res_g, r_g))
+            df = pd.DataFrame(res_i, index=multi.img_set.images, columns=multi.targets)
+            to_excel_sheet(df, xls_file, multi.origin)  # per slice
             if self.cfg.separate:
-                for d in range(self.cfg.dep_out):
-                    mrg_out[...,d] /= mrg_out_wt
-                print(grp); text_list=[grp]
-                merge_name = view[0].image_name
-                merge_file = os.path.join(merge_dir, merge_name)
-                blend, r_g = self.mask_call(mrg_in, mrg_out)
-                for d in range(self.cfg.dep_out):
-                    text = "[  %d: %s] %d / %d  %.2f%%" % (d, multi.targets[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
-                    print(text); text_list.append(text)
-                # cv2.imwrite(merge_file, mrg_out[..., np.newaxis] * 255.)
-                blend = self.draw_text(blend, text_list, 2.0)  # RGB:3x8-bit dark text
-                imsave(merge_file.replace(img_ext, ".jpe"), blend)
-                res_g=r_g if res_g is None else np.vstack((res_g, r_g))
-        df = pd.DataFrame(res_i, index=multi.img_set.images, columns=multi.targets)
-        to_excel_sheet(df, xls_file, multi.origin)  # per slice
-        if self.cfg.separate:
-            df = pd.DataFrame(res_g, index=batch.keys(), columns=multi.targets)
-            to_excel_sheet(df, xls_file, multi.origin + "_sum")
+                df = pd.DataFrame(res_g, index=batch.keys(), columns=multi.targets)
+                to_excel_sheet(df, xls_file, multi.origin + "_sum")
 
 
     def draw_text(self, img, text_list, size_multiple=1.0):
@@ -216,7 +198,7 @@ class MyModel:
         origin = Image.fromarray(img.astype(np.uint8),'RGB') # L RGB
         draw = ImageDraw.Draw(origin)
         draw.text((0, 0), '\n'.join(text_list), txt_col, ImageFont.truetype("arial.ttf",size))  # font type size)
-        for i in range(self.cfg.dep_out):
+        for i in range(len(text_list)-1):
             sym_col = self.cfg.overlay_color[i]+(int(op*255),)
             draw.text((0, round(size*(i+1))), ' X', sym_col, ImageFont.truetype("arial.ttf", size))  # font type size)
         return origin
@@ -225,12 +207,14 @@ class MyModel:
         blend=img.copy()
         opa=self.cfg.overlay_opacity
         col=self.cfg.overlay_color
-        dim=self.cfg.dep_out
+        dim=self.cfg.dep_out # network original output depth
         if dim==1: # r x c x 1
-            msk=np.rint(msk[...,0])  # sigmoid round to  0/1
-            for c in range(3):
-                blend[..., c] = np.where(msk >= 0.5, blend[..., c] * (1 - opa) + col[0][c] * opa, blend[..., c])
-            return blend, np.sum(msk, keepdims=True)
+            for d in range(msk.shape[-1]):
+                msk[...,d]=np.rint(msk[...,d])  # sigmoid round to  0/1
+                for c in range(3):
+                    blend[..., c] = np.where(msk[...,d] >= 0.5, blend[..., c] * (1 - opa) + col[d][c] * opa, blend[..., c])
+            return blend, np.sum(msk, axis=(0,1), keepdims=False)
+            # return blend, np.sum(msk, keepdims=True)
         else: # softmax r x c x multi_label
             msk=np.argmax(msk, axis=-1)
             uni, count=np.unique(msk, return_counts=True)

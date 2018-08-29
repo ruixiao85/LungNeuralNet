@@ -16,8 +16,8 @@ class ModelConfig:
 
     def __init__(self, dim_in=None, dim_out=None, image_format=None, image_resize=None, image_padding=None, mask_color=None,
                  coverage_tr=None, coverage_prd=None, batch_size=None, separate=None,
-                 model_name=None, model_filter=None,
-                 model_downconv=None,  model_downsamp=None, model_upconv=None, model_upsamp=None,
+                 model_name=None, model_filter=None, model_poolsize=None,
+                 model_downconv=None, model_downsamp=None, model_upsamp=None, model_upconv=None,
                  model_act=None, model_out=None, model_loss=None, metrics=None,
                  overlay_color=None, overlay_opacity=None, call_hardness=None,
                  train_rep=None, train_epoch=None, train_step=None, train_vali_step=None,
@@ -33,22 +33,25 @@ class ModelConfig:
         self.separate = separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
         self.coverage_train = coverage_tr or 1.3
         self.coverage_predict = coverage_prd or 1.8
-        from unet.unetflex import unet1,unet2, conv33, conv3, d2maxpool2, u2mergeup2
-        self.model_name = model_name or unet1
+        from unet.unetflex import unet1s,unet2s, conv33, conv3, dxmaxpool, uxmergeup
+        self.model_name = model_name or unet1s
         self.model_filter = model_filter or [32, 64, 128, 256, 512]
+        self.model_poolsize = model_poolsize or [2] * len(self.model_filter)
         self.model_downconv = model_downconv or conv33
-        self.model_downsamp = model_downsamp or d2maxpool2
+        self.model_downsamp = model_downsamp or dxmaxpool
         self.model_upconv = model_upconv or conv3
-        self.model_upsamp = model_upsamp or u2mergeup2
+        self.model_upsamp = model_upsamp or uxmergeup
         from metrics import jac,dice,dice80,dice60,dice40,dice20,acc,acc80,acc60,acc40,acc20,\
-            lossbcedice, enable_custom_activation
+            loss_bce_dice, enable_custom_activation
         # enable_custom_activation() # leakyrelu, swish, twish
         self.model_act = model_act or 'elu'
         self.model_out = model_out or ('sigmoid' if self.dep_out == 1 else 'softmax')
-        self.model_loss = model_loss or (lossbcedice if self.dep_out == 1 else 'categorical_crossentropy')  # 'binary_crossentropy'
+        self.model_loss = model_loss or (loss_bce_dice if self.dep_out == 1 else 'categorical_crossentropy')  # 'binary_crossentropy'
         self.metrics= metrics or ([jac, dice, dice80, dice60, dice40, dice20] if self.dep_out == 1 else [acc, acc80, acc60, acc40, acc20])
         self.call_hardness = call_hardness or 1.0  # 0-smooth 1-hard binary call
-        self.overlay_color = overlay_color or generate_colors(self.dep_out)
+        self.overlay_color = overlay_color if isinstance(overlay_color,list) else\
+                            generate_colors(overlay_color) if isinstance(overlay_color,int) else\
+                            generate_colors(self.dep_out)
         self.overlay_opacity = overlay_opacity or 0.4
         self.batch_size = batch_size or 1
         self.train_rep = train_rep or 3  # times to repeat during training
@@ -67,8 +70,9 @@ class ModelConfig:
             self.model_name.__name__,
             "o%d"% self.dep_out,
             "%df%d-%d" % (len(self.model_filter), self.model_filter[0], self.model_filter[-1]),
+            "%dd%s" % (len(self.model_poolsize), ''.join(str(x) for x in self.model_poolsize)),
             self.model_downconv.__name__, self.model_downsamp.__name__,
             self.model_upconv.__name__, self.model_upsamp.__name__,
             self.model_act, self.model_out,
-            self.model_loss if isinstance(self.model_loss, str) else self.model_loss.__name__,
+            (self.model_loss if isinstance(self.model_loss, str) else self.model_loss.__name__).replace('_',''),
         ])

@@ -42,25 +42,15 @@ if __name__ == '__main__':
     if mode != 'p':
         for cfg in configs:
             model = MyModel(cfg, save=False)
-            print("Network specifications: " + model.name)
+            print("Network specifications: " + cfg)
             for origin in origins:
-                if cfg.dep_out == 1:
-                    for target in targets:
-                        multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
-                        model.train(cfg, multi_set)
-                else:
-                    multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
-                    model.train(cfg, multi_set)
+                multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
+                model.train(cfg, multi_set)
 
     if mode != 't':
         for cfg in configs:
             model = MyModel(cfg, save=False)
-            xls_file = "Result_%s_%s.xlsx" % (args.pred_dir, model.name)
+            xls_file = "Result_%s_%s.xlsx" % (args.pred_dir, cfg)
             for origin in origins:
-                if cfg.dep_out == 1:
-                    for target in targets:
-                        multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, [target], is_train=False)
-                        model.predict(multi_set, xls_file)
-                else:
-                    multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
-                    model.predict(multi_set, xls_file)
+                multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
+                model.predict(multi_set, xls_file)

@@ -52,7 +52,7 @@ def dice40(y_true, y_pred):
 def dice20(y_true, y_pred):
     return dice(central_crop(y_true,0.2), central_crop(y_pred,0.2))
 
-def lossbce(y_true, y_pred):  # bootstrapped binary cross entropy
+def loss_bce(y_true, y_pred):  # bootstrapped binary cross entropy
     from keras.backend.tensorflow_backend import _to_tensor
     target_tensor = y_true
     prediction_tensor = y_pred
@@ -64,17 +64,17 @@ def lossbce(y_true, y_pred):  # bootstrapped binary cross entropy
     bootstrap_target_tensor = alpha * target_tensor + (1.0 - alpha) * K.tf.cast(K.tf.sigmoid(prediction_tensor) > 0.5, K.tf.float32)  # hard bootstrap
     return K.mean(K.tf.nn.sigmoid_cross_entropy_with_logits(labels=bootstrap_target_tensor, logits=prediction_tensor))
 
-def lossjac(y_true, y_pred):
+def loss_jac(y_true, y_pred):
     return 1. - jac_d(y_true, y_pred)
 
-def lossdice(y_true, y_pred):
+def loss_dice(y_true, y_pred):
     return 1. - dice_d(y_true, y_pred)
 
-def lossbcedice(y_true, y_pred):
-    return 0.5 * (lossbce(y_true, y_pred) + lossdice(y_true, y_pred))
+def loss_bce_dice(y_true, y_pred):
+    return 0.5 * (loss_bce(y_true, y_pred) + loss_dice(y_true, y_pred))
 
-def lossjacdice(y_true, y_pred):
-    return lossjac(y_true, y_pred) + lossdice(y_true, y_pred)
+def loss_jac_dice(y_true, y_pred):
+    return loss_jac(y_true, y_pred) + loss_dice(y_true, y_pred)
 
 
 def enable_custom_activation():
@@ -87,7 +87,6 @@ def enable_custom_activation():
     get_custom_objects().update({'swish': Activation(swish,name='swish')})
     get_custom_objects().update({'twish': Activation(twish,name='twish')})
     get_custom_objects().update({'leakyrelu': Activation(leakyrelu,name='leakyrelu')})
-
 
 
 def top5acc(y_true, y_pred, k=5):  # top_N_categorical_accuracy

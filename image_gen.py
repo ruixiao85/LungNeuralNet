@@ -207,29 +207,66 @@ class ImagePair:
     def __init__(self, cfg: ModelConfig, wd, origin, targets, is_train):
         self.cfg=cfg
         self.wd = wd
-        self.origin, self.dir_in = origin, origin
-        self.targets, self.dir_out = None, None
-        self.change_target(targets)
+        self.origin = origin
+        self.targets = targets if isinstance(targets,list) else [targets]
+        # self.dir_out=targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
         self.img_set=ImageSet(cfg, wd, origin, is_train, is_image=True).size_folder_update()
-        self.view_coord=self.img_set.view_coord  # refer modify directly
+        self.msk_set = None
+        self.view_coord=self.img_set.view_coord
         self.is_train = is_train
-        if self.is_train:
-            views=set(self.view_coord)
-            self.msk_set=[]
-            for t in targets:
-                msk=ImageSet(cfg, wd, t, is_train, is_image=False).size_folder_update()
-                self.msk_set.append(msk)
-                views=views.intersection(msk.view_coord)
-            self.view_coord=list(views)
-        else:
-            self.msk_set=targets
 
-    def change_target(self, targets):
-        if targets is not None:
-            targets=targets if isinstance(targets,list) else [targets]
-            self.targets = targets
-            # self.dir_out = targets[0] if len(targets)==1 else ','.join(targets)
-            self.dir_out = targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
+    def train_generator(self):
+        i = 0; no=self.cfg.dep_out; nt=len(self.targets)
+        while i < nt:
+            o=min(i+no, nt)
+            views = set(self.img_set.view_coord)
+            self.msk_set = []
+            tgt_list=[]
+            for t in self.targets[i:o]:
+                tgt_list.append(t)
+                msk = ImageSet(self.cfg, self.wd, t, is_train=True, is_image=False).size_folder_update()
+                self.msk_set.append(msk)
+                views = views.intersection(msk.view_coord)
+            self.view_coord = list(views)
+            tr_list, val_list = [], []  # list view_coords, can be from slices
+            tr_image, val_image = set(), set()  # set whole images
+            for vc in self.view_coord:
+                if vc.image_name in tr_image:
+                    tr_list.append(vc)
+                    tr_image.add(vc.image_name)
+                elif vc.image_name in val_image:
+                    val_list.append(vc)
+                    val_image.add(vc.image_name)
+                else:
+                    if (len(val_list) + 0.05) / (len(tr_list) + 0.05) > self.cfg.train_vali_split:
+                        tr_list.append(vc)
+                        tr_image.add(vc.image_name)
+                    else:
+                        val_list.append(vc)
+                        val_image.add(vc.image_name)
+            print("From %d split into train: %d views %d images; validation %d views %d images" %
+                  (len(self.view_coord), len(tr_list), len(tr_image), len(val_list), len(val_image)))
+            print("Training Images:"); print(tr_image)
+            print("Validation Images:"); print(val_image)
+            yield(ImageGenerator(self, self.cfg.train_aug, tgt_list, tr_list), ImageGenerator(self, False, tgt_list, val_list),
+                    self.join_targets(tgt_list))
+            i=o
+
+    def predict_generator(self):
+        yield (self.join_targets(self.targets), self.targets)
+        # i = 0; no = self.cfg.dep_out; nt = len(self.targets)
+        # while i < nt:
+        #     o = min(i + no, nt)
+        #     tgt_list = []
+        #     for t in self.targets[i:o]:
+        #         tgt_list.append(t)
+        #     yield (self.join_targets(tgt_list),tgt_list)
+        #     i = o
+
+    @staticmethod
+    def join_targets(tgt_list) :
+        return '_'.join(tgt_list)
+        # return '_'.join(tgt_list[:max(1, int(24 / len(tgt_list)))]) #shorter but >= 1 char, error if categories share same leading chars
 
     @property
     def dir_in_ex(self):
@@ -243,20 +280,11 @@ class ImagePair:
 
 
 class ImageGenerator(keras.utils.Sequence):
-    def scale_input(self,_array):
-        return _array.astype(np.float32) / 127.5 - 1.0  # TODO other normalization methods
-
-    def scale_input_reverse(self,_array):
-        return (_array.astype(np.float32) + 1.0) * 127.5
-
-    def scale_output(self,_array):
-        return _array.astype(np.float32) / 255.0 # 0~1
-        # return _array.astype(np.float32) / 127.5 - 1.0  # tanh
-
-    def __init__(self, pair:ImagePair, aug, view_coord=None):
+    def __init__(self, pair:ImagePair, aug, tgt_list, view_coord=None):
         self.pair=pair
         self.cfg=pair.cfg
         self.train_aug=aug
+        self.target_list=tgt_list
         self.view_coord=pair.view_coord if view_coord is None else view_coord
         self.indexes = np.arange(len(self.view_coord))
 
@@ -271,7 +299,7 @@ class ImageGenerator(keras.utils.Sequence):
             _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
                 _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, "%s_%s"%(self.pair.origin, self.pair.dir_in_ex)), self.cfg)
-                for ti,tgt in enumerate(self.pair.targets):
+                for ti,tgt in enumerate(self.target_list):
                     _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, "%s_%s"%(tgt, self.pair.dir_out_ex)), self.cfg)
             if self.train_aug:
                 _img, _tgt = augment_image_pair(_img, _tgt, _level=random.randint(0, 4))  # integer N: a <= N <= b.
@@ -289,3 +317,14 @@ class ImageGenerator(keras.utils.Sequence):
         self.indexes = np.arange(len(self.view_coord))
         if self.pair.is_train and self.cfg.train_shuffle:
             np.random.shuffle(self.indexes)
+
+    def scale_input(self, _array):
+        return _array.astype(np.float32) / 127.5 - 1.0  # TODO other normalization methods
+
+    def scale_input_reverse(self, _array):
+        return (_array.astype(np.float32) + 1.0) * 127.5
+
+    def scale_output(self, _array):
+        return _array.astype(np.float32) / 255.0  # 0~1
+        # return _array.astype(np.float32) / 127.5 - 1.0  # tanh
+
