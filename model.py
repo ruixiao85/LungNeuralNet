@@ -55,11 +55,12 @@ class MyModel:
         return str(self.cfg)
 
     def compile_model(self):
-        from keras.optimizers import Adam, RMSprop, SGD
+        from keras.optimizers import SGD, RMSprop, Adam, Nadam
         self.model.compile(
-            optimizer=Adam(self.cfg.train_learning_rate),
-            # optimizer=SGD(lr=0.01),
-            # optimizer=RMSprop(self.train_learning_rate, decay=1e-6),
+            optimizer=SGD(lr=self.cfg.train_learning_rate),
+            # optimizer=RMSprop(self.cfg.train_learning_rate, decay=1e-6),
+            # optimizer=Adam(self.cfg.train_learning_rate),
+            # optimizer=NAdam(self.cfg.train_learning_rate),
             loss=self.cfg.model_loss,
             metrics= self.cfg.metrics)
         self.model.summary()
@@ -105,9 +106,9 @@ class MyModel:
 
     def predict(self, multi:ImagePair, xls_file):
         img_ext=self.cfg.image_format[1:] # *.jpg -> .jpg
-        sum_i = self.cfg.row_out * self.cfg.col_out
-        msks, r_i, r_g, sum_g, res_i, res_g = None, None, None, None, None, None
-        mrg_in, mrg_out, mrg_out_wt, merge_dir, mask_wt = None, None, None, None, None
+        sum_i, sum_g = self.cfg.row_out * self.cfg.col_out, None
+        msks, mask_wt, r_i, r_g,  res_i, res_g= None, None, None, None, None, None
+        mrg_in, mrg_out, mrg_out_wt, merge_dir = None, None, None, None
         batch=multi.img_set.view_coord_batch()  # image/1batch -> view_coord
         for dir_out, tgt_list in multi.predict_generator():
             print('Load weights and predicting ...')
@@ -118,26 +119,26 @@ class MyModel:
             if self.cfg.separate:
                 merge_dir = os.path.join(multi.wd, "%s_%s_s_%s" % (dir_out, multi.dir_out_ex, self.cfg))
                 mk_dir_if_nonexist(merge_dir)
-                mask_wt = g_kern_rect(self.cfg.row_out, self.cfg.col_out)
+                mask_wt = g_kern_rect(self.cfg.row_out, self.cfg.col_out)*10.0
             for grp, view in batch.items():
-                msks, r_i, r_g, sum_g, res_i, res_g = None, None, None, None, None, None
-                mrg_in, mrg_out, mrg_out_wt, merge_dir, mask_wt = None, None, None, None, None
-                prd=ImageGenerator(multi, False, tgt_list, view)
+                msks,res_i,res_g = None,None,None
                 for tgt in tgt_list:
-                    weight_file="%s_%s_%s.h5" % (tgt, multi.dir_out_ex, self.cfg)
+                    prd=ImageGenerator(multi, False, [tgt], view)
+                    weight_file="%s_%s_%s.h5" % (tgt, multi.dir_out_ex, self.cfg) # TODO reduce dir_out_ex and cfg toString
                     print(weight_file)
                     self.model.load_weights(weight_file)
                     msk=self.model.predict_generator(prd, max_queue_size=1, workers=0, use_multiprocessing=False, verbose=1)
-                    msks = msk if msks is None else np.concatenate((msks, msk),axis=-1)
+                    msks = msk if msks is None else  np.concatenate((msks, msk),axis=-1)
                 print('Saving predicted results [%s] to folder [%s]...' % (grp, export_name))
                 # r_i=np.zeros((len(multi.img_set.images),len(tgt_list)), dtype=np.uint32)
                 if self.cfg.separate:
                     mrg_in = np.zeros((view[0].ori_row, view[0].ori_col, self.cfg.dep_in), dtype=np.float32)
                     mrg_out = np.zeros((view[0].ori_row, view[0].ori_col, len(tgt_list)), dtype=np.float32)
-                    mrg_out_wt = np.zeros((view[0].ori_row, view[0].ori_col), dtype=np.float32)
+                    mrg_out_wt = np.ones((view[0].ori_row, view[0].ori_col), dtype=np.float32)
                     sum_g = view[0].ori_row * view[0].ori_col
                     # r_g=np.zeros((1,len(tgt_list)), dtype=np.uint32)
                 for i, msk in enumerate(msks):
+                    # if i>=len(multi.view_coord): break # last batch may have unused entries
                     ind_name = view[i].file_name
                     ind_file = os.path.join(target_dir, ind_name)
                     origin = view[i].get_image(os.path.join(multi.wd, "%s_%s"%(multi.origin, multi.dir_in_ex)), self.cfg)
@@ -150,7 +151,7 @@ class MyModel:
                     blend = self.draw_text(blend, text_list)  # RGB:3x8-bit dark text
                     if not self.cfg.separate: # skip saving individual images
                         imsave(ind_file.replace(img_ext, ".jpe"), blend)
-                    res_i = r_i if res_i is None else np.vstack((res_i, r_i))
+                    res_i =r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i, r_i[np.newaxis,...]))
 
                     if self.cfg.separate:
                         ri,ro=view[i].row_start, view[i].row_end
@@ -178,16 +179,16 @@ class MyModel:
                     merge_file = os.path.join(merge_dir, merge_name)
                     blend, r_g = self.mask_call(mrg_in, mrg_out)
                     for d in range(len(tgt_list)):
-                        text = "[  %d: %s] %d / %d  %.2f%%" % (d, multi.targets[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
+                        text = "[  %d: %s] %d / %d  %.2f%%" % (d, tgt_list[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
                         print(text); text_list.append(text)
                     # cv2.imwrite(merge_file, mrg_out[..., np.newaxis] * 255.)
                     blend = self.draw_text(blend, text_list, 2.0)  # RGB:3x8-bit dark text
                     imsave(merge_file.replace(img_ext, ".jpe"), blend)
-                    res_g=r_g if res_g is None else np.vstack((res_g, r_g))
-            df = pd.DataFrame(res_i, index=multi.img_set.images, columns=multi.targets)
+                    res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g, r_g[np.newaxis,...]))
+            df = pd.DataFrame(res_i, index=multi.img_set.images, columns=tgt_list)
             to_excel_sheet(df, xls_file, multi.origin)  # per slice
             if self.cfg.separate:
-                df = pd.DataFrame(res_g, index=batch.keys(), columns=multi.targets)
+                df = pd.DataFrame(res_g, index=batch.keys(), columns=tgt_list)
                 to_excel_sheet(df, xls_file, multi.origin + "_sum")
 
 
@@ -210,9 +211,9 @@ class MyModel:
         dim=self.cfg.dep_out # network original output depth
         if dim==1: # r x c x 1
             for d in range(msk.shape[-1]):
-                msk[...,d]=np.rint(msk[...,d])  # sigmoid round to  0/1
+                msk[...,d]=np.rint(msk[...,d])  # sigmoid round to  0/1 # consider range(-1 ~ +1) for multi class voting
                 for c in range(3):
-                    blend[..., c] = np.where(msk[...,d] >= 0.5, blend[..., c] * (1 - opa) + col[d][c] * opa, blend[..., c])
+                    blend[..., c] = np.where(msk[...,d] >= 0.5, blend[..., c] * (1 - opa) + col[d][c] * opa, blend[..., c]) # weighted average
             return blend, np.sum(msk, axis=(0,1), keepdims=False)
             # return blend, np.sum(msk, keepdims=True)
         else: # softmax r x c x multi_label

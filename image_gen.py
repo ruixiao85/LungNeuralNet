@@ -253,20 +253,22 @@ class ImagePair:
             i=o
 
     def predict_generator(self):
-        yield (self.join_targets(self.targets), self.targets)
-        # i = 0; no = self.cfg.dep_out; nt = len(self.targets)
-        # while i < nt:
-        #     o = min(i + no, nt)
-        #     tgt_list = []
-        #     for t in self.targets[i:o]:
-        #         tgt_list.append(t)
-        #     yield (self.join_targets(tgt_list),tgt_list)
-        #     i = o
+        # yield (ImageGenerator(self, False, self.targets, self.view_coord),self.join_targets(self.targets), self.targets)
+        i = 0; nt = len(self.targets)
+        ps = self.cfg.predict_size
+        while i < nt:
+            o = min(i + ps, nt)
+            tgt_list=self.targets[i:o]
+            yield (self.join_targets(tgt_list),tgt_list)
+            i = o
 
     @staticmethod
     def join_targets(tgt_list) :
-        return '_'.join(tgt_list)
-        # return '_'.join(tgt_list[:max(1, int(24 / len(tgt_list)))]) #shorter but >= 1 char, error if categories share same leading chars
+        # return ','.join(tgt_list)
+        # return ','.join(tgt_list[:max(1, int(24 / len(tgt_list)))]) #shorter but >= 1 char, may have error if categories share same leading chars
+        maxchar=max(1, int(24 / len(tgt_list))) # clip to fewer leading chars
+        # maxchar=9999 # include all
+        return ','.join(tgt[:maxchar] for tgt in tgt_list)
 
     @property
     def dir_in_ex(self):
@@ -289,7 +291,7 @@ class ImageGenerator(keras.utils.Sequence):
         self.indexes = np.arange(len(self.view_coord))
 
     def __len__(self):  # Denotes the number of batches per epoch
-        return int(np.floor(len(self.view_coord) / self.cfg.batch_size))
+        return int(np.ceil(len(self.view_coord) / self.cfg.batch_size))
 
     def __getitem__(self, index):  # Generate one batch of data
         indexes = self.indexes[index * self.cfg.batch_size:(index + 1) * self.cfg.batch_size]
