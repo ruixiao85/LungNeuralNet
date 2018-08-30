@@ -33,14 +33,14 @@ class ModelConfig:
         self.separate = separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
         self.coverage_train = coverage_tr or 1.3
         self.coverage_predict = coverage_prd or 1.8
-        from unet.unetflex import unet1s,unet2s, conv33, conv3, dxmaxpool, uxmergeup
+        from unet.unetflex import unet1s,unet2s, conv33, conv3, dmax, upool
         self.model_name = model_name or unet1s
         self.model_filter = model_filter or [32, 64, 128, 256, 512]
         self.model_poolsize = model_poolsize or [2] * len(self.model_filter)
         self.model_downconv = model_downconv or conv33
-        self.model_downsamp = model_downsamp or dxmaxpool
+        self.model_downsamp =model_downsamp or dmax
+        self.model_upsamp =model_upsamp or upool
         self.model_upconv = model_upconv or conv3
-        self.model_upsamp = model_upsamp or uxmergeup
         from metrics import jac,dice,dice80,dice60,dice40,dice20,acc,acc80,acc60,acc40,acc20,\
             loss_bce_dice, enable_custom_activation
         # enable_custom_activation() # leakyrelu, swish, twish
@@ -66,14 +66,19 @@ class ModelConfig:
         self.train_continue = train_continue if train_continue is not None else True  # continue training by loading previous weights
         self.train_indicator = train_indicator or ('val_dice' if self.dep_out == 1 else 'val_acc')  # indicator to maximize
 
+    @staticmethod
+    def cap_lim_join(lim,*text):
+        test_list=[t.capitalize()[:lim] for t in text]
+        return ''.join(test_list)
+
     def __str__(self):
         return '_'.join([
-            self.model_name.__name__,
-            "o%d"% self.dep_out,
-            "%df%d-%d" % (len(self.model_filter), self.model_filter[0], self.model_filter[-1]),
-            "%dd%s" % (len(self.model_poolsize), ''.join(str(x) for x in self.model_poolsize)),
-            self.model_downconv.__name__, self.model_downsamp.__name__,
-            self.model_upconv.__name__, self.model_upsamp.__name__,
-            self.model_act, self.model_out,
-            (self.model_loss if isinstance(self.model_loss, str) else self.model_loss.__name__).replace('_',''),
+            self.model_name.__name__.capitalize(),
+            "%dF%d-%dP%d-%d" % (len(self.model_filter), self.model_filter[0], self.model_filter[-1], self.model_poolsize[0], self.model_poolsize[-1]),
+            # "%df%d-%dp%s" % (len(self.model_filter), self.model_filter[0], self.model_filter[-1], ''.join(self.model_poolsize)),
+            self.cap_lim_join(10,self.model_downconv.__name__, self.model_downsamp.__name__,
+                                self.model_upsamp.__name__, self.model_upconv.__name__),
+            self.cap_lim_join(7,self.model_act, self.model_out,
+                (self.model_loss if isinstance(self.model_loss, str) else self.model_loss.__name__).replace('_','').replace('loss',''))
+            +str(self.dep_out),
         ])

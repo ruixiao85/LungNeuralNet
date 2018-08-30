@@ -4,6 +4,7 @@ import cv2
 from keras import backend as K, metrics
 from keras.layers import Activation
 from keras.utils import get_custom_objects
+import tensorflow as tf
 from tensorflow.python.ops.image_ops_impl import central_crop
 import numpy as np
 
@@ -75,6 +76,11 @@ def loss_bce_dice(y_true, y_pred):
 
 def loss_jac_dice(y_true, y_pred):
     return loss_jac(y_true, y_pred) + loss_dice(y_true, y_pred)
+
+def focal_loss(y_true, y_pred, gamma=0.5, alpha=.25): # (1-alpha)^gamma x CE.  alpha: balance (0.25) gamma: focus (2.0)
+    pt_1 = tf.where(tf.equal(y_true, 1), y_pred, tf.ones_like(y_pred))
+    pt_0 = tf.where(tf.equal(y_true, 0), y_pred, tf.zeros_like(y_pred))
+    return -K.sum(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1))-K.sum((1-alpha) * K.pow( pt_0, gamma) * K.log(1. - pt_0))
 
 
 def enable_custom_activation():

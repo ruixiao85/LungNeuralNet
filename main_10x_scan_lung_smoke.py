@@ -1,7 +1,5 @@
 import argparse
 
-from image_gen import ImageSet, ImagePair
-from util import to_excel_sheet
 from model import *
 
 if __name__ == '__main__':
@@ -24,7 +22,7 @@ if __name__ == '__main__':
                         default='Original', help='input: Original')
     parser.add_argument('-o', '--output', dest='output', type=str,
                         default='Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,RespiratoryAirway,SmallBloodVessel', help='output: targets separated by comma')
-    #
+    #Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,RespiratoryAirway,SmallBloodVessel
     args = parser.parse_args()
 
     script_dir = os.path.realpath(__file__)
@@ -38,7 +36,7 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from unet.unetflex import unet1s,unet1d,unet2s, conv3, conv33, conv331, conv31, dxmaxpool, uxmergeup
+    from unet.unetflex import unet1s,unet1d, unet2s, conv3, conv32, conv33, conv333,conv131r,conv33d,conv3d3, conv131r2, conv131nr2, conv32dr, conv331, conv31, dmax, upool,  utran
     configs = [
         # ModelConfig((768, 768, 3), (768, 768, 1), overlay_color=len(targets), model_filter=[32, 64, 128, 256, 512],
         #             model_downconv=conv131res, model_downsamp=d2conv131res, model_upsamp=u2trans131res, model_upconv=conv131res),
@@ -58,11 +56,35 @@ if __name__ == '__main__':
         # ModelConfig((1296, 1296, 3), (1296, 1296, 1), overlay_color=len(targets), model_filter=[32, 64, 128, 256, 512], model_poolsize=[3, 3, 3, 3, 3],
         #             model_downconv=conv33, model_downsamp=dxmaxpool, model_upsamp=uxmergeup, model_upconv=conv33),
 
+        # ModelConfig((1296, 1296, 3), (1296, 1296, 6), num_targets=len(targets), model_filter=[48, 48, 64, 64, 96, 96, 128, 128], model_poolsize=[2, 2, 2, 2, 3, 3, 3, 3],
+        #             model_name=unet1d, model_downconv=conv33, model_downsamp=dmax, model_upsamp=upool, model_upconv=conv3),
+        # ModelConfig((1296, 1296, 3), (1296, 1296, 6), num_targets=len(targets), model_filter=[64, 64, 96, 96, 128, 128, 128, 128], model_poolsize=[2, 2, 2, 2, 3, 3, 3, 3],
+        #             model_name=unet1d, model_downconv=conv33, model_downsamp=dmax, model_upsamp=upool, model_upconv=conv3),
+        # ModelConfig((1296, 1296, 3), (1296, 1296, 1), num_targets=len(targets), model_filter=[64, 64, 96, 96, 128, 128, 128, 128], model_poolsize=[2, 2, 2, 2, 3, 3, 3, 3],
+        #             model_name=unet1d, model_downconv=conv33, model_downsamp=dmax, model_upsamp=upool, model_upconv=conv33),
+        ModelConfig((1296, 1296, 3), (1296, 1296, 1), num_targets=len(targets), model_filter=[64, 64, 96, 96, 128, 128, 128, 128], model_poolsize=[2, 2, 2, 2, 3, 3, 3, 3],
+                    model_name=unet1d, model_downconv=conv33, model_downsamp=dmax, model_upsamp=upool, model_upconv=conv33, train_rep=1)
+        # ModelConfig((1024, 1024, 3), (1024, 1024, 6), num_targets=len(targets), model_filter=[64, 64, 96, 96, 128, 128, 128], model_poolsize=[2, 2, 2, 2, 2, 2, 2],
+        #             model_name=unet1d, model_downconv=conv33, model_downsamp=dmax, model_upsamp=upool, model_upconv=conv33),
+        # ModelConfig((1024, 1024, 3), (1024, 1024, 6), num_targets=len(targets), model_filter=[64, 64, 96, 96, 128, 128, 128], model_poolsize=[2, 2, 2, 2, 2, 2, 2],
+        #             model_name=unet1d, model_downconv=conv131r2, model_downsamp=dmax, model_upsamp=upool, model_upconv=conv131r2),
+        # ModelConfig((2187, 2187, 3), (2187, 2187, 6), num_targets=len(targets), model_filter=[64, 64, 96, 96, 128, 128, 128, 128], model_poolsize=[3, 3, 3, 3, 3, 3, 3, 3],
+        #             model_name=unet1d, model_downconv=conv33, model_downsamp=dmax, model_upsamp=upool, model_upconv=conv33),
 
+
+        # ModelConfig((1296, 1296, 3), (1296, 1296, 6), num_targets=len(targets), model_filter=[64, 72, 96, 112, 128, 128, 128, 128, 128], model_poolsize=[2, 2, 2, 2, 3, 3, 3, 3],
+        #             model_name=unet1d, model_downconv=conv331, model_downsamp=dmax, model_upsamp=upool, model_upconv=conv3),
+        # ModelConfig((1296, 1296, 3), (1296, 1296, 6), num_targets=len(targets), model_filter=[32, 32, 48, 48, 64, 64, 96, 96], model_poolsize=[2, 2, 2, 2, 3, 3, 3, 3],
+        #             model_name=unet1d, model_downconv=conv331, model_downsamp=dmax, model_upsamp=upool, model_upconv=conv31),
+        # ModelConfig((1296, 1296, 3), (1296, 1296, 6), num_targets=len(targets), model_filter=[48, 48, 64, 64, 96, 96, 96, 96], model_poolsize=[2, 2, 2, 2, 3, 3, 3, 3],
+        #             model_name=unet1d, model_downconv=conv131r2, model_downsamp=dmax, model_upsamp=upool, model_upconv=conv131r2),
+        # ModelConfig((1296, 1296, 3), (1296, 1296, 6), num_targets=len(targets), model_filter=[24, 24, 32, 32, 48, 48, 64, 64], model_poolsize=[2, 2, 2, 2, 3, 3, 3, 3],
+        #             model_name=unet1d, model_downconv=conv32dr, model_downsamp=dmax, model_upsamp=upool, model_upconv=conv32dr),
+
+        # ModelConfig((1296, 1296, 3), (1296, 1296, 6), num_targets=len(targets), model_filter=[32, 48, 64, 96, 128, 192, 256, 384], model_poolsize=[2, 2, 2, 2, 3, 3, 3, 3],
+        #             model_name=unet1d, model_downconv=conv33, model_downsamp=dmax, model_upsamp=upool, model_upconv=conv3),
         # ModelConfig((1296, 1296, 3), (1296, 1296, 1), overlay_color=len(targets), model_filter=[24,32,48,64,96,128,192,256], model_poolsize=[2,2,2,2,3,3,3,3],
-        #             model_name=unet1d, model_downconv=conv33, model_downsamp=dxmaxpool, model_upsamp=uxmergeup, model_upconv=conv33),
-        ModelConfig((1296, 1296, 3), (1296, 1296, 1), num_targets=len(targets), model_filter=[32, 48, 64, 96, 128, 192, 256, 384], model_poolsize=[2, 2, 2, 2, 3, 3, 3, 3],
-                    model_name=unet1d, model_downconv=conv33, model_downsamp=dxmaxpool, model_upsamp=uxmergeup, model_upconv=conv3),
+        #             model_name=unet1d, model_downconv=conv33, model_downsamp=dmax, model_upsamp=upool, model_upconv=conv33),
         # ModelConfig((1296, 1296, 3), (1296, 1296, 1), overlay_color=len(targets), model_filter=[24,32,48,64,96,128,192,256], model_poolsize=[2,2,2,2,3,3,3,3],
         #             model_downconv=conv33, model_downsamp=dxmaxpool, model_upsamp=uxmergeup, model_upconv=conv3),
 
@@ -75,11 +97,6 @@ if __name__ == '__main__':
         # ModelConfig((1296, 1296, 3), (1296, 1296, 1), overlay_color=len(targets), model_filter=[24,32,48,64,96,128,192,256], model_poolsize=[2,2,2,2,3,3,3,3],
         #             model_name=unet1d, model_downconv=conv331, model_downsamp=dxmaxpool, model_upsamp=uxmergeup, model_upconv=conv31),
 
-        # 1296    1296
-        # 648    432
-        # 324    144
-        # 162    48
-        # 81    16
         # ModelConfig((1458, 1458, 3), (1458, 1458, 1), overlay_color=len(targets), model_filter=[32, 48, 64, 96, 128, 198, 256],
         #             model_downconv=conv33, model_downsamp=d3maxpool3, model_upsamp=u3mergeup3, model_upconv=conv3),
         # ModelConfig((768, 768, 3), (768, 768, 1), overlay_color=len(targets), model_filter=[32, 64, 128, 256, 512],

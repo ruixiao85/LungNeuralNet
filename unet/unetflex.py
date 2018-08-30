@@ -3,8 +3,8 @@ from __future__ import print_function
 import traceback
 
 from keras.models import Model
-from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, ZeroPadding2D, Concatenate, merge, \
-    BatchNormalization, Dropout, Activation, Conv2DTranspose, Add
+from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Cropping2D, ZeroPadding2D, Concatenate, merge,\
+    BatchNormalization, Dropout, Activation, Conv2DTranspose, Add, AveragePooling2D, ZeroPadding1D, add, Multiply, Dot
 from keras import backend as K
 
 from model_config import ModelConfig
@@ -31,8 +31,8 @@ def get_crop_shape(target, refer):
 def conv3(in_layer, name=None, fs=None, act=None):
     return Conv2D(fs, (3,3), activation=act, padding='same', kernel_initializer=init, name=name)(in_layer)
 def conv31(in_layer, name=None, fs=None, act=None):
-    x=Conv2D(fs*2, (3,3), activation=act, padding='same', kernel_initializer=init, name=name+'_1')(in_layer)
-    x=Conv2D(fs, (1,1), activation=act, padding='same', kernel_initializer=init, name=name)(x)
+    x=Conv2D(int(fs*1.0), (3,3), activation=act, padding='same', kernel_initializer=init, name=name+'_1')(in_layer)
+    x=Conv2D(int(fs*0.6), (1,1), activation=act, padding='same', kernel_initializer=init, name=name)(x)
     return x
 
 def conv3n(in_layer, name=None, fs=None, act=None):
@@ -42,58 +42,77 @@ def conv33(in_layer, name=None, fs=None, act=None):
     x = Conv2D(fs, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_1')(in_layer)
     x = Conv2D(fs, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name)(x)
     return x
+def conv33d(in_layer, name=None, fs=None, act=None):
+    x = Conv2D(fs, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_2')(in_layer)
+    x = Conv2D(fs, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_1')(x)
+    x = Dropout(0.2, name=name)(x)
+    return x
+def conv3d3(in_layer, name=None, fs=None, act=None):
+    x=Conv2D(fs, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name+'_2')(in_layer)
+    x=Dropout(0.2, name=name+'_1')(x)
+    x=Conv2D(fs, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name)(x)
+    return x
+def conv32(in_layer, name=None, fs=None, act=None):
+    x = Conv2D(fs, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_1')(in_layer)
+    x = Conv2D(fs, (2, 2), activation=act, padding='same', kernel_initializer=init, name=name)(x)
+    return x
+def conv333(in_layer, name=None, fs=None, act=None):
+    x = Conv2D(fs, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_2')(in_layer)
+    x = Conv2D(fs, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_1')(x)
+    x = Conv2D(fs, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name)(x)
+    return x
 def conv331(in_layer, name=None, fs=None, act=None):
-    x = Conv2D(fs*2, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_2')(in_layer)
-    x = Conv2D(fs*2, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name+'_1')(x)
-    x = Conv2D(fs, (1, 1), activation=act, padding='same', kernel_initializer=init, name=name)(x)
+    x = Conv2D(int(fs*1.0), (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_2')(in_layer)
+    x = Conv2D(int(fs*1.0), (3, 3), activation=act, padding='same', kernel_initializer=init, name=name+'_1')(x)
+    x = Conv2D(int(fs*0.6), (1, 1), activation=act, padding='same', kernel_initializer=init, name=name)(x)
     return x
 
-def conv3n3n(in_layer, name=None, fs=None, act=None):
+def conv33n(in_layer, name=None, fs=None, act=None):
     x=Activation(activation=act, name=name+'_1norm')(BatchNormalization()(Conv2D(fs, (3,3),  padding='same', kernel_initializer=init)(in_layer)))
     x=Activation(activation=act, name=name)(BatchNormalization()(Conv2D(fs, (3,3),  padding='same', kernel_initializer=init)(x)))
     return x
 
-#https://arxiv.org/pdf/1709.00201.pdf
-def conv32deepres(in_layer, name=None, fs=None, act=None):
-    x = Conv2D(fs, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_2')(in_layer)
-    x = Conv2D(fs/2, (2, 2), activation=act, padding='same', kernel_initializer=init, name=name + '_1')(x)
+#https://arxiv.org/pdf/1709.00201.pdf # deep u-net and residual
+def conv32dr(in_layer, name=None, fs=None, act=None):
+    x = Conv2D(int(fs*1.0), (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_2')(in_layer)
+    x = Conv2D(int(fs*0.5), (2, 2), activation=act, padding='same', kernel_initializer=init, name=name + '_1')(x)
     x = concatenate([in_layer, x],name=name)
     return x
-def conv33deepres(in_layer, name=None, fs=None, act=None):
-    x = Conv2D(fs, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_2')(in_layer)
-    x = Conv2D(fs/2, (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_1')(x)
+def conv33dr(in_layer, name=None, fs=None, act=None):
+    x = Conv2D(int(fs*1.0), (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_2')(in_layer)
+    x = Conv2D(int(fs*0.5), (3, 3), activation=act, padding='same', kernel_initializer=init, name=name + '_1')(x)
     x = concatenate([in_layer, x],name=name)
     return x
 
 
-def dxconv(in_layer, rate, name=None, fs=None, act=None):
+def dconv(in_layer, rate, name=None, fs=None, act=None):
     kern=rate if rate%2==1 else rate+1
     return Conv2D(fs, (kern,kern), strides=(rate, rate), activation=act, padding='same', kernel_initializer=init, name=name)(in_layer)
 
-def dxconvn(in_layer, rate, name=None, fs=None, act=None):
+def dconvn(in_layer, rate, name=None, fs=None, act=None):
     kern = rate if rate % 2 == 1 else rate + 1
     return Activation(activation=act, name=name)(BatchNormalization()(Conv2D(fs, (kern,kern), strides=(rate,rate), padding='same', kernel_initializer=init)(in_layer)))
 
-def dxmaxpool(in_layer, rate, name=None, fs=None, act=None):
+def dmax(in_layer, rate, name=None, fs=None, act=None):
     return MaxPooling2D((rate,rate), strides=(rate, rate), name=name)(in_layer)
 
-def uxmergeup(input_skip, input_up, rate, name=None, fs=None, act=None):
+def upool(input_skip, input_up, rate, name=None, fs=None, act=None):
     x=UpSampling2D(size=(rate,rate))(input_up)
     return concatenate([input_skip,x],name=name, axis=concat_axis)
 
-def uxmergetrans(input_skip, input_up, rate, name=None, fs=None, act=None):
+def utran(input_skip, input_up, rate, name=None, fs=None, act=None):
     kern = rate if rate % 2 == 1 else rate + 1
     x=Conv2DTranspose(fs,(kern,kern), strides=(rate,rate),activation=act,kernel_initializer=init,padding='same')(input_up)
     return concatenate([input_skip, x],name=name, axis=concat_axis)
 
-def uxmergetransn(input_skip, input_up, rate, name=None, fs=None, act=None):
+def utrann(input_skip, input_up, rate, name=None, fs=None, act=None):
     kern = rate if rate % 2 == 1 else rate + 1
     x=Activation(activation=act)(BatchNormalization()(Conv2DTranspose(fs, (kern, kern), strides=(rate, rate), kernel_initializer=init, padding='same')(input_up)))
     return concatenate([input_skip, x],name=name, axis=concat_axis)
 
 
-def conv131res(in_layer, name, filters, act, convs=None, strides=None):
-    filters=filters if isinstance(filters,list) else [int(filters/2),int(filters/2),filters]  if isinstance(filters,int) else [32,32,64]
+def conv131r(in_layer, name, filters, act, convs=None, strides=None):
+    filters=filters if isinstance(filters,list) else [int(filters/4),int(filters/4),filters]  if isinstance(filters,int) else [32,32,64]
     convs=convs or [(1,1),(3,3),(1,1)]; strides=strides or (1,1)
     x = Conv2D(filters[0], convs[0], strides=strides, padding='same',activation=act, name=name + '_2n')(in_layer)
     x = Conv2D(filters[1], convs[1], padding='same',activation=act, name=name + '_1n')(x)
@@ -102,8 +121,8 @@ def conv131res(in_layer, name, filters, act, convs=None, strides=None):
                Conv2D(filters[2], convs[2], strides=strides, padding='same')(in_layer)])  # shortcut with conv
     )
     return x
-def conv131nres(in_layer, name, filters, act, convs=None, strides=None):
-    filters=filters if isinstance(filters,list) else [int(filters/2),int(filters/2),filters]  if isinstance(filters,int) else [32,32,64]
+def conv131nr(in_layer, name, filters, act, convs=None, strides=None):
+    filters=filters if isinstance(filters,list) else [int(filters/4),int(filters/4),filters]  if isinstance(filters,int) else [32,32,64]
     convs=convs or [(1,1),(3,3),(1,1)]; strides=strides or (1,1)
     x = Activation(activation=act, name=name + '_2n')(BatchNormalization()(Conv2D(filters[0], convs[0], strides=strides, padding='same')(in_layer)))
     x = Activation(activation=act, name=name + '_1n')(BatchNormalization()(Conv2D(filters[1], convs[1], padding='same')(x)))
@@ -112,22 +131,22 @@ def conv131nres(in_layer, name, filters, act, convs=None, strides=None):
                BatchNormalization()(Conv2D(filters[2], convs[2], strides=strides, padding='same')(in_layer))])  # shortcut with conv
     )
     return x
-def conv131resx2(in_layer, name, filters, act):
+def conv131r2(in_layer, name, filters, act):
     x, n=in_layer,2
     for i in range(n-1,-1,-1):
-        x=conv131res(x, name+str(i)[:i], filters, act)
+        x=conv131r(x, name+str(i)[:i], filters, act)
     return x
-def conv131nresx2(in_layer, name, filters, act):
+def conv131nr2(in_layer, name, filters, act):
     x, n=in_layer,2
     for i in range(n-1,-1,-1):
-        x=conv131nres(x, name+str(i)[:i], filters, act)
+        x=conv131nr(x, name+str(i)[:i], filters, act)
     return x
-def dxconv131res(in_layer, rate, name=None, fs=None, act=None): # [64, 64, 256] or 2X, 3X,...
-    return conv131res(in_layer, name, fs, act, strides=(rate,rate))
-def dxconv131nres(in_layer, rate, name=None, fs=None, act=None): # [64, 64, 256] or 2X, 3X,...
-    return conv131nres(in_layer, name, fs, act, strides=(rate,rate))
+def dconv131r(in_layer, rate, name=None, fs=None, act=None): # [64, 64, 256] or 2X, 3X,...
+    return conv131r(in_layer, name, fs, act, strides=(rate, rate))
+def dconv131nr(in_layer, rate, name=None, fs=None, act=None): # [64, 64, 256] or 2X, 3X,...
+    return conv131nr(in_layer, name, fs, act, strides=(rate, rate))
 
-def trans131res(input_skip, input_up, name, filters, act, convs=None, strides=None):
+def tran131r(input_skip, input_up, name, filters, act, convs=None, strides=None):
     filters=filters if isinstance(filters,list) else [int(filters/2),int(filters/2),filters]  if isinstance(filters,int) else [32,32,64]
     convs=convs or [(1,1),(3,3),(1,1)]; strides=strides or (1,1)
     x = Conv2DTranspose(filters[0], convs[0], strides=strides, padding='same',activation=act, name=name + '_2n')(input_up)
@@ -136,7 +155,7 @@ def trans131res(input_skip, input_up, name, filters, act, convs=None, strides=No
         Add()([Conv2D(filters[2], convs[2], padding='same')(x), input_skip])
     )
     return x
-def trans131nres(input_skip, input_up, name, filters, act, convs=None, strides=None):
+def tran131nr(input_skip, input_up, name, filters, act, convs=None, strides=None):
     filters=filters if isinstance(filters,list) else [int(filters/2),int(filters/2),filters]  if isinstance(filters,int) else [32,32,64]
     convs=convs or [(1,1),(3,3),(1,1)]; strides=strides or (1,1)
     x = Activation(activation=act, name=name + '_2n')(BatchNormalization()(Conv2DTranspose(filters[0], convs[0], strides=strides, padding='same')(input_up)))
@@ -145,10 +164,10 @@ def trans131nres(input_skip, input_up, name, filters, act, convs=None, strides=N
         Add()([BatchNormalization()(Conv2D(filters[2], convs[2], padding='same')(x)), input_skip])
     )
     return x
-def uxtrans131res(input_skip, input_up, rate, name=None, fs=None, act=None): # [64, 64, 256] or 2X, 3X,...
-    return trans131res(input_skip, input_up, name, fs, act, strides=(rate,rate))
-def uxtrans131nres(input_skip, input_up, rate, name=None, fs=None, act=None): # [64, 64, 256] or 2X, 3X,...
-    return trans131nres(input_skip, input_up, name, fs, act, strides=(rate,rate))
+def utran131r(input_skip, input_up, rate, name=None, fs=None, act=None): # [64, 64, 256] or 2X, 3X,...
+    return tran131r(input_skip, input_up, name, fs, act, strides=(rate, rate))
+def utran131nr(input_skip, input_up, rate, name=None, fs=None, act=None): # [64, 64, 256] or 2X, 3X,...
+    return tran131nr(input_skip, input_up, name, fs, act, strides=(rate, rate))
 
 def unet1s(cfg:ModelConfig):
     fs = cfg.model_filter

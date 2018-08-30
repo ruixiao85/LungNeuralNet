@@ -57,10 +57,10 @@ class MyModel:
     def compile_model(self):
         from keras.optimizers import SGD, RMSprop, Adam, Nadam
         self.model.compile(
-            optimizer=SGD(lr=self.cfg.train_learning_rate),
+            # optimizer=SGD(lr=self.cfg.train_learning_rate),
             # optimizer=RMSprop(self.cfg.train_learning_rate, decay=1e-6),
             # optimizer=Adam(self.cfg.train_learning_rate),
-            # optimizer=NAdam(self.cfg.train_learning_rate),
+            optimizer=Nadam(self.cfg.train_learning_rate),
             loss=self.cfg.model_loss,
             metrics= self.cfg.metrics)
         self.model.summary()
@@ -104,30 +104,36 @@ class MyModel:
     def predict(self, multi:ImagePair, xls_file):
         img_ext=self.cfg.image_format[1:] # *.jpg -> .jpg
         sum_i, sum_g = self.cfg.row_out * self.cfg.col_out, None
-        msks, mask_wt, r_i, r_g,  res_i, res_g= None, None, None, None, None, None
+        msks, mask_wt, r_i, r_g,  res_i, res_g, ra, ca= None, None, None, None, None, None, None, None
         mrg_in, mrg_out, mrg_out_wt, merge_dir = None, None, None, None
         batch=multi.img_set.view_coord_batch()  # image/1batch -> view_coord
         dir_ex=multi.dir_out_ex()
         dir_cfg_append=str(self.cfg) if dir_ex is None else dir_ex+'_'+str(self.cfg)
+        save_ind_image=False
         for dir_out, tgt_list in multi.predict_generator():
             print('Load weights and predicting ...')
             export_name = dir_out+'_'+dir_cfg_append
             target_dir = os.path.join(multi.wd, export_name)
-            if not self.cfg.separate: # skip saving individual images
+            if save_ind_image or not self.cfg.separate: # skip saving individual images
                 mk_dir_if_nonexist(target_dir)
             if self.cfg.separate:
-                merge_dir = os.path.join(multi.wd, dir_out+'__'+dir_cfg_append) # double-under group
+                merge_dir = os.path.join(multi.wd, dir_out+''+dir_cfg_append) # group
                 mk_dir_if_nonexist(merge_dir)
                 mask_wt = g_kern_rect(self.cfg.row_out, self.cfg.col_out)
             for grp, view in batch.items():
-                msks,res_i,res_g = None,None,None
-                for tgt in tgt_list:
-                    prd=ImageGenerator(multi, False, [tgt], view)
-                    weight_file=tgt+'_'+dir_cfg_append+'.h5'
+                msks=None
+                i=0; nt=len(tgt_list)
+                while i < nt:
+                    o=min(i+self.cfg.dep_out, nt)
+                    tgt_sub=tgt_list[i:o]
+                    tgt_name=ImagePair.join_targets(tgt_sub)
+                    prd=ImageGenerator(multi, False, tgt_sub, view)
+                    weight_file=tgt_name+'_'+dir_cfg_append+'.h5'
                     print(weight_file)
                     self.model.load_weights(weight_file)
                     msk=self.model.predict_generator(prd, max_queue_size=1, workers=0, use_multiprocessing=False, verbose=1)
                     msks = msk if msks is None else  np.concatenate((msks, msk),axis=-1)
+                    i=o
                 print('Saving predicted results [%s] to folder [%s]...' % (grp, export_name))
                 # r_i=np.zeros((len(multi.img_set.images),len(tgt_list)), dtype=np.uint32)
                 if self.cfg.separate:
@@ -146,9 +152,8 @@ class MyModel:
                     for d in range(len(tgt_list)):
                         text = "[  %d: %s] %d / %d  %.2f%%" % ( d, tgt_list[d], r_i[d], sum_i, 100. * r_i[d] / sum_i)
                         print(text); text_list.append(text)
-                    # cv2.imwrite(ind_file, msk[...,np.newaxis] * 255.)
-                    blend = self.draw_text(blend, text_list)  # RGB:3x8-bit dark text
-                    if not self.cfg.separate: # skip saving individual images
+                    if save_ind_image or not self.cfg.separate: # skip saving individual images
+                        blend = self.draw_text(blend, text_list, self.cfg.row_out)  # RGB:3x8-bit dark text
                         imsave(ind_file.replace(img_ext, ".jpe"), blend)
                     res_i =r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i, r_i[np.newaxis,...]))
 
@@ -181,33 +186,45 @@ class MyModel:
                         text = "[  %d: %s] %d / %d  %.2f%%" % (d, tgt_list[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
                         print(text); text_list.append(text)
                     # cv2.imwrite(merge_file, mrg_out[..., np.newaxis] * 255.)
-                    blend = self.draw_text(blend, text_list, 2.0)  # RGB:3x8-bit dark text
+                    blend = self.draw_text(blend, text_list, ra)  # RGB:3x8-bit dark text
                     imsave(merge_file.replace(img_ext, ".jpe"), blend)
                     res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g, r_g[np.newaxis,...]))
-            df = pd.DataFrame(res_i, index=[view.file_name for view in sum(batch.values(),[])], columns=tgt_list)
+            df = pd.DataFrame(res_i, index=multi.img_set.images, columns=tgt_list)
             to_excel_sheet(df, xls_file, multi.origin)  # per slice
             if self.cfg.separate:
                 df = pd.DataFrame(res_g, index=batch.keys(), columns=tgt_list)
                 to_excel_sheet(df, xls_file, multi.origin + "_sum")
 
 
-    def draw_text(self, img, text_list, size_multiple=1.0):
-        size=int(0.25*(3.0*25+0.003*(self.cfg.row_out+self.cfg.col_out))*size_multiple) # space=1.15
-        op=self.cfg.overlay_opacity
-        txt_col = (10, 10, 10, int((1.0+op)*127))
+    def draw_text(self, img, text_list, width):
+        font = "arial.ttf" #times.ttf
+        size = round(0.33*(26+0.03*width+width/len(max(text_list, key=len))))
+        txt_col = (10, 10, 10)
         origin = Image.fromarray(img.astype(np.uint8),'RGB') # L RGB
         draw = ImageDraw.Draw(origin)
-        draw.text((0, 0), '\n'.join(text_list), txt_col, ImageFont.truetype("arial.ttf",size))  # font type size)
+        draw.text((0, 0), '\n'.join(text_list), txt_col, ImageFont.truetype(font, size))
         for i in range(len(text_list)-1):
-            sym_col = self.cfg.overlay_color[i]+(int(op*255),)
-            draw.text((0, round(size*(i+1))), ' X', sym_col, ImageFont.truetype("arial.ttf", size))  # font type size)
+            sym_col = self.cfg.overlay_color[i]
+            draw.text((0, 0), ' \n'*(i+1)+' X', sym_col, ImageFont.truetype(font, size))
         return origin
+
+ # def draw_text(self, img, text_list, width):
+ #        size = round(0.5*(24+0.03*width))
+ #        txt_col = (10, 10, 10)
+ #        origin = Image.fromarray(img.astype(np.uint8),'RGB') # L RGB
+ #        draw = ImageDraw.Draw(origin)
+ #        draw.text((0, 0), '\n'.join(text_list), txt_col, ImageFont.truetype("arial.ttf",size))  # font type size)
+ #        for i in range(len(text_list)-1):
+ #            sym_col = self.cfg.overlay_color[i]
+ #            draw.text((0, round(1.1*size*(i+1))), ' X', sym_col, ImageFont.truetype("arial.ttf", size))  # font type size)
+ #        return origin
 
     def mask_call(self, img, msk):  # blend, np result
         blend=img.copy()
         opa=self.cfg.overlay_opacity
         col=self.cfg.overlay_color
         dim=self.cfg.dep_out # network original output depth
+        # dim=self.cfg.predict_size # network original output depth
         if dim==1: # r x c x 1
             for d in range(msk.shape[-1]):
                 msk[...,d]=np.rint(msk[...,d])  # sigmoid round to  0/1 # consider range(-1 ~ +1) for multi class voting
