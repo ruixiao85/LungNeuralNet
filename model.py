@@ -55,14 +55,10 @@ class MyModel:
         return str(self.cfg)
 
     def compile_model(self):
-        from keras.optimizers import SGD, RMSprop, Adam, Nadam
         self.model.compile(
-            # optimizer=SGD(lr=self.cfg.train_learning_rate),
-            # optimizer=RMSprop(self.cfg.train_learning_rate, decay=1e-6),
-            # optimizer=Adam(self.cfg.train_learning_rate),
-            optimizer=Nadam(self.cfg.train_learning_rate),
+            optimizer=self.cfg.optimizer,
             loss=self.cfg.model_loss,
-            metrics= self.cfg.metrics)
+            metrics=self.cfg.metrics)
         self.model.summary()
 
     def save_model(self):
@@ -223,8 +219,8 @@ class MyModel:
         blend=img.copy()
         opa=self.cfg.overlay_opacity
         col=self.cfg.overlay_color
-        dim=self.cfg.dep_out # network original output depth
-        # dim=self.cfg.predict_size # network original output depth
+        # dim=self.cfg.dep_out # network original output depth
+        dim=self.cfg.predict_size # network original output depth
         if dim==1: # r x c x 1
             for d in range(msk.shape[-1]):
                 msk[...,d]=np.rint(msk[...,d])  # sigmoid round to  0/1 # consider range(-1 ~ +1) for multi class voting

@@ -15,12 +15,12 @@ class ModelConfig:
 
     def __init__(self, dim_in=None, dim_out=None, num_targets=None, image_format=None, image_resize=None, image_padding=None, mask_color=None,
                  coverage_tr=None, coverage_prd=None, batch_size=None, separate=None,
-                 model_name=None, model_filter=None, model_poolsize=None,
+                 model_name=None, model_filter=None, model_pool=None,
                  model_downconv=None, model_downsamp=None, model_upsamp=None, model_upconv=None,
-                 model_act=None, model_out=None, model_loss=None, metrics=None,
+                 model_act=None, model_out=None, model_loss=None, metrics=None, optimizer=None,
                  call_hardness=None, overlay_color=None, overlay_opacity=None, predict_size=None,
                  train_rep=None, train_epoch=None, train_step=None, train_vali_step=None,
-                 train_learning_rate=None, train_vali_split=None, train_aug=None, train_continue=None,
+                 train_vali_split=None, train_aug=None, train_continue=None,
                  train_shuffle=None, train_indicator=None
                  ):
         self.row_in, self.col_in, self.dep_in = dim_in or (512,512,3)
@@ -31,23 +31,25 @@ class ModelConfig:
         self.image_padding= image_padding or 1.0  # default 1.0, padding proportionally >=1.0
         self.mask_color=mask_color or "white"  # green/white
         self.separate = separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
-        self.coverage_train = coverage_tr or 1.3
-        self.coverage_predict = coverage_prd or 1.8
-        from unet.unetflex import unet1s,unet2s, conv33, conv3, dmax, upool
+        self.coverage_train = coverage_tr or max(1.0,self.row_in/500) # sample every 500px and at least one
+        self.coverage_predict = coverage_prd or 2.8
+        from unet.unetflex import unet1s,unet2s, ca33, ca3, dmp, uuc
         self.model_name = model_name or unet1s
         self.model_filter = model_filter or [32, 64, 128, 256, 512]
-        self.model_poolsize = model_poolsize or [2] * len(self.model_filter)
-        self.model_downconv = model_downconv or conv33
-        self.model_downsamp =model_downsamp or dmax
-        self.model_upsamp =model_upsamp or upool
-        self.model_upconv = model_upconv or conv3
+        self.model_pool =model_pool or [2]*len(self.model_filter)
+        self.model_downconv =model_downconv or ca33
+        self.model_downsamp =model_downsamp or dmp
+        self.model_upsamp =model_upsamp or uuc
+        self.model_upconv =model_upconv or ca3
+        # enable_custom_activation() # leakyrelu, swish, twish
         from metrics import jac,dice,dice80,dice60,dice40,dice20,acc,acc80,acc60,acc40,acc20,\
             loss_bce_dice, enable_custom_activation
-        # enable_custom_activation() # leakyrelu, swish, twish
         self.model_act = model_act or 'elu'
         self.model_out = model_out or ('sigmoid' if self.dep_out == 1 else 'softmax')
         self.model_loss = model_loss or (loss_bce_dice if self.dep_out == 1 else 'categorical_crossentropy')  # 'binary_crossentropy'
         self.metrics= metrics or ([jac, dice, dice80, dice60, dice40, dice20] if self.dep_out == 1 else [acc, acc80, acc60, acc40, acc20])
+        from keras.optimizers import SGD,RMSprop,Adam,Nadam
+        self.optimizer =optimizer or Adam(1e-5)
         self.call_hardness = call_hardness or 1.0  # 0-smooth 1-hard binary call
         self.overlay_color = overlay_color if isinstance(overlay_color, list) else\
                             generate_colors(overlay_color) if isinstance(overlay_color, int) else\
@@ -57,9 +59,8 @@ class ModelConfig:
         self.batch_size = batch_size or 1
         self.train_rep = train_rep or 3  # times to repeat during training
         self.train_epoch = train_epoch or 12  # max epoches during training
-        self.train_step = train_step or 500
-        self.train_vali_step = train_vali_step or 200
-        self.train_learning_rate = train_learning_rate or 5e-5
+        self.train_step = train_step or 250
+        self.train_vali_step = train_vali_step or 100
         self.train_vali_split = train_vali_split or 0.33
         self.train_aug = train_aug if train_aug is not None else True  # only to training set, not validation or prediction mode
         self.train_shuffle = train_shuffle if train_shuffle is not None else True  # only to training set, not validation or prediction mode
@@ -74,7 +75,7 @@ class ModelConfig:
     def __str__(self):
         return '_'.join([
             self.model_name.__name__.capitalize(),
-            "%dF%d-%dP%d-%d" % (len(self.model_filter), self.model_filter[0], self.model_filter[-1], self.model_poolsize[0], self.model_poolsize[-1]),
+            "%dF%d-%dP%d-%d" % (len(self.model_filter), self.model_filter[0], self.model_filter[-1], self.model_pool[0], self.model_pool[-1]),
             # "%df%d-%dp%s" % (len(self.model_filter), self.model_filter[0], self.model_filter[-1], ''.join(self.model_poolsize)),
             self.cap_lim_join(10,self.model_downconv.__name__, self.model_downsamp.__name__,
                                 self.model_upsamp.__name__, self.model_upconv.__name__),
