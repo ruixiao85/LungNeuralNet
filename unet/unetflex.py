@@ -29,7 +29,7 @@ def cvacdp(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1):
     return Dropout(0.2,name=name)(x)
 def cvbn(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1):
     x=Conv2D(fs, (size,size), strides=(stride,stride), padding='same', kernel_initializer=init, name=name+'_cv')(in_layer)
-    return BatchNormalization(name)(x)
+    return BatchNormalization(name=name)(x)
 def cvbnac(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1):
     x=Conv2D(fs, (size,size), strides=(stride,stride), padding='same', kernel_initializer=init, name=name+'_cv')(in_layer)
     x=BatchNormalization(name=name+'_bn')(x)
@@ -54,6 +54,8 @@ def bnactr(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1):
 
 def mp(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=2):
     return MaxPooling2D((size, size), strides=(stride, stride), name=name, padding='same')(in_layer)
+def ap(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=2):
+    return AveragePooling2D((size, size), strides=(stride, stride), name=name, padding='same')(in_layer)
 def us(in_layer, name=None, idx=None, fs=None, act=None, size=None, stride=2):
     return UpSampling2D((stride, stride), name=name)(in_layer)
 
@@ -105,18 +107,23 @@ def dcba(in_layer, rate, name=None, idx=None, fs=None, act=None):
 def dmp(in_layer, rate, name=None, idx=None, fs=None, act=None):
     return mp(in_layer, name, idx, fs, act, size=step2kern(rate), stride=rate)
 
-def uuc(input_skip, input_up, rate, name=None, idx=None, fs=None, act=None):
-    x=us(input_up, name+'_us', idx, fs, act, size=step2kern(rate), stride=rate)
-    return Concatenate(name=name, axis=concat_axis)([input_skip,x])
-def utc(input_skip, input_up, rate, name=None, idx=None, fs=None, act=None):
-    x=tr(input_up, name+'_tr', idx, fs, act, size=step2kern(rate), stride=rate)
-    return Concatenate(name=name, axis=concat_axis)([input_skip,x])
-def utac(input_skip, input_up, rate, name=None, idx=None, fs=None, act=None):
-    x=trac(input_up, name+'_trac', idx, fs, act, size=step2kern(rate), stride=rate)
-    return Concatenate(name=name, axis=concat_axis)([input_skip,x])
-def utbac(input_skip, input_up, rate, name=None, idx=None, fs=None, act=None):
-    x=trbnac(input_up, name+'_tn', idx, fs, act, size=step2kern(rate), stride=rate)
-    return Concatenate(name=name, axis=concat_axis)([input_skip,x])
+def uu(in_layer, rate, name=None, idx=None, fs=None, act=None):
+    return us(in_layer, name, idx, fs, act, size=step2kern(rate), stride=rate)
+def ut(in_layer, rate, name=None, idx=None, fs=None, act=None):
+    return tr(in_layer, name, idx, fs, act, size=step2kern(rate), stride=rate)
+def uta(in_layer, rate, name=None, idx=None, fs=None, act=None):
+    return trac(in_layer, name, idx, fs, act, size=step2kern(rate), stride=rate)
+def utba(in_layer, rate, name=None, idx=None, fs=None, act=None):
+    return trbnac(in_layer, name, idx, fs, act, size=step2kern(rate), stride=rate)
+
+def s(in_layer, other_layer, name=None, idx=None, fs=None, act=None, stride=None): # direct
+    return in_layer
+def c(in_layer, other_layer, name=None, idx=None, fs=None, act=None, stride=None): # concat
+    assert(other_layer is not None)
+    if stride is not None: # consider downsample other_layer
+        other_layer=mp(in_layer,name+'_rs',idx,fs,act,step2kern(stride),stride)
+        # other_layer=ap(in_layer,name+'_rs',idx,fs,act,step2kern(stride),stride)
+    return Concatenate(name=name, axis=concat_axis)([in_layer,other_layer])
 
 
 # du: Deep U-Net with residual https://arxiv.org/pdf/1709.00201.pdf 640x640
@@ -125,14 +132,15 @@ def du32(in_layer, name=None, idx=None, fs=None, act=None): # downward: f64k3, f
     x=cvac(in_layer,name+'_2',idx,fs,act,size=3)
     x=cv(x,name+'_1',idx,int(fs/2),act,size=2)
     return Activation(activation=act, name=name)(
-        Concatenate(name=name+'_c')([in_layer, x])
+        Concatenate(name=name+'_c')([x, in_layer])
     )
-def du33(in_layer, name=None, idx=None, fs=None, act=None): # upward: f64k3, f32k3+res per stage
-    x=cvac(in_layer,name+'_2',idx,fs,act,size=3)
-    x=cv(x,name+'_1',idx,int(fs/2),act,size=3)
+def du33(in_layer, name=None, idx=None, fs=None, act=None): # upward join: f64k3, f32k3+res per stage
+    x=cvac(in_layer, name+'_2', idx, fs, act, size=3)
+    x=cv(x, name+'_1', idx, int(fs/2), act, size=3)
     return Activation(activation=act, name=name)(
-        Concatenate(name=name+'_c')([in_layer, x])
+        Concatenate(name=name+'_c')([x, in_layer])
     )
+
 
 # rn: ResNet https://arxiv.org/pdf/1512.03385.pdf 224x224
 # first layer f64, k7x7, s2x2 -> maxpool k3x3, s2x2
@@ -195,16 +203,16 @@ def rn131nr(in_layer, name, idx, filters, act):
 # first layer f64, k7x7, s2x2 -> maxpool k3x3, s2x2
 # (12,1x1->12,3x3) repeat 6, 12, 24,... increase repetition/density per block. nb-ac-conv suggested.
 def dn13(in_layer, name, idx, filters, act):
-    x=cvac(in_layer, name+'_2', idx, filters[0], act, size=1)
-    x=cv(x, name+'_1', idx, filters[1], act, size=3)
-    y=cv(in_layer, name+'_s', idx, filters[2], act, size=1)
+    x=cvac(in_layer, name+'_2', idx, filters, act, size=1)
+    x=cv(x, name+'_1', idx, filters, act, size=3)
+    y=cv(in_layer, name+'_s', idx, filters, act, size=1)
     return Activation(activation=act, name=name)(
         Add(name=name+'_a')([x, y])  # shortcut with conv
     )
 def dn13n(in_layer, name, idx, filters, act):
-    x=cvbnac(in_layer, name+'_2', idx, filters[0], act, size=1)
-    x=cvbnac(x, name+'_1', idx, filters[1], act, size=3)
-    y=cvbn(in_layer, name+'_s', idx, filters[2], act, size=1)
+    x=cvbnac(in_layer, name+'_2', idx, filters, act, size=1)
+    x=cvbnac(x, name+'_1', idx, filters, act, size=3)
+    y=cvbn(in_layer, name+'_s', idx, filters, act, size=1)
     return Activation(activation=act, name=name)(
         Add(name=name+'_a')([x, y])  # shortcut with conv
     )
@@ -236,66 +244,27 @@ def c7m3d4(in_layer, name, idx, filters, act): #pre-process conv+maxpool size do
     return x
 
 
-def unet1s(cfg: ModelConfig):
+def unet(cfg: ModelConfig):
     fs=cfg.model_filter
     ps=cfg.model_pool
-    locals()['pool0']=Input((cfg.row_in, cfg.col_in, cfg.dep_in))
-
-    for i in range(len(fs)):
-        locals()['conv'+str(i)]=cfg.model_downconv(locals()['pool'+str(i)], 'conv'+str(i), fs[i], i, cfg.model_act)
-        if i<len(fs)-1:
-            locals()['pool'+str(i+1)]=cfg.model_downsamp(locals()['conv'+str(i)], ps[i], 'pool'+str(i+1), i, fs[i], cfg.model_act)
+    locals()['in0']=Input((cfg.row_in, cfg.col_in, cfg.dep_in))
+    locals()['pre0']=cfg.model_preproc(locals()['in0'],'pre0',0,fs[0],cfg.model_act)
+    for i in range(len(fs)-1):
+        prev_layer=locals()['pre%d'%i] if i==0 else locals()['dproc%d'%i]
+        locals()['dconv%d'%i]=cfg.model_downconv(prev_layer, 'dconv%d'%i, i, fs[i], cfg.model_act)
+        locals()['djoin%d'%i]=cfg.model_downjoin(locals()['dconv%d'%i], prev_layer, 'djoin%d'%i, i, fs[i], cfg.model_act)
+        locals()['dsamp%d'%(i+1)]=cfg.model_downsamp(locals()['djoin%d'%i], ps[i], 'dsamp%d'%(i+1), i, fs[i], cfg.model_act)
+        locals()['dmerge%d'%(i+1)]=cfg.model_downmerge(locals()['dsamp%d'%(i+1)], prev_layer, 'dmerge%d'%(i+1), i+1, fs[i+1], cfg.model_act, stride=ps[i])
+        locals()['dproc%d'%(i+1)]=cfg.model_downproc(locals()['dmerge%d'%(i+1)], 'dproc%d'%(i+1), i+1, fs[i+1], cfg.model_act)
 
     for i in range(len(fs)-2, -1, -1):
-        locals()['upsamp'+str(i)]=cfg.model_upsamp(locals()['conv'+str(i)],
-                                                   locals()['conv'+str(i+1)] if i==len(fs)-2 else locals()['decon'+str(i+1)],
-                                                   ps[i], 'upsamp'+str(i), i, fs[i], cfg.model_act)
-        locals()['decon'+str(i)]=cfg.model_upconv(locals()['upsamp'+str(i)], 'decon'+str(i), i, fs[i], cfg.model_act)
+        prev_layer=locals()['dproc%d'%(i+1)] if i==len(fs)-2 else locals()['uproc%d'%(i+1)]
+        locals()['uconv%d'%(i+1)]=cfg.model_upconv(prev_layer, 'uconv%d'%(i+1), i, fs[i], cfg.model_act)
+        locals()['ujoin%d'%(i+1)]=cfg.model_upjoin(locals()['uconv%d'%(i+1)], locals()['dmerge%d'%(i+1)], 'ujoin%d'%(i+1), i, fs[i], cfg.model_act)
+        locals()['usamp%d'%i]=cfg.model_upsamp(locals()['ujoin%d'%(i+1)], ps[i], 'usamp%d'%i, i, fs[i], cfg.model_act)
+        locals()['umerge%d'%i]=cfg.model_upmerge(locals()['usamp%d'%i], locals()['djoin%d'%i], 'umerge%d'%i, i, fs[i], cfg.model_act)
+        locals()['uproc%d'%i]=cfg.model_upproc(locals()['umerge%d'%i], 'uproc%d'%i, i, fs[i], cfg.model_act)
 
-    locals()['out0']=Conv2D(cfg.dep_out, (1, 1), activation=cfg.model_out, padding='same', name='out0')(locals()['decon0'])
-    return Model(locals()['pool0'], locals()['out0'])
-
-
-def unet1d(cfg: ModelConfig):
-    fs=cfg.model_filter
-    ps=cfg.model_pool
-    locals()['pool0']=Input((cfg.row_in, cfg.col_in, cfg.dep_in))
-    for i in range(len(fs)):
-        locals()['conv'+str(i)]=cfg.model_downconv(locals()['pool'+str(i)], 'conv'+str(i), i, fs[i], cfg.model_act)
-        if i<len(fs)-1:
-            locals()['pool'+str(i+1)]=cfg.model_downsamp(locals()['conv'+str(i)], ps[i], 'pool'+str(i+1), i, fs[i], cfg.model_act)
-
-    for i in range(len(fs)-2, -1, -1):
-        locals()['secbind'+str(i+1)]=Concatenate(name='secbind'+str(i+1))([locals()['pool'+str(i+1)], locals()['conv'+str(i+1)]]) if i==len(fs)-2 else\
-                                    Concatenate(name='secbind'+str(i+1))([locals()['pool'+str(i+1)], locals()['decon'+str(i+1)]])
-        locals()['upsamp'+str(i)]=cfg.model_upsamp(locals()['conv'+str(i)], locals()['secbind'+str(i+1)],
-                                                   ps[i], 'upsamp'+str(i), i, fs[i], cfg.model_act)
-        locals()['decon'+str(i)]=cfg.model_upconv(locals()['upsamp'+str(i)], 'decon'+str(i), i, fs[i], cfg.model_act)
-
-    locals()['out0']=Conv2D(cfg.dep_out, (1, 1), activation=cfg.model_out, padding='same', name='out0')(locals()['decon0'])
-    return Model(locals()['pool0'], locals()['out0'])
-
-
-def unet2s(cfg: ModelConfig):
-    fs=cfg.model_filter
-    ps=cfg.model_pool
-    locals()['pool0']=Input((cfg.row_in, cfg.col_in, cfg.dep_in))
-    long=len(cfg.model_filter)
-    short=int(long/2)
-
-    for lyr, div in [(short, 1), (long, 2)]:
-        for i in range(lyr):
-            locals()[str(lyr)+'conv'+str(i)]=cfg.model_downconv(locals()[(str(lyr) if i!=0 else '')+'pool'+str(i)],
-                                                                str(lyr)+'conv'+str(i), i, int(fs[i]/div), cfg.model_act)
-            if i<lyr-1:
-                locals()[str(lyr)+'pool'+str(i+1)]=cfg.model_downsamp(locals()[str(lyr)+'conv'+str(i)], ps[i], str(lyr)+'pool'+str(i+1), i, fs[i], cfg.model_act)
-
-        for i in range(lyr-2, -1, -1):
-            locals()[str(lyr)+'upsamp'+str(i)]=cfg.model_upsamp(locals()[str(lyr)+str(len(fs))+'conv'+str(i)],
-                                                    locals()[str(lyr)+str(len(fs))+'conv'+str(i+1)] if i==len(fs)-2 else locals()[str(lyr)+'decon'+str(i+1)],
-                                                    ps[i], str(lyr)+'upsamp'+str(i), i, fs[i], cfg.model_act)
-
-            locals()[str(lyr)+'decon'+str(i)]=cfg.model_upconv(locals()[str(lyr)+'upsamp'+str(i)], str(lyr)+'decon'+str(i), i, int(fs[i]/div), cfg.model_act)
-    locals()['twobranch']=Concatenate(name='twobranch')([locals()[str(short)+'decon0'], locals()[str(long)+'decon0']], axis=concat_axis)
-    locals()['out0']=Conv2D(cfg.dep_out, (1, 1), activation=cfg.model_out, padding='same', name='out0')(locals()['twobranch'])
-    return Model(locals()['pool0'], locals()['out0'])
+    locals()['post0']=cfg.model_postproc(locals()['uproc0'],'post0',0,fs[0],cfg.model_act)
+    locals()['out0']=Conv2D(cfg.dep_out, (1, 1), activation=cfg.model_out, padding='same', name='out0')(locals()['post0'])
+    return Model(locals()['in0'], locals()['out0'])

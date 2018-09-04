@@ -219,8 +219,7 @@ class MyModel:
         blend=img.copy()
         opa=self.cfg.overlay_opacity
         col=self.cfg.overlay_color
-        # dim=self.cfg.dep_out # network original output depth
-        dim=self.cfg.predict_size # network original output depth
+        dim=self.cfg.predict_size if self.cfg.predict_all_inclusive else self.cfg.dep_out # do argmax if predict categories covers all possibilities or consider them individually
         if dim==1: # r x c x 1
             for d in range(msk.shape[-1]):
                 msk[...,d]=np.rint(msk[...,d])  # sigmoid round to  0/1 # consider range(-1 ~ +1) for multi class voting

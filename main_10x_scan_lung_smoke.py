@@ -1,5 +1,6 @@
 import argparse
 
+
 from model import *
 
 if __name__ == '__main__':
@@ -21,7 +22,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--input', dest='input', type=str,
                         default='Original', help='input: Original')
     parser.add_argument('-o', '--output', dest='output', type=str,
-                        default='ConductingAirway,SmallBloodVessel', help='output: targets separated by comma')
+                        default='Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,RespiratoryAirway,SmallBloodVessel', help='output: targets separated by comma')
     #Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,RespiratoryAirway,SmallBloodVessel
     args = parser.parse_args()
 
@@ -36,25 +37,33 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from unet.unetflex import unet1s, unet1d, unet2s,  ca3, ca33, dmp, dca, uuc, utc
-    from unet.unetflex import du32, du33
-    from unet.unetflex import rn33r, rn33nr, rn131r, rn131nr
-    from unet.unetflex import dn13r, dn13nr
+    from unet.unetflex import unet, ca3, ca33, dmp, dca, uu, ut, uta, s, c, \
+                            du32, du33, rn33r, rn33nr, rn131r, rn131nr,  dn13r, dn13nr
+    from keras.optimizers import Adam, SGD, RMSprop, Nadam
     configs = [
-        # ModelConfig((1296, 1296, 3), (1296, 1296, 1), num_targets=len(targets), model_filter=[64, 64, 96, 96, 128, 128], model_pool=[2, 2, 3, 3, 3, 3],
-        #             model_name=unet1d, model_preconv=c7m3d4, model_downconv=ca33, model_downsamp=dmp, model_upsamp=uuc, model_upconv=ca33, train_rep=10),
+        ModelConfig((768, 768, 3), (768, 768, 1), num_targets=len(targets), model_filter=[64, 128, 256, 512, 1024], model_pool=[2, 2, 2, 2, 2], model_name=unet,
+                    train_rep=5, optimizer=Adam(4e-5), predict_all_inclusive=True,
+                    model_preproc=ca3, model_downconv=ca3, model_downjoin=s, model_downsamp=dmp, model_downmerge=s, model_downproc=ca3,
+                    model_upconv=ca3, model_upjoin=s, model_upsamp=uu, model_upmerge=c, model_upproc=ca3, model_postproc=ca3),
 
-        # ModelConfig((512, 512, 3), (512, 512, 1), num_targets=len(targets), model_filter=[64, 64, 96, 96, 128, 128, 128], model_pool=[2, 2, 2, 2, 2, 2, 2],
-        #             model_name=unet1d, model_downconv=ca33, model_downsamp=dmp, model_upsamp=uuc, model_upconv=ca33, train_rep=3),
+        ModelConfig((1296, 1296, 3), (1296, 1296, 1), num_targets=len(targets), model_filter=[64, 64, 96, 96, 128, 128, 96, 96], model_pool=[2, 2, 2, 2, 3, 3, 3, 3],
+                    model_name=unet, train_rep=5, optimizer=Adam(4e-5), predict_all_inclusive=True,
+                    model_preproc=ca3, model_downconv=ca3, model_downjoin=s, model_downsamp=dmp, model_downmerge=s, model_downproc=ca3,
+                    model_upconv=ca3, model_upjoin=c, model_upsamp=uu, model_upmerge=c, model_upproc=ca3, model_postproc=ca3),
+        # ModelConfig((1296, 1296, 3), (1296, 1296, 1), num_targets=len(targets), model_filter=[24,24,24,24,24,24,24,24], model_pool=[2, 2, 2, 2, 3, 3, 3, 3],
+        #             model_name=unet, train_rep=6, optimizer=Adam(4e-5), predict_all_inclusive=True,
+        #             model_preproc=du32, model_downconv=s, model_downjoin=s, model_downsamp=dmp, model_downmerge=s, model_downproc=du32,
+        #             model_upconv=s, model_upjoin=s, model_upsamp=uu, model_upmerge=c, model_upproc=du33, model_postproc=s),
 
-        ModelConfig((512, 512, 3), (512, 512, 1), num_targets=len(targets), model_filter=[96, 96, 96, 96, 96, 96, 96], model_pool=[2, 2, 2, 2, 2, 2, 2],
-                    model_name=unet1d, model_downconv=du32, model_downsamp=dmp, model_upsamp=uuc, model_upconv=du33, train_rep=3), # Depp U Net
+        # ModelConfig((512, 512, 3), (512, 512, 1), num_targets=len(targets), model_filter=[64, 96, 128, 128, 128], model_pool=[2, 2, 2, 2, 2], model_name=unet,
+        #             train_rep=6, optimizer=Adam(4e-5), predict_all_inclusive=True,
+        #             model_preproc=ca3, model_downconv=ca3, model_downjoin=s, model_downsamp=dmp, model_downmerge=s, model_downproc=ca3,
+        #             model_upconv=ca3, model_upjoin=c, model_upsamp=uu, model_upmerge=c, model_upproc=ca3, model_postproc=ca3),
+        # ModelConfig((512, 512, 3), (512, 512, 1), num_targets=len(targets), model_filter=[48, 48, 48, 48, 48, 48], model_pool=[2, 2, 2, 2, 2, 2], model_name=unet,
+        #             train_rep=6, optimizer=Adam(4e-5), predict_all_inclusive=True,
+        #             model_preproc=du32, model_downconv=s, model_downjoin=s, model_downsamp=dmp, model_downmerge=s, model_downproc=du32,
+        #             model_upconv=s, model_upjoin=c, model_upsamp=uu, model_upmerge=c, model_upproc=du33, model_postproc=s),
 
-        ModelConfig((512, 512, 3), (512, 512, 1), num_targets=len(targets), model_filter=[64, 64, 64, 64, 64, 64, 64], model_pool=[2, 2, 2, 2, 2, 2, 2],
-                    model_name=unet1d, model_downconv=rn33r, model_downsamp=dmp, model_upsamp=uuc, model_upconv=rn33r, train_rep=3), # Res Net
-
-        ModelConfig((512, 512, 3), (512, 512, 1), num_targets=len(targets), model_filter=[16, 16, 16, 16, 16, 16, 16], model_pool=[2, 2, 2, 2, 2, 2, 2],
-                    model_name=unet1d, model_downconv=dn13r, model_downsamp=dmp, model_upsamp=uuc, model_upconv=dn13r, train_rep=3), # Dense Net
 
     ]
     mode = args.mode[0].lower()

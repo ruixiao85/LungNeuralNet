@@ -1,7 +1,7 @@
 import argparse
 
 from model import *
-from unetflex import unet1d, dmp, uuc, ca3, ca33
+from unetflex import unet, dmp, uu, ca3, ca33
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train and predict with biomedical images.')
@@ -38,8 +38,8 @@ if __name__ == '__main__':
     targets = args.output.split(',')
     configs = [
         ModelConfig((512, 512, 3), (512,512, 1), num_targets=len(targets), model_filter=[32, 48, 64, 96, 128, 192, 224, 256],
-                    model_name=unet1d, model_pool=[2, 2, 2, 2, 2, 2, 2, 2],  # predict_size=1,
-                    model_downconv=ca33, model_downsamp=dmp, model_upsamp=uuc, model_upconv=ca3),
+                    model_name=unet, model_pool=[2, 2, 2, 2, 2, 2, 2, 2],  # predict_size=1,
+                    model_downconv=ca33, model_downsamp=dmp, model_upsamp=uu, model_upproc=ca3),
     ]
     mode = args.mode[0].lower()
     if mode != 'p':

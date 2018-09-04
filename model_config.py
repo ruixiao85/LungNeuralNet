@@ -16,9 +16,10 @@ class ModelConfig:
     def __init__(self, dim_in=None, dim_out=None, num_targets=None, image_format=None, image_resize=None, image_padding=None, mask_color=None,
                  coverage_tr=None, coverage_prd=None, batch_size=None, separate=None,
                  model_name=None, model_filter=None, model_pool=None,
-                 model_downconv=None, model_downsamp=None, model_upsamp=None, model_upconv=None,
+                model_preproc=None, model_downconv=None, model_downjoin=None, model_downsamp=None, model_downmerge=None, model_downproc=None,
+                model_upconv=None, model_upjoin=None, model_upsamp=None, model_upmerge=None, model_upproc=None, model_postproc=None,
                  model_act=None, model_out=None, model_loss=None, metrics=None, optimizer=None,
-                 call_hardness=None, overlay_color=None, overlay_opacity=None, predict_size=None,
+                 call_hardness=None, overlay_color=None, overlay_opacity=None, predict_size=None, predict_all_inclusive=None,
                  train_rep=None, train_epoch=None, train_step=None, train_vali_step=None,
                  train_vali_split=None, train_aug=None, train_continue=None,
                  train_shuffle=None, train_indicator=None
@@ -33,14 +34,22 @@ class ModelConfig:
         self.separate = separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
         self.coverage_train = coverage_tr or max(1.0,self.row_in/500) # sample every 500px and at least one
         self.coverage_predict = coverage_prd or 2.8
-        from unet.unetflex import unet1s,unet2s, ca33, ca3, dmp, uuc
-        self.model_name = model_name or unet1s
+        from unet.unetflex import unet, ca3, dmp, uu, c, s
+        self.model_name =model_name or unet
         self.model_filter = model_filter or [32, 64, 128, 256, 512]
         self.model_pool =model_pool or [2]*len(self.model_filter)
-        self.model_downconv =model_downconv or ca33
+        self.model_preproc=model_preproc or ca3
+        self.model_downconv =model_downconv or ca3
+        self.model_downjoin =model_downjoin or s
         self.model_downsamp =model_downsamp or dmp
-        self.model_upsamp =model_upsamp or uuc
+        self.model_downmerge =model_downmerge or s
+        self.model_downproc =model_downproc or ca3
         self.model_upconv =model_upconv or ca3
+        self.model_upjoin =model_upjoin or c
+        self.model_upsamp =model_upsamp or uu
+        self.model_upmerge =model_upmerge or c
+        self.model_upproc =model_upproc or ca3
+        self.model_postproc=model_postproc or ca3
         # enable_custom_activation() # leakyrelu, swish, twish
         from metrics import jac,dice,dice80,dice60,dice40,dice20,acc,acc80,acc60,acc40,acc20,\
             loss_bce_dice, enable_custom_activation
@@ -56,11 +65,12 @@ class ModelConfig:
                             generate_colors(self.num_targets)
         self.overlay_opacity = overlay_opacity or 0.2
         self.predict_size = predict_size or num_targets
+        self.predict_all_inclusive = predict_all_inclusive if predict_all_inclusive is not None else False
         self.batch_size = batch_size or 1
         self.train_rep = train_rep or 3  # times to repeat during training
         self.train_epoch = train_epoch or 12  # max epoches during training
-        self.train_step = train_step or 250
-        self.train_vali_step = train_vali_step or 100
+        self.train_step = train_step or 120
+        self.train_vali_step = train_vali_step or 60
         self.train_vali_split = train_vali_split or 0.33
         self.train_aug = train_aug if train_aug is not None else True  # only to training set, not validation or prediction mode
         self.train_shuffle = train_shuffle if train_shuffle is not None else True  # only to training set, not validation or prediction mode
@@ -77,8 +87,8 @@ class ModelConfig:
             self.model_name.__name__.capitalize(),
             "%dF%d-%dP%d-%d" % (len(self.model_filter), self.model_filter[0], self.model_filter[-1], self.model_pool[0], self.model_pool[-1]),
             # "%df%d-%dp%s" % (len(self.model_filter), self.model_filter[0], self.model_filter[-1], ''.join(self.model_poolsize)),
-            self.cap_lim_join(10,self.model_downconv.__name__, self.model_downsamp.__name__,
-                                self.model_upsamp.__name__, self.model_upconv.__name__),
+            self.cap_lim_join(10, self.model_preproc.__name__, self.model_downconv.__name__, self.model_downjoin.__name__, self.model_downsamp.__name__, self.model_downproc.__name__),
+            self.cap_lim_join(10, self.model_upconv.__name__, self.model_upjoin.__name__, self.model_upsamp.__name__, self.model_upproc.__name__, self.model_postproc.__name__),
             self.cap_lim_join(7,self.model_act, self.model_out,
                 (self.model_loss if isinstance(self.model_loss, str) else self.model_loss.__name__).replace('_','').replace('loss',''))
             +str(self.dep_out),
