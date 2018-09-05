@@ -183,7 +183,6 @@ def resnet_arg_scope(weight_decay=0.0001,
                      batch_norm_epsilon=1e-5,
                      batch_norm_scale=True):
     """Defines the default ResNet arg scope.
-    TODO(gpapan): The batch-normalization related default values above are
       appropriate for use in conjunction with the reference ResNet models
       released at https://github.com/KaimingHe/deep-residual-networks. When
       training ResNets from scratch, they might need to be tuned.
