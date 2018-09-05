@@ -57,10 +57,10 @@ class MetaInfo:
         code=cfg.mask_color[0].lower()
         if code=='g': # green
             img=img.astype(np.int16)
-            # imwrite("testd_2f_-0.3.jpg",np.clip(5*(img[..., 1] - img[..., 0]-100), 0, 255)[..., np.newaxis])
-            # imwrite("testd_2f_-0.4.jpg",np.clip(5*(img[..., 1] - img[..., 0]-120), 0, 255)[..., np.newaxis])
-            # imwrite("testd_2f_-0.5.jpg",np.clip(5*(img[..., 1] - img[..., 0]-140), 0, 255)[..., np.newaxis])
-            # imwrite("testd_2f_-0.6.jpg",np.clip(5*(img[..., 1] - img[..., 0]-160), 0, 255)[..., np.newaxis])
+            # imwrite("test_2f_-0.3.jpg",np.clip(5*(img[..., 1] - img[..., 0]-100), 0, 255)[..., np.newaxis])
+            # imwrite("test_2f_-0.4.jpg",np.clip(5*(img[..., 1] - img[..., 0]-120), 0, 255)[..., np.newaxis])
+            # imwrite("test_2f_-0.5.jpg",np.clip(5*(img[..., 1] - img[..., 0]-140), 0, 255)[..., np.newaxis])
+            # imwrite("test_2f_-0.6.jpg",np.clip(5*(img[..., 1] - img[..., 0]-160), 0, 255)[..., np.newaxis])
             return np.clip(5*(img[..., 1] - img[..., 0]-110), 0, 255).astype(np.uint8)
         else: # default to white/black from blue channel
             return img[...,2]  # blue channel to only channel
@@ -188,7 +188,10 @@ class ImageSet:
                         #         continue
                         # else: # default white/black or rgb
                         std=float(np.std(s_img))
-                        if std<10.0:
+                        if not self.is_image and self.cfg.mask_color[0].lower()!='g' and std<3.0: # none green mask have a lower std requirement
+                            print("skip tile r%d_c%d for low contrast (std=%.1f) for %s" % (r_index, c_index, std, image_name))
+                            continue
+                        elif std<10.0:
                             print("skip tile r%d_c%d for low contrast (std=%.1f) for %s" % (r_index, c_index, std, image_name))
                             continue
                     entry = MetaInfo.from_whole(image_name, lg_row, lg_col, ri, ro, ci, co)
@@ -297,8 +300,8 @@ class ImageGenerator(keras.utils.Sequence):
                 _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex()), self.cfg)
                 for ti,tgt in enumerate(self.target_list):
                     _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg)
-            if self.train_aug:
-                _img, _tgt = augment_image_pair(_img, _tgt, _level=random.randint(0, 4))  # integer N: a <= N <= b.
+            if self.train_aug>0:
+                _img, _tgt = augment_image_pair(_img, _tgt,self.train_aug)  # integer N: a <= N <= b. random.randint(0, 4)
                 # imwrite("tr_img.jpg",_img[0])
                 # imwrite("tr_tgt.jpg",_tgt[0])
             return self.scale_input(_img), self.scale_output(_tgt)

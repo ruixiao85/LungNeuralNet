@@ -6,7 +6,10 @@ import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
 from keras.engine.saving import model_from_json
 from skimage.io import imsave
+from tensorflow.python.keras.models import load_model
+
 from image_gen import MetaInfo, ImagePair, ImageGenerator
+from metrics import custom_function_dict
 from model_config import ModelConfig
 from tensorboard_train_val import TensorBoardTrainVal
 from util import mk_dir_if_nonexist, to_excel_sheet
@@ -73,6 +76,8 @@ class MyModel:
             if self.cfg.train_continue and os.path.exists(weight_file):
                 print("Continue from previous weights")
                 self.model.load_weights(weight_file)
+                # print("Continue from previous model with weights & optimizer")
+                # self.model=load_model(weight_file,custom_objects=custom_function_dict()) # does not work well with custom act, loss func
             print('Fitting neural net...')
             for r in range(self.cfg.train_rep):
                 print("Training %d/%d for %s" % (r + 1, self.cfg.train_rep, export_name))
@@ -86,7 +91,7 @@ class MyModel:
                     callbacks=[
                         ModelCheckpoint(weight_file, monitor=cfg.train_indicator, mode='max', save_weights_only=False, save_best_only=True),
                         EarlyStopping(monitor=cfg.train_indicator, mode='max', patience=1, verbose=1),
-                        ReduceLROnPlateau(monitor=cfg.train_indicator, mode='max', factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
+                        # ReduceLROnPlateau(monitor=cfg.train_indicator, mode='max', factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
                         # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                     ]).history
                 if not os.path.exists(export_name + ".txt"):
@@ -107,7 +112,7 @@ class MyModel:
         dir_cfg_append=str(self.cfg) if dir_ex is None else dir_ex+'_'+str(self.cfg)
         save_ind_image=False
         for dir_out, tgt_list in multi.predict_generator():
-            print('Load weights and predicting ...')
+            print('Load model and predict to [%s]...'%dir_out)
             export_name = dir_out+'_'+dir_cfg_append
             target_dir = os.path.join(multi.wd, export_name)
             if save_ind_image or not self.cfg.separate: # skip saving individual images
@@ -126,7 +131,8 @@ class MyModel:
                     prd=ImageGenerator(multi, False, tgt_sub, view)
                     weight_file=tgt_name+'_'+dir_cfg_append+'.h5'
                     print(weight_file)
-                    self.model.load_weights(weight_file)
+                    self.model.load_weights(weight_file) # weights only
+                    # self.model=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
                     msk=self.model.predict_generator(prd, max_queue_size=1, workers=0, use_multiprocessing=False, verbose=1)
                     msks = msk if msks is None else  np.concatenate((msks, msk),axis=-1)
                     i=o

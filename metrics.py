@@ -2,11 +2,14 @@ import signal
 
 import cv2
 from keras import backend as K, metrics
+from keras.engine import Layer, InputSpec
 from keras.layers import Activation
 from keras.utils import get_custom_objects
 import tensorflow as tf
 from tensorflow.python.ops.image_ops_impl import central_crop
 import numpy as np
+
+from image_gen import ImageGenerator
 
 SMOOTH_LOSS = 1e-5
 # def depth_softmax(matrix, is_tensor=True): # increase temperature to make the softmax more sure of itself
@@ -44,14 +47,10 @@ def dice_d(y_true, y_pred):
 def dice(y_true, y_pred):
     return dice_d(y_true, K.round(K.clip(y_pred, 0, 1)))  # integer call
 
-def dice80(y_true, y_pred):
-    return dice(central_crop(y_true,0.8), central_crop(y_pred,0.8))
-def dice60(y_true, y_pred):
-    return dice(central_crop(y_true,0.6), central_crop(y_pred,0.6))
-def dice40(y_true, y_pred):
-    return dice(central_crop(y_true,0.4), central_crop(y_pred,0.4))
-def dice20(y_true, y_pred):
-    return dice(central_crop(y_true,0.2), central_crop(y_pred,0.2))
+def dice67(y_true, y_pred):
+    return dice(central_crop(y_true,0.67), central_crop(y_pred,0.67))
+def dice33(y_true, y_pred):
+    return dice(central_crop(y_true,0.33), central_crop(y_pred,0.33))
 
 def loss_bce(y_true, y_pred):  # bootstrapped binary cross entropy
     from keras.backend.tensorflow_backend import _to_tensor
@@ -83,17 +82,48 @@ def focal_loss(y_true, y_pred, gamma=0.5, alpha=.25): # (1-alpha)^gamma x CE.  a
     return -K.sum(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1))-K.sum((1-alpha) * K.pow( pt_0, gamma) * K.log(1. - pt_0))
 
 
-def enable_custom_activation():
-    def swish(x):
-        return x * K.sigmoid(x)
-    def twish(x):
-        return x * K.tanh(x)
-    def leakyrelu(x):
-        return K.max(0.01*x, x)
-    get_custom_objects().update({'swish': Activation(swish,name='swish')})
-    get_custom_objects().update({'twish': Activation(twish,name='twish')})
-    get_custom_objects().update({'leakyrelu': Activation(leakyrelu,name='leakyrelu')})
+def swish(x):
+    return x * K.sigmoid(x)
 
+def custom_function_keras():
+    get_custom_objects().update({'swish': Activation(swish,name='swish')})
+
+class ReflectionPadding2D(Layer):
+    def __init__(self, padding=(1, 1), **kwargs):
+        self.padding = tuple(padding)
+        self.input_spec = [InputSpec(ndim=4)]
+        super(ReflectionPadding2D, self).__init__(**kwargs)
+
+    def get_output_shape_for(self, s):
+        """ If you are using "channels_last" configuration"""
+        return s[0], s[1]+2*self.padding[0], s[2]+2*self.padding[1], s[3]
+
+    def call(self, x, mask=None):
+        w_pad,h_pad = self.padding
+        return tf.pad(x, [[0,0], [h_pad,h_pad], [w_pad,w_pad], [0,0] ], 'REFLECT')
+
+    # inputs = Input((img_rows, img_cols, num_channels))
+    # padded_inputs= ReflectionPadding2D(padding=(1,1))(inputs)
+    # conv1 = Conv2D(32, 3, padding='valid', kernel_initializer='he_uniform',data_format='channels_last')(padded_inputs)
+
+def custom_function_dict():
+    return {
+        'swish':swish,
+        'jac_d':jac_d,
+        'jac':jac,
+        'dice_d':dice_d,
+        'dice':dice,
+        'dice33':dice33,
+        'dice67':dice67,
+        'acc':acc,
+        'acc33':acc33,
+        'acc67':acc67,
+        'loss_bce_dice':loss_bce_dice,
+        'loss_bce':loss_bce,
+        'loss_dice':loss_dice,
+        'ImageGenerator':ImageGenerator,
+        'ReflectionPadding2D':ReflectionPadding2D,
+    }
 
 def top5acc(y_true, y_pred, k=5):  # top_N_categorical_accuracy
     return K.mean(K.in_top_k(y_pred, K.argmax(y_true, axis=-1), k), axis=-1)
@@ -103,12 +133,7 @@ def sparacc(y_true, y_pred):  # sparse_categorical_accuracy
 def acc(y_true, y_pred):  # default 'acc'
     return K.cast(K.equal(K.argmax(y_true, axis=-1), K.argmax(y_pred, axis=-1)),
                   K.floatx())
-def acc80(y_true, y_pred):
-    return acc(central_crop(y_true,0.8), central_crop(y_pred,0.8))
-def acc60(y_true, y_pred):
-    return acc(central_crop(y_true,0.6), central_crop(y_pred,0.6))
-def acc40(y_true, y_pred):
-    return acc(central_crop(y_true,0.4), central_crop(y_pred,0.4))
-def acc20(y_true, y_pred):
-    return acc(central_crop(y_true,0.2), central_crop(y_pred,0.2))
-
+def acc67(y_true, y_pred):
+    return acc(central_crop(y_true,0.67), central_crop(y_pred,0.67))
+def acc33(y_true, y_pred):
+    return acc(central_crop(y_true,0.33), central_crop(y_pred,0.33))

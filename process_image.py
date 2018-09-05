@@ -68,61 +68,51 @@ def skip_image(s_img, mode, if_print=True):
         return print_return(if_skip, "checking tile for contrast (std=%.1f)" % std) if if_print else if_skip
 
 
-def augment_image_pair(_img, _tgt, _level=1.0):
-    seg_both_1 = iaa.Sequential([
-        iaa.Fliplr(0.5),  # flip left-right 50% chance
-        iaa.Flipud(0.5),  # flip up-down 50% chance
-    ])
-    seg_both_2 = iaa.Sequential([
-        iaa.Fliplr(0.5),  # flip left-right 50% chance
-        iaa.Flipud(0.5),  # flip up-down 50% chance
-        iaa.Sometimes(0.8, iaa.Affine(
-            scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},  # scale images to 80-120% of their size, individually per axis
-            # translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},  # translate by -20 to +20 percent (per axis)
-            rotate=(-180, 180),  # rotate
-            # shear=(-16, 16),  # shear by -16 to +16 degrees
-            order=[0, 1],  # use nearest neighbour or bilinear interpolation (fast)
-            cval=(0, 255),  # if mode is constant, use a cval between 0 and 255
-            mode='wrap'  # use any of scikit-image's warping modes
-        )),
-    ])
-    seg_both_3 = iaa.Sequential([
-        iaa.Fliplr(0.5),  # flip left-right 50% chance
-        iaa.Flipud(0.5),  # flip up-down 50% chance
-        iaa.Sometimes(0.8, iaa.Affine(
-            scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},  # scale images to 80-120% of their size, individually per axis
-            # translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},  # translate by -20 to +20 percent (per axis)
-            rotate=(-180, 180),  # rotate
-            # shear=(-16, 16),  # shear by -16 to +16 degrees
-            order=[0, 1],  # use nearest neighbour or bilinear interpolation (fast)
-            cval=(0, 255),  # if mode is constant, use a cval between 0 and 255
-            mode='wrap'  # use any of scikit-image's warping modes
-        )),
-        iaa.Sometimes(0.7,
-            iaa.OneOf([
-                iaa.GaussianBlur((0, 2.0)),  # blur sigma
-                iaa.AverageBlur(k=(1, 5)),  # blur image using local means with kernel sizes between 2 and 7
-                iaa.Sharpen((0, 1.0), lightness=(0.8, 1.3))  # sharpen
-            ]),
-        ),
-    ])
-    seq_img_4 = iaa.Sequential([  # only apply to original images not the mask
+seg_both_1 = iaa.Sequential([
+    iaa.Fliplr(0.5),  # flip left-right 50% chance
+    iaa.Flipud(0.5),  # flip up-down 50% chance
+])
+seg_both_2 = iaa.Sequential([
+    iaa.Fliplr(0.5),  # flip left-right 50% chance
+    iaa.Flipud(0.5),  # flip up-down 50% chance
+    iaa.Sometimes(0.8, iaa.Affine(
+        rotate=(-180, 180),  # rotate
+        mode='reflect',  # use any of scikit-image's warping modes
+        cval=(0, 255),  # if mode is constant, use a cval between 0 and 255
+    )),
+])
+seg_both_3 = iaa.Sequential([
+    iaa.Fliplr(0.5),  # flip left-right 50% chance
+    iaa.Flipud(0.5),  # flip up-down 50% chance
+    iaa.CropAndPad(percent=0.2, pad_mode='reflect', pad_cval=0),
+    iaa.Sometimes(0.8, iaa.Affine(
+        scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},  # scale images to 80-120% of their size, individually per axis
+        # translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},  # translate by -20 to +20 percent (per axis)
+        rotate=(-180, 180),  # rotate
+        # shear=(-16, 16),  # shear by -16 to +16 degrees
+        order=[0, 1],  # use nearest neighbour or bilinear interpolation (fast)
+        cval=(0, 255),  # if mode is constant, use a cval between 0 and 255
+        mode='reflect'  # use any of scikit-image's warping modes
+    )),
+])
+seq_img_4 = iaa.Sequential([  # only apply to original images not the mask
+    iaa.Sometimes(0.7,
         iaa.OneOf([
-            # iaa.Dropout((0.01, 0.05), per_channel=0.5),  # randomly remove pixels
-            # iaa.SaltAndPepper(p=(0.01,0.05)), # same white same black
-            # iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5),  # add gaussian noise to images
-            iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
-            iaa.Grayscale(alpha=(0.0, 1.0))
+            iaa.GaussianBlur((0, 2.0)),  # blur sigma
+            iaa.AverageBlur(k=(1, 5)),  # blur image using local means with kernel sizes between 2 and 7
+            iaa.Sharpen((0, 1.0), lightness=(0.8, 1.3))  # sharpen
         ]),
-    ])
-    # if _level<0:
-    #     return _img, _tgt
-    # else:
-    #     rep=50 / _img.shape[0] # duplicate if less than 50
-    #     if rep>1:
-    #         print("replicate %d times before augmentation" % rep)
-    #         _img = np.repeat(_img, int(rep), axis=0)
-    #         _tgt = np.repeat(_tgt, int(rep), axis=0)
+    ),
+    iaa.OneOf([
+        # iaa.Dropout((0.01, 0.05), per_channel=0.5),  # randomly remove pixels
+        iaa.SaltAndPepper(p=(0.01,0.05)), # same white same black
+        # iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5),  # add gaussian noise to images
+        iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
+        iaa.Grayscale(alpha=(0.0, 1.0))
+    ]),
+])
+
+def augment_image_pair(_img, _tgt, _level=1.0):
     if _level<1:
         return _img, _tgt
     elif 1<=_level<2:  # paired image augmentation 1
