@@ -48,10 +48,15 @@ if __name__ == '__main__':
         #             model_preproc=ca3, model_downconv=ca3, model_downjoin=s, model_downsamp=dmp, model_downmerge=s, model_downproc=ca3,
         #             model_upconv=s, model_upjoin=s, model_upsamp=uu, model_upmerge=c, model_upproc=ca33, model_postproc=s),
 
-        ModelConfig((1296, 1296, 3), (1296, 1296, 1), num_targets=len(targets), model_filter=[64, 96, 128, 196, 256, 256, 256, 256, 256], model_pool=[2, 2, 2, 2, 3, 3, 3, 3, 3],
-                    model_name=unet, train_rep=2, optimizer=Adam(4e-5), predict_all_inclusive=True,
+        # ModelConfig((1296, 1296, 3), (1296, 1296, 1), num_targets=len(targets), model_filter=[64, 96, 128, 196, 256, 256, 256, 256, 256], model_pool=[2, 2, 2, 2, 3, 3, 3, 3, 3],
+        #             model_name=unet, train_rep=5, optimizer=Adam(5e-5), predict_all_inclusive=True,
+        #             model_preproc=ca3, model_downconv=ca3, model_downjoin=s, model_downsamp=dmp, model_downmerge=s, model_downproc=ca3,
+        #             model_upconv=s, model_upjoin=c, model_upsamp=uu, model_upmerge=c, model_upproc=ca3h, model_postproc=s),
+
+        ModelConfig((729, 729, 3), (729, 729, 1), num_targets=len(targets), model_filter=[64, 128, 256, 512, 512, 512, 512], model_pool=[3, 3, 3, 3, 3, 3, 3],
+                    model_name=unet, train_rep=3, optimizer=Adam(5e-5), predict_all_inclusive=True,
                     model_preproc=ca3, model_downconv=ca3, model_downjoin=s, model_downsamp=dmp, model_downmerge=s, model_downproc=ca3,
-                    model_upconv=s, model_upjoin=c, model_upsamp=uu, model_upmerge=c, model_upproc=ca3h, model_postproc=s),
+                    model_upconv=s, model_upjoin=c, model_upsamp=uu, model_upmerge=c, model_upproc=ca33, model_postproc=s),
 
         # ModelConfig((1296, 1296, 3), (1296, 1296, 1), num_targets=len(targets), model_filter=[64, 96, 128, 196, 256, 256, 256, 256, 256], model_pool=[2, 2, 2, 2, 3, 3, 3, 3],
         #             model_name=unet, train_rep=2, optimizer=Adam(1e-4), predict_all_inclusive=True,
@@ -81,7 +86,6 @@ if __name__ == '__main__':
     if mode != 't':
         for cfg in configs:
             model= MyModel(cfg, save=False)
-            xls_file = "Result_%s_%s.xlsx" % (args.pred_dir, cfg)
             for origin in origins:
                 multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
-                model.predict(multi_set, xls_file)
+                model.predict(multi_set, args.pred_dir)

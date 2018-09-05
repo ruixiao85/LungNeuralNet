@@ -32,11 +32,11 @@ class ModelConfig:
         self.image_padding= image_padding or 1.0  # default 1.0, padding proportionally >=1.0
         self.mask_color=mask_color or "white"  # green/white
         self.separate = separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
-        self.coverage_train = coverage_tr or max(1.0,self.row_in/1000) # sample every 500px and at least one
+        self.coverage_train = coverage_tr or max(1.0,self.row_in/500) # sample every 500px and at least one
         self.coverage_predict = coverage_prd or 2.8
-        from unet.unetflex import unet, ca3, dmp, uu, c, s
+        from unet.unetflex import unet, ca3, ca33, dmp, uu, c, s
         self.model_name =model_name or unet
-        self.model_filter = model_filter or [32, 64, 128, 256, 512]
+        self.model_filter = model_filter or [64, 128, 256, 512, 1024]
         self.model_pool =model_pool or [2]*len(self.model_filter)
         self.model_preproc=model_preproc or ca3
         self.model_downconv =model_downconv or ca3
@@ -44,12 +44,12 @@ class ModelConfig:
         self.model_downsamp =model_downsamp or dmp
         self.model_downmerge =model_downmerge or s
         self.model_downproc =model_downproc or ca3
-        self.model_upconv =model_upconv or ca3
-        self.model_upjoin =model_upjoin or c
+        self.model_upconv =model_upconv or s
+        self.model_upjoin =model_upjoin or s # default not to join here
         self.model_upsamp =model_upsamp or uu
         self.model_upmerge =model_upmerge or c
-        self.model_upproc =model_upproc or ca3
-        self.model_postproc=model_postproc or ca3
+        self.model_upproc =model_upproc or ca33
+        self.model_postproc=model_postproc or s
         from metrics import jac,dice,dice67,dice33,acc,acc67,acc33,\
             loss_bce_dice, custom_function_keras
         custom_function_keras() # leakyrelu, swish
@@ -91,5 +91,17 @@ class ModelConfig:
             self.cap_lim_join(10, self.model_upconv.__name__, self.model_upjoin.__name__, self.model_upsamp.__name__,self.model_upmerge.__name__, self.model_upproc.__name__, self.model_postproc.__name__),
             self.cap_lim_join(7,self.model_act, self.model_out,
                 (self.model_loss if isinstance(self.model_loss, str) else self.model_loss.__name__).replace('_','').replace('loss',''))
+            +str(self.dep_out)])
+
+    def __repr__(self):
+        return '_'.join([
+            self.model_name.__name__.capitalize(),
+            "%dF%d-%dP%d-%d" % (len(self.model_filter), self.model_filter[0], self.model_filter[-1], self.model_pool[0], self.model_pool[-1]),
+            # "%df%d-%dp%s" % (len(self.model_filter), self.model_filter[0], self.model_filter[-1], ''.join(self.model_poolsize)),
+            self.cap_lim_join(10, self.model_preproc.__name__, self.model_downconv.__name__, self.model_downjoin.__name__, self.model_downsamp.__name__, self.model_downmerge.__name__,self.model_downproc.__name__),
+            self.cap_lim_join(10, self.model_upconv.__name__, self.model_upjoin.__name__, self.model_upsamp.__name__,self.model_upmerge.__name__, self.model_upproc.__name__, self.model_postproc.__name__),
+            self.cap_lim_join(7,self.model_act, self.model_out,
+                (self.model_loss if isinstance(self.model_loss, str) else self.model_loss.__name__).replace('_','').replace('loss',''))
             +str(self.dep_out),
+            str(self.predict_size)+('A' if self.predict_all_inclusive else 'I')
         ])

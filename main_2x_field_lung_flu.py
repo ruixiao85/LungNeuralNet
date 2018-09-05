@@ -37,9 +37,8 @@ if __name__ == '__main__':
     origins = args.input.split(',')
     targets = args.output.split(',')
     configs = [
-        ModelConfig((512, 512, 3), (512,512, 1), num_targets=len(targets), model_filter=[32, 48, 64, 96, 128, 192, 224, 256],
-                    model_name=unet, model_pool=[2, 2, 2, 2, 2, 2, 2, 2],  # predict_size=1,
-                    model_downconv=ca33, model_downsamp=dmp, model_upsamp=uu, model_upproc=ca3),
+        ModelConfig((512, 512, 3), (512,512, 1), num_targets=len(targets), predict_size=1, model_name=unet, train_rep=5,
+                    model_filter=[64, 96, 128, 192, 256, 256, 256, 256], model_pool=[2, 2, 2, 2, 2, 2, 2, 2]),
     ]
     mode = args.mode[0].lower()
     if mode != 'p':
@@ -53,7 +52,6 @@ if __name__ == '__main__':
     if mode != 't':
         for cfg in configs:
             model = MyModel(cfg, save=False)
-            xls_file = "Result_%s_%s.xlsx" % (args.pred_dir, cfg)
             for origin in origins:
                 multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
-                model.predict(multi_set, xls_file)
+                model.predict(multi_set, args.pred_dir)

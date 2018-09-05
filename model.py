@@ -26,7 +26,6 @@ def g_kern_rect(row, col, rel_sig=0.5):
     r0, c0=int(0.5*(l-row)),int(0.5*(l-col))
     return mat[r0:r0+row,c0:c0+col]
 
-
 class MyModel:
     # 'relu6'  # min(max(features, 0), 6)
     # 'crelu'  # Concatenates ReLU (only positive part) with ReLU (only the negative part). Note that this non-linearity doubles the depth of the activations
@@ -102,16 +101,19 @@ class MyModel:
                 df['repeat']=r+1
                 df.to_csv(export_name + ".csv", mode="a", header=(not os.path.exists(export_name + ".csv")))
 
-    def predict(self, multi:ImagePair, xls_file):
+    def predict(self, multi:ImagePair, pred_dir):
+        xls_file="Result_%s_%s.xlsx"%(pred_dir, repr(multi.cfg))
         img_ext=self.cfg.image_format[1:] # *.jpg -> .jpg
         sum_i, sum_g = self.cfg.row_out * self.cfg.col_out, None
-        msks, mask_wt, r_i, r_g,  res_i, res_g, ra, ca= None, None, None, None, None, None, None, None
+        msks, mask_wt, r_i, r_g,  ra, ca= None, None, None, None, None, None
         mrg_in, mrg_out, mrg_out_wt, merge_dir = None, None, None, None
         batch=multi.img_set.view_coord_batch()  # image/1batch -> view_coord
         dir_ex=multi.dir_out_ex()
         dir_cfg_append=str(self.cfg) if dir_ex is None else dir_ex+'_'+str(self.cfg)
+        res_ind, res_grp=None, None
         save_ind_image=False
         for dir_out, tgt_list in multi.predict_generator():
+            res_i, res_g=None, None
             print('Load model and predict to [%s]...'%dir_out)
             export_name = dir_out+'_'+dir_cfg_append
             target_dir = os.path.join(multi.wd, export_name)
@@ -156,7 +158,8 @@ class MyModel:
                         print(text); text_list.append(text)
                     if save_ind_image or not self.cfg.separate: # skip saving individual images
                         blend = self.draw_text(blend, text_list, self.cfg.row_out)  # RGB:3x8-bit dark text
-                        imsave(ind_file.replace(img_ext, ".jpe"), blend)
+                        blend.save(ind_file.replace(img_ext, ".jpe"))
+                        # imsave(ind_file.replace(img_ext, ".jpe"), blend)
                     res_i =r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i, r_i[np.newaxis,...]))
 
                     if self.cfg.separate:
@@ -189,13 +192,16 @@ class MyModel:
                         print(text); text_list.append(text)
                     # cv2.imwrite(merge_file, mrg_out[..., np.newaxis] * 255.)
                     blend = self.draw_text(blend, text_list, ra)  # RGB:3x8-bit dark text
-                    imsave(merge_file.replace(img_ext, ".jpe"), blend)
+                    blend.save(merge_file.replace(img_ext, ".jpe"))
+                    # imsave(merge_file.replace(img_ext, ".jpe"), blend)
                     res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g, r_g[np.newaxis,...]))
-            df = pd.DataFrame(res_i, index=multi.img_set.images, columns=tgt_list)
-            to_excel_sheet(df, xls_file, multi.origin)  # per slice
-            if self.cfg.separate:
-                df = pd.DataFrame(res_g, index=batch.keys(), columns=tgt_list)
-                to_excel_sheet(df, xls_file, multi.origin + "_sum")
+                    res_ind=res_i if res_ind is None else np.hstack((res_ind, res_i))
+                    res_grp=res_g if res_grp is None else np.hstack((res_grp, res_g))
+        df = pd.DataFrame(res_ind, index=multi.img_set.images, columns=multi.targets)
+        to_excel_sheet(df, xls_file, multi.origin)  # per slice
+        if self.cfg.separate:
+            df = pd.DataFrame(res_grp, index=batch.keys(), columns=multi.targets)
+            to_excel_sheet(df, xls_file, multi.origin + "_sum")
 
 
     def draw_text(self, img, text_list, width):
