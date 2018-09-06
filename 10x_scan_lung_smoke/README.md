@@ -27,6 +27,7 @@ Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia Unive
 
 ![alt text](pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpg?raw=true "original Image")
 
+<img src='pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpg'/>
 
 <dl>
     <dt>Processed Image</dt>
@@ -35,6 +36,8 @@ Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia Unive
 
 
 ![alt text](pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpe?raw=true "predicted Image")
+
+<img src='pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpe'/>
 
 
 # Neural Network Summary
