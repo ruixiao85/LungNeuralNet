@@ -24,9 +24,6 @@ Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia Unive
     <dt>Original Image</dt>
 </dl>
 
-
-![alt text](pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpg?raw=true "original Image")
-
 <img src='pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpg'/>
 
 <dl>
@@ -34,11 +31,7 @@ Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia Unive
     <dd>1296x1296, multiple runs with >2 times overlapping factor, applied center-weighted gaussian kernel and merged together</dl>
 </dd>
 
-
-![alt text](pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpe?raw=true "predicted Image")
-
 <img src='pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpe'/>
-
 
 # Neural Network Summary
 ```
