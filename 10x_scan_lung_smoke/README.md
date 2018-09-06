@@ -24,14 +24,14 @@ Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia Unive
     <dt>Original Image</dt>
 </dl>
 
-![alt text](pred/Original/027327_2017-12-05 13_53_29_RA5.jpg?raw=true "original Image")
+![alt text](pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpg?raw=true "original Image")
 
 <dl>
     <dt>Processed Image</dt>
-    <dl>1296x1296, multiple runs with >2 times overlapping factor, applied center-weighted gaussian kernel and merged together</dl>
-</dl>
+    <dd>1296x1296, multiple runs with >2 times overlapping factor, applied center-weighted gaussian kernel and merged together</dl>
+</dd>
 
-![alt text](pred/Back,Cond,Conn,Larg,Resp,Smal+1.0_1296x1296_Unet_9F64-256P2-3_Ca3Ca3SDmpSCa3_SCUuCCa3S_EluSigmoidBcedice1/027327_2017-12-05 13_53_29_RA5.jpe?raw=true "original Image")
+![alt text](pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpe?raw=true "original Image")
 
 # Neural Network Summary
 ```

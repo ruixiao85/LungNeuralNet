@@ -17,8 +17,8 @@ After training and validating (3:1) on 14 image pairs, the neural network is abl
 
 <dl>
     <dt>Multi-label overlay</dd>
-    <dt>lung parenchymal region: pink</dt>
-    <dt>severe inflammation: cyan</dt>
+    <dd>lung parenchymal region: pink</dd>
+    <dd>severe inflammation: cyan</dd>
 </dl>
 
 ![alt text](2x_field_lung_flu/pred/Parenchyma,SevereInflam1.0_512x512_Unet_8F64-256P2-2_Ca3Ca3SDmpSCa3_SSUuCCa3Ca3_EluSigmoidBcedice1/36_KO_FLU_1.jpe?raw=true "severe inflammation in the lung")
@@ -39,14 +39,14 @@ The method can be helpful to identify and quantify various structures or tissue 
     <dt>Original Image</dt>
 </dl>
 
-![alt text](10x_scan_lung_smoke/pred/Original/027327_2017-12-05 13_53_29_RA5.jpg?raw=true "original Image")
+![alt text](10x_scan_lung_smoke/pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpg?raw=true "original Image")
 
 <dl>
     <dt>Processed Image</dt>
-    <dl>1296x1296, multiple runs with >2 times overlapping factor, applied center-weighted gaussian kernel and merged together</dl>
-</dl>
+    <dd>1296x1296, multiple runs with >2 times overlapping factor, applied center-weighted gaussian kernel and merged together</dl>
+</dd>
 
-![alt text](10x_scan_lung_smoke/pred/Back,Cond,Conn,Larg,Resp,Smal+1.0_1296x1296_Unet_9F64-256P2-3_Ca3Ca3SDmpSCa3_SCUuCCa3S_EluSigmoidBcedice1/027327_2017-12-05 13_53_29_RA5.jpe?raw=true "original Image")
+![alt text](10x_scan_lung_smoke/pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpe?raw=true "original Image")
 
 
 Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia University Medical Center
