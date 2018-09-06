@@ -33,7 +33,7 @@ class ModelConfig:
         self.mask_color=mask_color or "white"  # green/white
         self.separate = separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
         self.coverage_train = coverage_tr or max(1.0,self.row_in/500) # sample every 500px and at least one
-        self.coverage_predict = coverage_prd or 2.8
+        self.coverage_predict = coverage_prd or 3.0
         from unet.unetflex import unet, ca3, ca33, dmp, uu, c, s
         self.model_name =model_name or unet
         self.model_filter = model_filter or [64, 128, 256, 512, 1024]

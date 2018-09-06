@@ -23,7 +23,7 @@ K.set_image_data_format("channels_last")
 # conv3x3-512 conv3x3-512 conv3x3/1x1-512 maxpool
 # FC-4096 -> FC-4096 -> FC-1000 -> softmax
 
-def unet_vgg_7conv(cfg):
+def unet7vgg(cfg):
     model_act, model_out = cfg.model_act, cfg.model_out
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
     # f1, f2, f3, f4, f5 = 64, 96, 128, 192, 256
@@ -85,10 +85,79 @@ def unet_vgg_7conv(cfg):
     conv1_weights[:, :, :3, :] = vgg.get_layer("block1_conv1").get_weights()[0][:, :, :, :]
     bias = vgg.get_layer("block1_conv1").get_weights()[1]
     model.get_layer('block1_conv1').set_weights((conv1_weights, bias))
-    return model, traceback.extract_stack(None, 2)[1].name  + "_" + str(cfg)
+    return model
 
 
-def unet_vgg_5conv(cfg):
+def unet8vgg(cfg):
+    model_act, model_out = cfg.model_act, cfg.model_out
+    dim_in, dim_out = cfg.dep_in, cfg.dep_out
+    # f1, f2, f3, f4, f5 = 64, 96, 128, 192, 256
+    input_shape=(cfg.row_in, cfg.col_in, dim_in)
+    img_input = Input(input_shape)  # r,c,3
+    vgg16_base = VGG16(input_tensor=img_input, include_top=False, weights=None)
+    #for l in vgg16_base.layers:
+    #    l.trainable = True
+
+    conv1 = vgg16_base.get_layer("block1_conv2").output
+    conv2 = vgg16_base.get_layer("block2_conv2").output
+    conv3 = vgg16_base.get_layer("block3_conv3").output
+    pool3 = vgg16_base.get_layer("block3_pool").output
+
+    conv4 = Conv2D(384, (3, 3), activation=model_act, padding='same', kernel_initializer="he_normal", name="block4_conv1")(pool3)
+    conv4 = Conv2D(384, (3, 3), activation=model_act, padding='same', kernel_initializer="he_normal", name="block4_conv2")(conv4)
+    pool4 = MaxPooling2D((2, 2), strides=(3, 3), name='block4_pool')(conv4)
+
+    conv5 = Conv2D(512, (3, 3), activation=model_act, padding='same', kernel_initializer="he_normal", name="block5_conv1")(pool4)
+    conv5 = Conv2D(512, (3, 3), activation=model_act, padding='same', kernel_initializer="he_normal", name="block5_conv2")(conv5)
+    pool5 = MaxPooling2D((3, 3), strides=(3, 3), name='block5_pool')(conv5)
+
+    conv6 = Conv2D(512, (3, 3), activation=model_act, padding='same', kernel_initializer="he_normal", name="block6_conv1")(pool5)
+    conv6 = Conv2D(512, (3, 3), activation=model_act, padding='same', kernel_initializer="he_normal", name="block6_conv2")(conv6)
+    pool6 = MaxPooling2D((2, 2), strides=(3, 3), name='block6_pool')(conv6)
+
+    conv7 = Conv2D(512, (3, 3), activation=model_act, padding='same', kernel_initializer="he_normal", name="block7_conv1")(pool6)
+    conv7 = Conv2D(512, (3, 3), activation=model_act, padding='same', kernel_initializer="he_normal", name="block7_conv2")(conv7)
+    pool7 = MaxPooling2D((2, 2), strides=(3, 3), name='block6_pool')(conv7)
+
+    conv8 = Conv2D(512, (3, 3), activation=model_act, padding='same', kernel_initializer="he_normal", name="block8_conv1")(pool7)
+    conv8 = Conv2D(512, (3, 3), activation=model_act, padding='same', kernel_initializer="he_normal", name="block8_conv2")(conv8)
+
+    up7 = concatenate([UpSampling2D((3, 3))(conv8), conv7], axis=-1)
+    deconv7 = Conv2D(384, (3, 3), activation=model_act, kernel_initializer="he_normal", padding='same')(up7)
+
+    up6 = concatenate([UpSampling2D((3, 3))(conv8), conv5], axis=3)
+    deconv6 = Conv2D(256, (3, 3), activation=model_act, kernel_initializer="he_normal", padding='same')(up6)
+
+    up10 = concatenate([UpSampling2D((3, 3))(conv9), conv4], axis=3)
+    deconv10 = Conv2D(192, (3, 3), activation=model_act, kernel_initializer="he_normal", padding='same')(up10)
+
+    up11 = concatenate([UpSampling2D((3, 3))(conv10), conv3], axis=3)
+    deconv11 = Conv2D(128, (3, 3), activation=model_act, kernel_initializer="he_normal", padding='same')(up11)
+
+    up12 = concatenate([UpSampling2D((3, 3))(conv11), conv2], axis=3)
+    deconv12 = Conv2D(64, (3, 3), activation=model_act, kernel_initializer="he_normal", padding='same')(up12)
+
+    up13 = concatenate([UpSampling2D((3, 3))(conv12), conv1], axis=3)
+    deconv13 = Conv2D(32, (3, 3), activation=model_act, kernel_initializer="he_normal", padding='same')(up13)
+
+    # #Batch normalization
+    #conv13 = BatchNormalization(mode=0, axis=1)(conv13)
+
+    conv13 = Conv2D(dim_out, (1, 1), activation=model_out, padding='same')(conv13)
+    #conv13 = Conv2D(1, (1, 1))(conv13)
+    #conv13 = Activation("sigmoid")(conv13)
+    model = Model(img_input, conv13)
+
+    # Recalculate weights on first layer
+    conv1_weights = np.zeros((3, 3, dim_in, 64), dtype="float32")
+    vgg = VGG16(include_top=False, input_shape=input_shape)
+    conv1_weights[:, :, :3, :] = vgg.get_layer("block1_conv1").get_weights()[0][:, :, :, :]
+    bias = vgg.get_layer("block1_conv1").get_weights()[1]
+    model.get_layer('block1_conv1').set_weights((conv1_weights, bias))
+    return model
+
+
+def unet5vgg(cfg):
     model_act, model_out = cfg.model_act, cfg.model_out
     dim_in, dim_out = cfg.dep_in, cfg.dep_out
     # f1, f2, f3, f4, f5 = 64, 96, 128, 192, 256
@@ -145,4 +214,4 @@ def unet_vgg_5conv(cfg):
     conv1_weights[:, :, :3, :] = vgg.get_layer("block1_conv1").get_weights()[0][:, :, :, :]
     bias = vgg.get_layer("block1_conv1").get_weights()[1]
     model.get_layer('block1_conv1').set_weights((conv1_weights, bias))
-    return model, traceback.extract_stack(None, 2)[1].name  + "_" + str(cfg)
+    return model

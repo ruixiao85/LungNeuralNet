@@ -120,7 +120,7 @@ class MyModel:
             if save_ind_image or not self.cfg.separate: # skip saving individual images
                 mk_dir_if_nonexist(target_dir)
             if self.cfg.separate:
-                merge_dir = os.path.join(multi.wd, dir_out+''+dir_cfg_append) # group
+                merge_dir = os.path.join(multi.wd, dir_out+'+'+dir_cfg_append) # group
                 mk_dir_if_nonexist(merge_dir)
                 mask_wt = g_kern_rect(self.cfg.row_out, self.cfg.col_out)
             for grp, view in batch.items():
@@ -195,8 +195,8 @@ class MyModel:
                     blend.save(merge_file.replace(img_ext, ".jpe"))
                     # imsave(merge_file.replace(img_ext, ".jpe"), blend)
                     res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g, r_g[np.newaxis,...]))
-                    res_ind=res_i if res_ind is None else np.hstack((res_ind, res_i))
-                    res_grp=res_g if res_grp is None else np.hstack((res_grp, res_g))
+            res_ind=res_i if res_ind is None else np.hstack((res_ind, res_i))
+            res_grp=res_g if res_grp is None else np.hstack((res_grp, res_g))
         df = pd.DataFrame(res_ind, index=multi.img_set.images, columns=multi.targets)
         to_excel_sheet(df, xls_file, multi.origin)  # per slice
         if self.cfg.separate:
