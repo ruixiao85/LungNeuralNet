@@ -88,23 +88,6 @@ def swish(x):
 def custom_function_keras():
     get_custom_objects().update({'swish': Activation(swish,name='swish')})
 
-class ReflectionPadding2D(Layer):
-    def __init__(self, padding=(1, 1), **kwargs):
-        self.padding = tuple(padding)
-        self.input_spec = [InputSpec(ndim=4)]
-        super(ReflectionPadding2D, self).__init__(**kwargs)
-
-    def get_output_shape_for(self, s):
-        """ If you are using "channels_last" configuration"""
-        return s[0], s[1]+2*self.padding[0], s[2]+2*self.padding[1], s[3]
-
-    def call(self, x, mask=None):
-        w_pad,h_pad = self.padding
-        return tf.pad(x, [[0,0], [h_pad,h_pad], [w_pad,w_pad], [0,0] ], 'REFLECT')
-
-    # inputs = Input((img_rows, img_cols, num_channels))
-    # padded_inputs= ReflectionPadding2D(padding=(1,1))(inputs)
-    # conv1 = Conv2D(32, 3, padding='valid', kernel_initializer='he_uniform',data_format='channels_last')(padded_inputs)
 
 def custom_function_dict():
     return {
@@ -122,7 +105,6 @@ def custom_function_dict():
         'loss_bce':loss_bce,
         'loss_dice':loss_dice,
         'ImageGenerator':ImageGenerator,
-        'ReflectionPadding2D':ReflectionPadding2D,
     }
 
 def top5acc(y_true, y_pred, k=5):  # top_N_categorical_accuracy

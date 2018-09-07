@@ -1,7 +1,6 @@
 import argparse
 
 from model import *
-from unetflex import unet, dmp, uu, ca3, ca33
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train and predict with biomedical images.')
@@ -36,6 +35,7 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
+    from net import unet
     configs = [
         ModelConfig((512, 512, 3), (512,512, 1), num_targets=len(targets), predict_size=1, model_name=unet, train_rep=5,
                     model_filter=[64, 96, 128, 192, 256, 256, 256, 256], model_pool=[2, 2, 2, 2, 2, 2, 2, 2]),

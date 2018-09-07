@@ -32,24 +32,25 @@ class ModelConfig:
         self.image_padding= image_padding or 1.0  # default 1.0, padding proportionally >=1.0
         self.mask_color=mask_color or "white"  # green/white
         self.separate = separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
-        self.coverage_train = coverage_tr or max(1.0,self.row_in/500) # sample every 500px and at least one
+        self.coverage_train = coverage_tr or 2.0
         self.coverage_predict = coverage_prd or 3.0
-        from unet.unetflex import unet, ca3, ca33, dmp, uu, c, s
+        from net.unet import unet
+        from net.module import ca3, ca33, dmp, uu, ct, sk
         self.model_name =model_name or unet
         self.model_filter = model_filter or [64, 128, 256, 512, 1024]
         self.model_pool =model_pool or [2]*len(self.model_filter)
         self.model_preproc=model_preproc or ca3
         self.model_downconv =model_downconv or ca3
-        self.model_downjoin =model_downjoin or s
+        self.model_downjoin =model_downjoin or sk
         self.model_downsamp =model_downsamp or dmp
-        self.model_downmerge =model_downmerge or s
+        self.model_downmerge =model_downmerge or sk
         self.model_downproc =model_downproc or ca3
-        self.model_upconv =model_upconv or s
-        self.model_upjoin =model_upjoin or s # default not to join here
+        self.model_upconv =model_upconv or sk
+        self.model_upjoin =model_upjoin or sk # default not to join here
         self.model_upsamp =model_upsamp or uu
-        self.model_upmerge =model_upmerge or c
+        self.model_upmerge =model_upmerge or ct
         self.model_upproc =model_upproc or ca33
-        self.model_postproc=model_postproc or s
+        self.model_postproc=model_postproc or sk
         from metrics import jac,dice,dice67,dice33,acc,acc67,acc33,\
             loss_bce_dice, custom_function_keras
         custom_function_keras() # leakyrelu, swish
