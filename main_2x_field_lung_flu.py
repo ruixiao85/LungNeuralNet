@@ -35,23 +35,23 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from net import unet
-    configs = [
-        ModelConfig((512, 512, 3), (512,512, 1), num_targets=len(targets), predict_size=1, model_name=unet, train_rep=5,
-                    model_filter=[64, 96, 128, 192, 256, 256, 256, 256], model_pool=[2, 2, 2, 2, 2, 2, 2, 2]),
+    from net.unet import UNet
+    nets=[
+        UNet(dim_in=(512, 512, 3), dim_out=(512,512, 1), num_targets=len(targets), predict_size=1, train_rep=5,
+                    filters=[64, 96, 128, 192, 256, 256, 256, 256], poolings=[2, 2, 2, 2, 2, 2, 2, 2]),
     ]
     mode = args.mode[0].lower()
-    if mode != 'p':
-        for cfg in configs:
-            model = MyModel(cfg, save=False)
-            print("Network specifications: " + str(cfg))
+    if mode!='p':
+        for net in nets:
+            model=Model(net)
+            print("Network specifications: "+str(net))
             for origin in origins:
-                multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
-                model.train(cfg, multi_set)
+                multi_set=ImagePair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
+                model.train(multi_set)
 
-    if mode != 't':
-        for cfg in configs:
-            model = MyModel(cfg, save=False)
+    if mode!='t':
+        for net in nets:
+            model=Model(net)
             for origin in origins:
-                multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
+                multi_set=ImagePair(net, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
                 model.predict(multi_set, args.pred_dir)

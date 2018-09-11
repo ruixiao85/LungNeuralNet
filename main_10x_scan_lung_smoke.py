@@ -12,7 +12,7 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--pred', dest='pred_dir', action='store',
                         default='pred', help='predict sub-directory')
     parser.add_argument('-m', '--mode', dest='mode', action='store',
-                        default='both', help='mode: train pred both')
+                        default='pboth', help='mode: train pred both')
     parser.add_argument('-c', '--width', dest='width', type=int,
                         default='512', help='width/columns')
     parser.add_argument('-r', '--height', dest='height', type=int,
@@ -37,19 +37,19 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from net.unet import unet
-    from net.icnet import icnet
+    from net.segnet import SegNet
+    from net.unet import UNet
     from net.module import ca1, ca2, ca3, ca3h, cadh, ca33, ca13, cba3, cb3, dmp, dca, uu, ut, uta, sk, ct,\
       du32, cdu33, rn33r, rn33nr, rn131r, rn131nr, dn13r, dn13nr
     from keras.optimizers import Adam, SGD, RMSprop, Nadam
-    configs = [
+    nets = [
         # #SegNet zero padding downwards: conv->batchnorm->activation downsample: maxpool upwards: conv->batchnorm (no act) upsamp: upsampling activation on output layer
         # #U-shape 64,128(/2),256(/4),512(/8),512(/8),256(/4),128(/2),64,
-        # ModelConfig((768, 768, 3), (768, 768, 1), num_targets=len(targets), model_filter=[64, 128, 256, 512], model_pool=[2, 2, 2], model_name=unet,
-        #             train_rep=2, optimizer=Adam(4e-5), predict_all_inclusive=True,
-        #             model_preproc=cba3, model_downconv=sk, model_downjoin=sk, model_downsamp=dmp, model_downmerge=sk, model_downproc=cba3,
-        #             model_upconv=cb3, model_upjoin=sk, model_upsamp=uu, model_upmerge=sk, model_upproc=cb3, model_postproc=sk),
-        #
+        SegNet(dim_in=(768, 768, 3), dim_out=(768, 768, 1), num_targets=len(targets), filters=[64, 128, 256, 512], poolings=[2, 2, 2, 2],
+                    train_rep=2, optimizer=Adam(4e-5), predict_all_inclusive=False,
+                    preproc=cba3, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=cba3,
+                    upconv=cb3, upjoin=sk, upsamp=uu, upmerge=sk, upproc=cb3, postproc=sk),
+
         # ModelConfig((768, 768, 3), (768, 768, 1), num_targets=len(targets), model_filter=[64, 128, 256, 512, 1024], model_pool=[2, 2, 2, 2, 2], model_name=unet,
         #             train_rep=5, optimizer=Adam(4e-5), predict_all_inclusive=True,
         #             model_preproc=cba3, model_downconv=sk, model_downjoin=sk, model_downsamp=dmp, model_downmerge=sk, model_downproc=cba3,
@@ -89,24 +89,24 @@ if __name__ == '__main__':
         #             model_upconv=ca3, model_upjoin=ct, model_upsamp=uu, model_upmerge=ct, model_upproc=ca3, model_postproc=ca3),
 
         # ICNet
-        ModelConfig((512, 512, 3), (512, 512, 1), num_targets=len(targets), model_filter=[64, 96, 128, 196, 256, 256, 256, 256, 256], model_pool=[2, 2, 2, 2, 3, 3, 3, 3],
-                    model_name=icnet, train_rep=2, optimizer=Adam(1e-4), predict_all_inclusive=True,
-                    model_preproc=ca3, model_downconv=sk, model_downjoin=sk, model_downsamp=dmp, model_downmerge=sk, model_downproc=dn13r,
-                    model_upconv=sk, model_upjoin=ct, model_upsamp=uu, model_upmerge=ct, model_upproc=ca3h, model_postproc=sk),
+        # ModelConfig((512, 512, 3), (512, 512, 1), num_targets=len(targets), model_filter=[64, 96, 128, 196, 256, 256, 256, 256, 256], model_pool=[2, 2, 2, 2, 3, 3, 3, 3],
+        #             model_name=icnet, train_rep=2, optimizer=Adam(1e-4), predict_all_inclusive=True,
+        #             model_preproc=ca3, model_downconv=sk, model_downjoin=sk, model_downsamp=dmp, model_downmerge=sk, model_downproc=dn13r,
+        #             model_upconv=sk, model_upjoin=ct, model_upsamp=uu, model_upmerge=ct, model_upproc=ca3h, model_postproc=sk),
 
     ]
     mode = args.mode[0].lower()
     if mode != 'p':
-        for cfg in configs:
-            model= MyModel(cfg, save=False)
-            print("Network specifications: " + str(cfg))
+        for net in nets:
+            model= Model(net)
+            print("Network specifications: " + str(net))
             for origin in origins:
-                multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
-                model.train(cfg, multi_set)
+                multi_set = ImagePair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
+                model.train(multi_set)
 
     if mode != 't':
-        for cfg in configs:
-            model= MyModel(cfg, save=False)
+        for net in nets:
+            model= Model(net)
             for origin in origins:
-                multi_set = ImagePair(cfg, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
+                multi_set = ImagePair(net, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
                 model.predict(multi_set, args.pred_dir)

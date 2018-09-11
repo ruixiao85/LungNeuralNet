@@ -8,28 +8,28 @@ import tensorflow as tf
 from net.basenet import Net
 from net.module import cvac
 
-class UNet(Net):
+class SegNet(Net):
     def __init__(self, filters=None, poolings=None,
                  preproc=None, downconv=None,downjoin=None,downsamp=None,downmerge=None,downproc=None,
                  upconv=None, upjoin=None, upsamp=None, upmerge=None, upproc=None, postproc=None, **kwargs
         ):
         super().__init__(**kwargs)
-        # UNET valid padding 572,570,568->284,282,280->140,138,136->68,66,64->32,30,28->56,54,52->104,102,100->200,198,196->392,390,388 388/572=67.8322% center
-        # UNET same padding 576->288->144->72->36->72->144->288->576 take central 68% =392
-        from net.module import ca3, ca33, dmp, uu, ct, sk
-        self.fs=filters or [64, 128, 256, 512, 1024]
+        # SegNet zero padding downwards: conv->batchnorm->activation downsample: maxpool upwards: conv->batchnorm (no act) upsamp: upsampling activation on output layer
+        # #U-shape 64,128(/2),256(/4),512(/8),512(/8),256(/4),128(/2),64,
+        from net.module import ca3, ca33, cba3, cb3, dmp, uu, ct, sk
+        self.fs=filters or [64, 128, 256, 512]
         self.ps=poolings or [2]*len(self.fs)
-        self.preproc=preproc or ca3
-        self.downconv=downconv or ca3
+        self.preproc=preproc or cba3
+        self.downconv=downconv or sk
         self.downjoin=downjoin or sk
         self.downsamp=downsamp or dmp
         self.downmerge=downmerge or sk
-        self.downproc=downproc or ca3
-        self.upconv=upconv or sk
-        self.upjoin=upjoin or sk # 2nd skip
+        self.downproc=downproc or cba3
+        self.upconv=upconv or cb3
+        self.upjoin=upjoin or sk # 2nd no skip
         self.upsamp=upsamp or uu
-        self.upmerge=upmerge or ct # 1st skip
-        self.upproc=upproc or ca33
+        self.upmerge=upmerge or sk # 1st no skip
+        self.upproc=upproc or cb3
         self.postproc=postproc or sk
         
         locals()['in0']=Input((self.row_in, self.col_in, self.dep_in))

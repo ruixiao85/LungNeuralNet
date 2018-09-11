@@ -1,15 +1,12 @@
-import copy
-import math
 import os
-import random
 
 import cv2
 import numpy as np
 import keras
-from cv2.cv2 import imread, resize, imwrite, INTER_AREA
+from cv2.cv2 import imwrite
 
 import util
-from model_config import ModelConfig
+from net.basenet import Net
 from process_image import augment_image_pair, read_resize_padding, extract_pad_image
 
 ALL_TARGET = 'All'
@@ -47,11 +44,11 @@ class MetaInfo:
         return self.image_name.replace(".jpg", "_#%d#%d#%d#%d#%d#%d#.jpg"
                  % (self.ori_row, self.ori_col, self.row_start,self.row_end,self.col_start,self.col_end))
 
-    def get_image(self, _path, cfg:ModelConfig):
+    def get_image(self, _path, cfg:Net):
         return read_resize_padding(os.path.join(_path, self.file_name),_resize=1.0,_padding=1.0) if cfg.separate else\
             extract_pad_image(read_resize_padding(os.path.join(_path, self.image_name),cfg.image_resize,cfg.image_padding), self.row_start, self.row_end, self.col_start, self.col_end)
 
-    def get_mask(self, _path, cfg:ModelConfig):
+    def get_mask(self, _path, cfg:Net):
         img=self.get_image(_path, cfg)
         # imwrite("test_img.jpg",img)
         code=cfg.mask_color[0].lower()
@@ -77,7 +74,7 @@ class MetaInfo:
 
 
 class ImageSet:
-    def __init__(self, cfg:ModelConfig, wd, sf, is_train, is_image):
+    def __init__(self, cfg:Net, wd, sf, is_train, is_image):
         self.cfg=cfg
         self.work_directory=wd
         self.sub_folder=sf
@@ -201,7 +198,7 @@ class ImageSet:
                     self.view_coord.append(entry)  # updated to target single exported file
 
 class ImagePair:
-    def __init__(self, cfg: ModelConfig, wd, origin, targets, is_train):
+    def __init__(self, cfg:Net, wd, origin, targets, is_train):
         self.cfg=cfg
         self.wd = wd
         self.origin = origin
@@ -317,13 +314,14 @@ class ImageGenerator(keras.utils.Sequence):
         if self.pair.is_train and self.cfg.train_shuffle:
             np.random.shuffle(self.indexes)
 
-    def scale_input(self, _array):
-        return _array.astype(np.float32) / 127.5 - 1.0  # TODO other normalization methods
-
-    def scale_input_reverse(self, _array):
+    @staticmethod
+    def scale_input(_array):
+        return _array.astype(np.float32) / 127.5 - 1.0
+    @staticmethod
+    def scale_input_reverse(_array):
         return (_array.astype(np.float32) + 1.0) * 127.5
-
-    def scale_output(self, _array):
+    @staticmethod
+    def scale_output(_array):
         return _array.astype(np.float32) / 255.0  # 0~1
         # return _array.astype(np.float32) / 127.5 - 1.0  # tanh
 
