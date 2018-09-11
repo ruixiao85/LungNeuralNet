@@ -12,7 +12,7 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--pred', dest='pred_dir', action='store',
                         default='pred', help='predict sub-directory')
     parser.add_argument('-m', '--mode', dest='mode', action='store',
-                        default='pboth', help='mode: train pred both')
+                        default='both', help='mode: train pred both')
     parser.add_argument('-c', '--width', dest='width', type=int,
                         default='512', help='width/columns')
     parser.add_argument('-r', '--height', dest='height', type=int,
@@ -37,63 +37,20 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from net.segnet import SegNet
-    from net.unet import UNet
+    from net.unet import SegNet, SegNetS, UNet, UNet2, UNet2S, UNet2M, UNet2L
+    from net.vgg import VggSegNet
     from net.module import ca1, ca2, ca3, ca3h, cadh, ca33, ca13, cba3, cb3, dmp, dca, uu, ut, uta, sk, ct,\
       du32, cdu33, rn33r, rn33nr, rn131r, rn131nr, dn13r, dn13nr
     from keras.optimizers import Adam, SGD, RMSprop, Nadam
     nets = [
-        # #SegNet zero padding downwards: conv->batchnorm->activation downsample: maxpool upwards: conv->batchnorm (no act) upsamp: upsampling activation on output layer
-        # #U-shape 64,128(/2),256(/4),512(/8),512(/8),256(/4),128(/2),64,
-        SegNet(dim_in=(768, 768, 3), dim_out=(768, 768, 1), num_targets=len(targets), filters=[64, 128, 256, 512], poolings=[2, 2, 2, 2],
-                    train_rep=2, optimizer=Adam(4e-5), predict_all_inclusive=False,
-                    preproc=cba3, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=cba3,
-                    upconv=cb3, upjoin=sk, upsamp=uu, upmerge=sk, upproc=cb3, postproc=sk),
-
-        # ModelConfig((768, 768, 3), (768, 768, 1), num_targets=len(targets), model_filter=[64, 128, 256, 512, 1024], model_pool=[2, 2, 2, 2, 2], model_name=unet,
-        #             train_rep=5, optimizer=Adam(4e-5), predict_all_inclusive=True,
-        #             model_preproc=cba3, model_downconv=sk, model_downjoin=sk, model_downsamp=dmp, model_downmerge=sk, model_downproc=cba3,
-        #             model_upconv=cb3, model_upjoin=sk, model_upsamp=uu, model_upmerge=sk, model_upproc=sk, model_postproc=cb3),
-        #
-        # #UNET valid padding 572,570,568->284,282,280->140,138,136->68,66,64->32,30,28->56,54,52->104,102,100->200,198,196->392,390,388 388/572=67.8322% center
-        # #UNET same padding 576->288->144->72->36->72->144->288->576 take central 68% =392
-        # ModelConfig((768, 768, 3), (768, 768, 1), num_targets=len(targets), model_filter=[64, 128, 256, 512, 1024], model_pool=[2, 2, 2, 2, 2], model_name=unet,
-        #             train_rep=2, optimizer=Adam(4e-5), predict_all_inclusive=True,
-        #             model_preproc=ca3, model_downconv=ca3, model_downjoin=sk, model_downsamp=dmp, model_downmerge=sk, model_downproc=ca3,
-        #             model_upconv=sk, model_upjoin=sk, model_upsamp=uu, model_upmerge=ct, model_upproc=ca33, model_postproc=sk),
-        #
-        #
-        # ModelConfig((1296, 1296, 3), (1296, 1296, 1), num_targets=len(targets), model_filter=[64, 96, 128, 196, 256, 256, 256, 256, 256], model_pool=[2, 2, 2, 2, 3, 3, 3, 3, 3],
-        #             model_name=unet, train_rep=3, optimizer=Adam(1e-5), predict_all_inclusive=True, separate=True,
-        #             model_preproc=ca3, model_downconv=ca3, model_downjoin=sk, model_downsamp=dmp, model_downmerge=sk, model_downproc=ca3,
-        #             model_upconv=sk, model_upjoin=ct, model_upsamp=uu, model_upmerge=ct, model_upproc=ca3, model_postproc=sk),
-        #
-        # ModelConfig((729, 729, 3), (729, 729, 1), num_targets=len(targets), model_filter=[64, 128, 256, 512, 512, 512, 512], model_pool=[3, 3, 3, 3, 3, 3, 3],
-        #             model_name=unet, train_rep=6, optimizer=Adam(1e-5), predict_all_inclusive=True,
-        #             model_preproc=ca3, model_downconv=ca3, model_downjoin=sk, model_downsamp=dmp, model_downmerge=sk, model_downproc=ca3,
-        #             model_upconv=sk, model_upjoin=ct, model_upsamp=uu, model_upmerge=ct, model_upproc=ca33, model_postproc=sk),
-        #
-        # ModelConfig((729, 729, 3), (729, 729, 1), num_targets=len(targets), model_filter=[64, 128, 256, 512, 512, 512, 512], model_pool=[3, 3, 3, 3, 3, 3, 3],
-        #             model_name=unet, train_rep=6, optimizer=Adam(1e-5), predict_all_inclusive=True,
-        #             model_preproc=cadh, model_downconv=ca3, model_downjoin=sk, model_downsamp=dmp, model_downmerge=sk, model_downproc=ca3,
-        #             model_upconv=sk, model_upjoin=ct, model_upsamp=uu, model_upmerge=ct, model_upproc=ca33, model_postproc=sk),
-        #
-        # ModelConfig((1296, 1296, 3), (1296, 1296, 1), num_targets=len(targets), model_filter=[64, 96, 128, 196, 256, 256, 256, 256, 256], model_pool=[2, 2, 2, 2, 3, 3, 3, 3],
-        #             model_name=unet, train_rep=2, optimizer=Adam(1e-4), predict_all_inclusive=True,
-        #             model_preproc=ca3, model_downconv=sk, model_downjoin=sk, model_downsamp=dmp, model_downmerge=sk, model_downproc=dn13r,
-        #             model_upconv=sk, model_upjoin=ct, model_upsamp=uu, model_upmerge=ct, model_upproc=ca3h, model_postproc=sk),
-        #
-        # ModelConfig((512, 512, 3), (512, 512, 1), num_targets=len(targets), model_filter=[64, 96, 128, 128, 128], model_pool=[2, 2, 2, 2, 2], model_name=unet,
-        #             train_rep=6, optimizer=Adam(4e-5), predict_all_inclusive=True,
-        #             model_preproc=ca3, model_downconv=ca3, model_downjoin=sk, model_downsamp=dmp, model_downmerge=sk, model_downproc=ca3,
-        #             model_upconv=ca3, model_upjoin=ct, model_upsamp=uu, model_upmerge=ct, model_upproc=ca3, model_postproc=ca3),
-
-        # ICNet
-        # ModelConfig((512, 512, 3), (512, 512, 1), num_targets=len(targets), model_filter=[64, 96, 128, 196, 256, 256, 256, 256, 256], model_pool=[2, 2, 2, 2, 3, 3, 3, 3],
-        #             model_name=icnet, train_rep=2, optimizer=Adam(1e-4), predict_all_inclusive=True,
-        #             model_preproc=ca3, model_downconv=sk, model_downjoin=sk, model_downsamp=dmp, model_downmerge=sk, model_downproc=dn13r,
-        #             model_upconv=sk, model_upjoin=ct, model_upsamp=uu, model_upmerge=ct, model_upproc=ca3h, model_postproc=sk),
-
+        # SegNet(num_targets=len(targets), predict_all_inclusive=False),
+        # SegNetS(num_targets=len(targets), predict_all_inclusive=False),
+        # UNet(num_targets=len(targets), predict_all_inclusive=False),
+        # UNet2(num_targets=len(targets), predict_all_inclusive=False),
+        # UNet2S(num_targets=len(targets), predict_all_inclusive=False),
+        # UNet2M(num_targets=len(targets), predict_all_inclusive=False),
+        # UNet2L(num_targets=len(targets), predict_all_inclusive=False),
+        VggSegNet(num_targets=len(targets), predict_all_inclusive=False),
     ]
     mode = args.mode[0].lower()
     if mode != 'p':

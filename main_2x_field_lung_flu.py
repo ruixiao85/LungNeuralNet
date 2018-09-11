@@ -35,10 +35,11 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from net.unet import UNet
+    from net.unet import UNet, UNet2, SegNet
     nets=[
-        UNet(dim_in=(512, 512, 3), dim_out=(512,512, 1), num_targets=len(targets), predict_size=1, train_rep=5,
-                    filters=[64, 96, 128, 192, 256, 256, 256, 256], poolings=[2, 2, 2, 2, 2, 2, 2, 2]),
+        # SegNet(num_targets=len(targets), predict_all_inclusive=False),
+        # UNet(num_targets=len(targets), predict_all_inclusive=False),
+        UNet2(num_targets=len(targets), predict_all_inclusive=False),
     ]
     mode = args.mode[0].lower()
     if mode!='p':

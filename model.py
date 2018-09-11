@@ -100,9 +100,9 @@ class Model:
                     prd=ImageGenerator(multi, False, tgt_sub, view)
                     weight_file=tgt_name+'_'+dir_cfg_append+'.h5'
                     print(weight_file)
-                    self.net.load_weights(weight_file) # weights only
-                    # self.model=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
-                    msk=self.net.predict_generator(prd, max_queue_size=1, workers=0, use_multiprocessing=False, verbose=1)
+                    self.net.net.load_weights(weight_file) # weights only
+                    # self.net.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
+                    msk=self.net.net.predict_generator(prd, max_queue_size=1, workers=0, use_multiprocessing=False, verbose=1)
                     msks = msk if msks is None else  np.concatenate((msks, msk),axis=-1)
                     i=o
                 print('Saving predicted results [%s] to folder [%s]...' % (grp, export_name))

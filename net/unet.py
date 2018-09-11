@@ -6,17 +6,16 @@ from keras.layers import Input
 from keras import backend as K
 import tensorflow as tf
 from net.basenet import Net
-from net.module import cvac
+from net.module import cvac, ca3, ca33, cb3, cba3, dmp, uu, ct, sk
 
 class UNet(Net):
-    def __init__(self, filters=None, poolings=None,
-                 preproc=None, downconv=None,downjoin=None,downsamp=None,downmerge=None,downproc=None,
+    # also base class for U-shaped networks
+    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, preproc=None, downconv=None,downjoin=None,downsamp=None,downmerge=None,downproc=None,
                  upconv=None, upjoin=None, upsamp=None, upmerge=None, upproc=None, postproc=None, **kwargs
         ):
-        super().__init__(**kwargs)
+        super().__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768, 768, 1), **kwargs)
         # UNET valid padding 572,570,568->284,282,280->140,138,136->68,66,64->32,30,28->56,54,52->104,102,100->200,198,196->392,390,388 388/572=67.8322% center
         # UNET same padding 576->288->144->72->36->72->144->288->576 take central 68% =392
-        from net.module import ca3, ca33, dmp, uu, ct, sk
         self.fs=filters or [64, 128, 256, 512, 1024]
         self.ps=poolings or [2]*len(self.fs)
         self.preproc=preproc or ca3
@@ -26,12 +25,12 @@ class UNet(Net):
         self.downmerge=downmerge or sk
         self.downproc=downproc or ca3
         self.upconv=upconv or sk
-        self.upjoin=upjoin or sk # 2nd skip
+        self.upjoin=upjoin or sk  # 2nd no skip
         self.upsamp=upsamp or uu
-        self.upmerge=upmerge or ct # 1st skip
+        self.upmerge=upmerge or ct  # 1st skip
         self.upproc=upproc or ca33
         self.postproc=postproc or sk
-        
+
         locals()['in0']=Input((self.row_in, self.col_in, self.dep_in))
         locals()['pre0']=self.preproc(locals()['in0'],'pre0',0,self.fs[0],self.act)
         for i in range(len(self.fs)-1):
@@ -71,3 +70,49 @@ class UNet(Net):
                               replace('_', '').replace('loss', ''))
             +str(self.dep_out)])
 
+class UNet2(UNet):
+    # default 768x768 with 2 skip connections, standard 3x3 conv twice per block
+    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
+        super().__init__(dim_in=dim_in or (768,768,3), dim_out=dim_out or (768,768,1),
+                         filters=filters or [64, 128, 256, 512, 1024], poolings=poolings or [2, 2, 2, 2, 2],
+                         preproc=ca3,downconv=ca3,downjoin=sk,downsamp=dmp,downmerge=sk,downproc=ca3,
+                        upconv=sk,upjoin=ct,upsamp=uu,upmerge=ct,upproc=ca33,postproc=sk, **kwargs)
+
+class UNet2S(UNet):
+    # default 1296x1296 with 2 skip connections, small memory consumption with 3x3 convolution only once for output
+    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
+        super().__init__(dim_in=dim_in or (1296,1296,3), dim_out=dim_out or (1296,1296,1),
+                         filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
+                         preproc=ca3,downconv=ca3,downjoin=sk,downsamp=dmp,downmerge=sk,downproc=ca3,
+                        upconv=sk,upjoin=ct,upsamp=uu,upmerge=ct,upproc=ca3,postproc=sk, **kwargs)
+
+class UNet2M(UNet):
+    # default 1296x1296 with 2 skip connections, medium memory consumption with 3x3 convolution twice for output
+    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
+        super().__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
+                         filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
+                         preproc=ca3, downconv=ca3, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=ca3,
+                         upconv=sk, upjoin=ct, upsamp=uu, upmerge=ct, upproc=ca33, postproc=sk, **kwargs)
+class UNet2L(UNet):
+    # default 1296x1296 with 2 skip connections, large memory consumption with 3x3 convolution twice for output, once more for postproc
+    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
+        super().__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
+                         filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
+                         preproc=ca3, downconv=ca3, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=ca3,
+                         upconv=sk, upjoin=ct, upsamp=uu, upmerge=ct, upproc=ca33, postproc=ca3, **kwargs)
+
+class SegNet(UNet):
+    # SegNet zero padding downwards: conv->batchnorm->activation downsample: maxpool upwards: conv->batchnorm (no act) upsamp: upsampling activation on output layer
+    # #U-shape 64,128(/2),256(/4),512(/8),512(/8),256(/4),128(/2),64,
+    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
+        super().__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768,768, 1),
+                         filters=filters or [64, 128, 256, 512], poolings=poolings or [2, 2, 2, 2],
+                         preproc=cba3, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=cba3,
+                         upconv=cb3, upjoin=sk, upsamp=uu, upmerge=sk, upproc=cb3, postproc=sk, **kwargs)
+class SegNetS(UNet):
+    # SegNet 1296x1296
+    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
+        super().__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
+                         filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
+                         preproc=cba3, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=cba3,
+                         upconv=cb3, upjoin=sk, upsamp=uu, upmerge=sk, upproc=cb3, postproc=sk, **kwargs)
