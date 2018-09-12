@@ -1,73 +1,92 @@
 from keras.engine import Layer, InputSpec
 from keras.models import Model
-from keras.layers import Input
+from keras.layers import Input,Lambda
 from keras import backend as K
 import tensorflow as tf
 from net.basenet import Net
 from net.module import cvac, ac, cv, ca3, ca33, cb3, cba3, dmp, uu, ct, sk, accv, ad
+from resize_layer import ResizeImages
 
 
-def resize(inputs, name, scale):
-    if scale==1.0: return inputs
-    size=tf.round(tf.multiply(tf.to_float(tf.shape(inputs)[1:3]),tf.constant(scale)))
-    return tf.image.resize_bilinear(inputs, name=name, size=size)
-        # K.resize_images(inputs, name=name, size=[tf.shape(inputs)[1]*scale, tf.shape(inputs)[2]*scale])
+def resize(inputs, name, target_size):
+    row=K.int_shape(inputs)[1]
+    if row==target_size: return inputs
+    return ResizeImages(output_dim=(target_size,target_size),data_format='channels_last',name=name)(inputs)
 
-def ResidualConvUnit(in_layer, name, idx, filters, act, stride=1, dilate=1):
-    x=accv(in_layer, name+'_2', idx, filters, act, size=1, stride=stride, dilation=dilate)
-    x=accv(x, name+'_1', idx, filters, act, size=3, stride=stride, dilation=dilate)
-    return ad(x, in_layer, name, idx, filters)
+def residual_conv_unit(in_layer, name, idx, filters, act, stride=1, dilate=1,rep=1):
+    y=x=in_layer
+    for r in range(rep-1,-1,-1):
+        app=str(r)[: r]
+        y=accv(y, name+app+'_2', idx, filters, act, size=3, stride=stride, dilation=dilate)
+        y=accv(y, name+app+'_1', idx, filters, act, size=3, stride=stride, dilation=dilate)
+        x=ad(x,y,name+app,idx,filters)
+    return x
 
-def ChainedResidualPooling(inputs,name,idx,fs,act):
-    y=ac(inputs,name+'_ac',idx,fs,act,size=1)
-    x=dmp(y,1,name+'_mp',idx,fs,act,5)
-    x=cv(x,name+'_cv',idx,fs,act,size=3)
-    return ad(x,y,name,idx,fs,act)
+def res_conv_unit(in_layer, name, idx, filters, act, stride=1, dilate=1,rep=1):
+    x=in_layer
+    for r in range(rep-1,-1,-1):
+        app=str(r)[: r]
+        y=accv(x, name+app+'_2', idx, filters, act, size=3, stride=stride, dilation=dilate)
+        y=accv(y, name+app+'_1', idx, filters, act, size=3, stride=stride, dilation=dilate)
+        x=ad(x,y,name+app,idx,filters)
+    return x
 
-def MultiResolutionFusion(hl_inputs,hl_rate,name,idx,fs,act):
-    hl_inputs[0]=resize(cv(hl_inputs[0],'%s_hl%d'%(name,0),idx,fs,act,size=3),'%s_hl%d_resize'%(name,0),hl_rate[0])
-    for i in range(len(hl_inputs)):
-        hl_inputs[0]=ad(hl_inputs[0],
-            resize(cv(hl_inputs[i],'%s_hl%d'%(name,i),idx,fs,act,size=3),'%s_hl%d_resize'%(name,i),hl_rate[i]),name+'_ad'+str(i),idx,fs,act)
-    return hl_inputs[0]
+def chained_residual_pooling(inputs, name, idx, fs, act,rep=1):
+    y=x=ac(inputs,name+'_ac',idx,fs,act,size=1)
+    for r in range(rep-1,-1,-1):
+        app=str(r)[: r]
+        y=dmp(y,1,name+app+'_mp',idx,fs,act,5)
+        y=cv(y,name+app+'_cv',idx,fs,act,size=3)
+        x=ad(x,y,name+app,idx,fs,act)
+    return x
 
 
 class Refine(Net):
-    # 10X 4X 2X 1X 0.4X 0.2X 0.1X
-    def __init__(self, dim_in=None, dim_out=None, filters=None, resamples=None, steps=None, merges=None, **kwargs
+    #  40X  20X  10X  4X  2X  1X .4X .2X .1X
+    # 4000,2000,1000,400,200,100, 40, 20, 10
+
+    def __init__(self, dim_in=None, dim_out=None, sizes=None, filters=None, steps=None, merges=None, **kwargs
                  ):
-        super().__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768, 768, 1), **kwargs)
-        self.fs=filters or [64, 96, 128, 192, 256, 384, 512]
-        self.rs=resamples or [0.01,0.02,0.04,0.1,0.2,0.4,1.0]
-        self.ss=steps or 1 # steps to move up in size after refine
-        self.ms=merges or 1 # number of smaller images to merge
+        # super(Refine,self).__init__(dim_in=dim_in or (1000,1000, 3), dim_out=dim_out or (1000,1000, 1), **kwargs)
+        # self.sizes=sizes or [10,20,40,100,200,400]
+        super(Refine,self).__init__(dim_in=dim_in or (1200,1200, 3), dim_out=dim_out or (1200,1200, 1), **kwargs)
+        self.sizes=sizes or [8,20,40,80,200,400]
+        # self.sizes=sizes or [40,400]
+        self.filters=filters or 128
+        self.steps=steps or [1,2,3,4,5] # steps to move up in size after refine
+        self.merge=merges or 2 # number of images to merge
         locals()['in0']=Input((self.row_in, self.col_in, self.dep_in))
-        for i in range(len(self.fs)):
-            locals()['pool%d'%i]=resize(locals()['in0'],'pool%d'%i, self.rs[i])
+
+        last_layer=[None]*len(self.sizes)
+        for i in range(len(self.sizes)):
+            locals()['pool%d'%i]=resize(locals()['in0'], 'pool%d'%i, self.sizes[i])
             print('Shape of %d: %s'%(i,locals()['pool%d'%i].shape))
-            # locals()['conv%d'%i]=cv(locals()['pool%d'%i],'conv%d'%i,0,256,self.act,size=1) # default 256
-            locals()['conv%d'%i]=cv(locals()['pool%d'%i],'conv%d'%i,0,self.fs[i],self.act,size=1)
-        last_idx, last_scale=0, 1.0
-        for r in range(0, len(self.fs),self.ss): # refine target. double check the last step
-            x=None; last_idx=r; last_scale=self.rs[r]
-            for l in range(self.ms):
+            last_layer[i]=locals()['conv%d'%i]=cvac(locals()['pool%d'%i],'conv%d'%i,0,self.filters,self.act,size=1)
+        last_idx, target_size=0, self.sizes[-1]
+        for r in self.steps: # refine target. double check the last step
+            last_idx=r; target_size=self.sizes[r]
+            for l in range(self.merge):
                 i=r-l
                 if i>=0:
-                    rcu=ResidualConvUnit(locals()['conv%d'%i],'conv%d_r%d-%d'%(i,r,l), i, self.fs[i], self.act)
-                    rcu=resize(rcu,'conv%d_r%d-%d_s'%(i,r,l),last_scale/self.rs[i])
-                    x=rcu if x is None else ad(x,rcu,'conv%d_a%d-%d'%(i,r,l),i,self.fs[i],self.act)
-            x=ChainedResidualPooling(x,'conv%d_crp'%r,r,self.fs[r],self.act)
-            locals()['conv%d'%r]=ResidualConvUnit(x,'conv%d_crp_rcu'%r,r,self.fs[r],self.act)
-        locals()['out0']=cvac(resize(locals()['conv%d'%last_idx],'last_scale',1.0/last_scale),
-                              'cvac_out',last_idx,self.fs[last_idx],self.act,size=1)
-        self.net=Model(locals()['in0'], locals()['out0'])
+                    if 'rcu%d'%i not in locals(): locals()['rcu%d'%i]=residual_conv_unit(last_layer[i], 'rcu%d'%i, i, self.filters, self.act,rep=1)
+                    if 'upconv%d'%i not in locals(): locals()['upconv%d'%i]=cvac(locals()['rcu%d'%i],'upconv%d'%i,0,self.filters,self.act,size=3)
+                    if 'upsamp%d-%d'%(i,r) not in locals(): locals()['upsamp%d-%d'%(i,r)]=resize(locals()['upconv%d'%i],'upsamp%d-%d'%(i,r),target_size)
+                    if 'mrf%d'%r not in locals():
+                        locals()['mrf%d'%r]=locals()['upsamp%d-%d'%(i,r)]
+                    else:
+                        locals()['mrf%d'%r]=ad(locals()['mrf%d'%r],locals()['upsamp%d-%d'%(i,r)],'mrf%d'%i,i,self.filters,self.act)
+            locals()['crp%d'%r]=chained_residual_pooling(locals()['mrf%d'%r], 'crp%d'%r, r, self.filters, self.act,rep=1)
+            last_layer[r]=locals()['outconv%d'%r]=residual_conv_unit(locals()['crp%d'%r], 'outconv%d'%r, r, self.filters, self.act,rep=1)
+        locals()['out_scale']=resize(locals()['outconv%d'%last_idx],'out_scale',self.row_out)
+        locals()['out0']=cvac(locals()['out_scale'],'out0',last_idx,self.dep_out,self.out,size=1) # self.fs[last_idx]
+        self.net=Model(locals()['in0'], locals()['out_scale'])
 
 
     def __str__(self):
         return '_'.join([
             type(self).__name__,
-            "%dF%d-%dR%d-%dS%dM%d"%(
-                len(self.fs), self.fs[0], self.fs[-1], self.rs[0], self.rs[-1], self.ss, self.ms),
+            "%dF%dS%d-%dT%d-%dM%d"%(
+                len(self.sizes), self.filters, self.sizes[0], self.sizes[-1], self.steps[0], self.steps[-1], self.merge),
             self.cap_lim_join(7, self.act, self.out,
                               (self.loss if isinstance(self.loss, str) else self.loss.__name__).
                               replace('_', '').replace('loss', ''))
