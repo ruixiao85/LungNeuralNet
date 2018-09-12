@@ -22,7 +22,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--input', dest='input', type=str,
                         default='Original', help='input: Original')
     parser.add_argument('-o', '--output', dest='output', type=str,
-                        default='LargeBloodVessel,SmallBloodVessel', help='output: targets separated by comma')
+                        default='LargeBloodVessel', help='output: targets separated by comma')
     #Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,RespiratoryAirway,SmallBloodVessel
     args = parser.parse_args()
 
@@ -37,10 +37,11 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from net.unet import SegNet, SegNetS, UNet, UNet2, UNet2S, UNet2M, UNet2L
+    from net.unet import SegNet, SegNetS, UNet, UNet2, UNet2S, UNet2M, UNet2L, ResN131S, ResBN131S
+    from net.refinenet import Refine
     from net.vgg import VggSegNet
     from net.module import ca1, ca2, ca3, ca3h, cadh, ca33, ca13, cba3, cb3, dmp, dca, uu, ut, uta, sk, ct,\
-      du32, cdu33, rn33r, rn33nr, rn131r, rn131nr, dn13r, dn13nr
+      du32, cdu33, rn131r, rn131nr, dn13r, dn13nr
     from keras.optimizers import Adam, SGD, RMSprop, Nadam
     nets = [
         # SegNet(num_targets=len(targets), predict_all_inclusive=False),
@@ -50,8 +51,10 @@ if __name__ == '__main__':
         # UNet2S(num_targets=len(targets), predict_all_inclusive=False),
         # UNet2M(num_targets=len(targets), predict_all_inclusive=False),
         # UNet2L(num_targets=len(targets), predict_all_inclusive=False),
-        VggSegNet(num_targets=len(targets), predict_all_inclusive=False),
+        # VggSegNet(num_targets=len(targets), predict_all_inclusive=False),
+        Refine(num_targets=len(targets),predict_all_inclusive=False)
     ]
+
     mode = args.mode[0].lower()
     if mode != 'p':
         for net in nets:

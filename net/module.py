@@ -21,6 +21,11 @@ def cv(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilat
 def cvac(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilation=1):
     x=cv(in_layer,name+'_cv',idx,fs,act,size,stride,dilation)
     return Activation(activation=act,name=name)(x)
+def ac(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilation=1):
+    return Activation(activation=act,name=name)(in_layer)
+def accv(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilation=1):
+    x=Activation(activation=act,name=name+'_ac')(in_layer)
+    return cv(x,name,idx,fs,act,size,stride,dilation)
 def cvacdp(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilation=1):
     x=cvac(in_layer,name+'_cv',fs,act,size,stride,dilation)
     return Dropout(0.2,name=name)(x)
@@ -60,23 +65,23 @@ def step2kern(step):
     # return step # same
     return step if step%2==1 else step+1 # odd no less than step
 
-def dca(in_layer, rate, name=None, idx=None, fs=None, act=None):
-    return cvac(in_layer, name, idx, fs, act, size=step2kern(rate), stride=rate)
+def dca(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
+    return cvac(in_layer, name, idx, fs, act, size=size or step2kern(rate), stride=rate)
 
-def dcba(in_layer, rate, name=None, idx=None, fs=None, act=None):
-    return cvbnac(in_layer, name, idx, fs, act, size=step2kern(rate), stride=rate)
+def dcba(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
+    return cvbnac(in_layer, name, idx, fs, act, size=size or step2kern(rate), stride=rate)
 
-def dmp(in_layer, rate, name=None, idx=None, fs=None, act=None):
-    return mp(in_layer, name, idx, fs, act, size=step2kern(rate), stride=rate)
+def dmp(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
+    return mp(in_layer, name, idx, fs, act, size=size or step2kern(rate), stride=rate)
 
-def uu(in_layer, rate, name=None, idx=None, fs=None, act=None):
-    return us(in_layer, name, idx, fs, act, size=step2kern(rate), stride=rate)
-def ut(in_layer, rate, name=None, idx=None, fs=None, act=None):
-    return tr(in_layer, name, idx, fs, act, size=step2kern(rate), stride=rate)
-def uta(in_layer, rate, name=None, idx=None, fs=None, act=None):
-    return trac(in_layer, name, idx, fs, act, size=step2kern(rate), stride=rate)
-def utba(in_layer, rate, name=None, idx=None, fs=None, act=None):
-    return trbnac(in_layer, name, idx, fs, act, size=step2kern(rate), stride=rate)
+def uu(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
+    return us(in_layer, name, idx, fs, act, size=size or step2kern(rate), stride=rate)
+def ut(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
+    return tr(in_layer, name, idx, fs, act, size=size or step2kern(rate), stride=rate)
+def uta(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
+    return trac(in_layer, name, idx, fs, act, size=size or step2kern(rate), stride=rate)
+def utba(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
+    return trbnac(in_layer, name, idx, fs, act, size=size or step2kern(rate), stride=rate)
 
 def sk(in_layer, other_layer, name=None, idx=None, fs=None, act=None, stride=None): # direct
     return in_layer
@@ -168,29 +173,6 @@ def cdu33(in_layer, other_layer, name=None, idx=None, fs=None, act=None, stride=
 # rn: ResNet https://arxiv.org/pdf/1512.03385.pdf 224x224
 # first layer f64, k7x7, s2x2 -> maxpool k3x3, s2x2
 # (64,3x3->64,3x3) repeat 2~6 or (64,1x1->64,3x3->256,1x1) repeat 3~8 times, double filters
-def rn33(in_layer, other_layer, name, idx, filters, act, stride=1):
-    x=cvac(in_layer, name+'_2', idx, filters[0], act, size=3, stride=stride)
-    x=cv(x, name+'_1', idx, filters[1], act, size=3)
-    # y=cv(in_layer, name+'_s', idx, filters[0], act, size=3)
-    return adac(x,other_layer,name,idx,filters,act)
-def rn33n(in_layer, other_layer, name, idx, filters, act, stride=1):
-    x = cvbnac(in_layer, name+'_2', idx, filters, act, size=3, stride=stride)
-    x = cvbn(x, name+'_1', idx, filters, act, size=3)
-    # y = cvbn(in_layer, name+'_s', idx, filters, act, size=3)
-    return adac(x,other_layer,name,idx,filters,act)
-def rn33r(in_layer, name, idx, filters, act, stride=1):
-    filters=filters if isinstance(filters,list) else [filters]*2
-    x, rep=in_layer,1+idx
-    for i in range(rep-1,-1,-1):
-        x=rn33(x, cv(in_layer, name+'_s', idx, filters[1], act, size=1) if i==rep-1 else x, name+str(i)[:i], idx, filters, act, stride)
-    return x
-def rn33nr(in_layer, name, idx, filters, act, stride=1):
-    filters=filters if isinstance(filters,list) else [filters]*2
-    x, rep=in_layer,2+idx
-    for i in range(rep-1,-1,-1):
-        x=rn33n(x, cvbn(in_layer, name+'_s', idx, filters[1], act, size=1) if i==rep-1 else x, name+str(i)[:i], idx, filters, act, stride)
-    return x
-
 def rn131(in_layer, other_layer, name, idx, filters, act, stride=1, dilate=1):
     x=cvac(in_layer, name+'_3', idx, filters[0], act, size=1, stride=stride)
     x=cvac(x, name+'_2', idx, filters[1], act, size=3, dilation=dilate)
@@ -203,14 +185,13 @@ def rn131n(in_layer, other_layer, name, idx, filters, act, stride=1, dilate=1):
     return adac(x,other_layer,name,idx,filters,act, stride)
 def rn131r(in_layer, name, idx, filters, act, stride=1, dilate=1):
     filters=filters if isinstance(filters, list) else [int(filters/4), int(filters/4), filters] if isinstance(filters, int) else [32,32,64]
-    x, rep=in_layer,3+idx
-    x=cv(in_layer, name+'_s', idx, filters[2], act, size=1)
+    x, rep=in_layer,1+idx//2
     for i in range(rep-1,-1,-1):
         x=rn131(x, cv(in_layer, name+'_s', idx, filters[2], act, size=1) if i==rep-1 else x, name+str(i)[:i], idx, filters, act, stride, dilate)
     return x
 def rn131nr(in_layer, name, idx, filters, act, stride=1, dilate=1):
     filters=filters if isinstance(filters,list) else [int(filters/4),int(filters/4),filters]  if isinstance(filters,int) else [32,32,64]
-    x, rep=in_layer,3+idx
+    x, rep=in_layer,1+idx//2
     for i in range(rep-1,-1,-1):
         x=rn131n(x, cvbn(in_layer, name+'_s', idx, filters[2], act, size=1) if i==rep-1 else x, name+str(i)[:i], idx, filters, act, stride, dilate)
     return x

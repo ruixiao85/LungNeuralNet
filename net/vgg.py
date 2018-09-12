@@ -59,10 +59,10 @@ class VggSegNet(Net):
         locals()['dproc2']=locals()['dmerge2']=locals()['dsamp2']=vgg16_base.get_layer("block2_pool").output; self.transferlayer+=1
         locals()['djoin2']=locals()['dconv2']=vgg16_base.get_layer("block3_conv3").output
         locals()['dproc3']=locals()['dmerge3']=locals()['dsamp3']=vgg16_base.get_layer("block3_pool").output; self.transferlayer+=1
-        locals()['djoin3']=locals()['dconv3']=vgg16_base.get_layer("block4_conv3").output
-        locals()['dproc4']=locals()['dmerge4']=locals()['dsamp4']=vgg16_base.get_layer("block4_pool").output; self.transferlayer+=1
-        locals()['djoin4']=locals()['dconv4']=vgg16_base.get_layer("block5_conv3").output
-        locals()['dproc5']=locals()['dmerge5']=locals()['dsamp5']=vgg16_base.get_layer("block5_pool").output; self.transferlayer+=1
+        # locals()['djoin3']=locals()['dconv3']=vgg16_base.get_layer("block4_conv3").output
+        # locals()['dproc4']=locals()['dmerge4']=locals()['dsamp4']=vgg16_base.get_layer("block4_pool").output; self.transferlayer+=1
+        # locals()['djoin4']=locals()['dconv4']=vgg16_base.get_layer("block5_conv3").output
+        # locals()['dproc5']=locals()['dmerge5']=locals()['dsamp5']=vgg16_base.get_layer("block5_pool").output; self.transferlayer+=1
 
         for i in range(self.transferlayer, len(self.fs)-1):
             prev_layer=locals()['dsamp%d'%i] if i==self.transferlayer else locals()['dproc%d'%i]
