@@ -13,7 +13,7 @@ class UNet(Net):
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, preproc=None, downconv=None,downjoin=None,downsamp=None,downmerge=None,downproc=None,
                  upconv=None, upjoin=None, upsamp=None, upmerge=None, upproc=None, postproc=None, **kwargs
         ):
-        super().__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768, 768, 1), **kwargs)
+        super(UNet,self).__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768, 768, 1), **kwargs)
         # UNET valid padding 572,570,568->284,282,280->140,138,136->68,66,64->32,30,28->56,54,52->104,102,100->200,198,196->392,390,388 388/572=67.8322% center
         # UNET same padding 576->288->144->72->36->72->144->288->576 take central 68% =392
         self.fs=filters or [64, 128, 256, 512, 1024]
@@ -69,6 +69,12 @@ class UNet(Net):
                               (self.loss if isinstance(self.loss, str) else self.loss.__name__).
                               replace('_', '').replace('loss', ''))
             +str(self.dep_out)])
+
+class UNetS(UNet):
+    # default 1296x1296 with 2 skip connections, small memory consumption with 3x3 convolution only once for output
+    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
+        super().__init__(dim_in=dim_in or (1296,1296,3), dim_out=dim_out or (1296,1296,1),
+                         filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3], **kwargs)
 
 class UNet2(UNet):
     # default 768x768 with 2 skip connections, standard 3x3 conv twice per block

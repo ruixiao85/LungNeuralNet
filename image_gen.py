@@ -201,7 +201,7 @@ class ImageSet(FolderSet):
 
 
 class ImageMaskPair:
-    def __init__(self, cfg:Net, wd, origin, targets, is_train):
+    def __init__(self, cfg:Net, wd, origin, targets, is_train, out_image):
         self.cfg=cfg
         self.wd = wd
         self.origin = origin
@@ -211,6 +211,7 @@ class ImageMaskPair:
         self.msk_set = None
         self.view_coord=self.img_set.view_coord
         self.is_train = is_train
+        self.out_image = out_image
 
     def train_generator(self):
         i = 0; no=self.cfg.dep_out; nt=len(self.targets)
@@ -279,12 +280,13 @@ class ImageMaskPair:
         return txt+'_'+ext if self.cfg.separate else txt
 
 class ImageGenerator(keras.utils.Sequence):
-    def __init__(self,pair:ImageMaskPair,aug,tgt_list,view_coord=None):
+    def __init__(self,pair:ImageMaskPair,aug,tgt_list,view_coord=None,out_image=None):
         self.pair=pair
         self.cfg=pair.cfg
         self.train_aug=aug
         self.target_list=tgt_list
         self.view_coord=pair.view_coord if view_coord is None else view_coord
+        self.out_image=out_image if out_image is None else False
         self.indexes = np.arange(len(self.view_coord))
 
     def __len__(self):  # Denotes the number of batches per epoch
@@ -298,13 +300,16 @@ class ImageGenerator(keras.utils.Sequence):
             _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
                 _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex()), self.cfg)
-                for ti,tgt in enumerate(self.target_list):
-                    _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg)
+                if self.out_image:
+                    _tgt[vi,...]=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_out_ex(self.target_list[0])),self.cfg)
+                else:
+                    for ti,tgt in enumerate(self.target_list):
+                        _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg)
             if self.train_aug>0:
                 _img, _tgt = augment_image_pair(_img, _tgt,self.train_aug)  # integer N: a <= N <= b. random.randint(0, 4)
                 # imwrite("tr_img.jpg",_img[0])
                 # imwrite("tr_tgt.jpg",_tgt[0])
-            return self.scale_input(_img), self.scale_output(_tgt)
+            return self.scale_input(_img), self.scale_input(_tgt) if self.out_image else self.scale_output(_tgt)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
@@ -333,8 +338,8 @@ class NoiseSet(FolderSet):
     def __init__(self,cfg:Net,wd,sf,is_train,is_image):
         self.bright_diff=-10 # local brightness should be more than noise patch brightness,
         self.scale_factor=0.25 # 40X patch into 10X images
-        self.min_initialize=0.000005 # min rate of random points and loop through
-        self.max_initialize=0.0001 # max rate of random points and loop through
+        self.min_initialize=0.00001 # min rate of random points and loop through
+        self.max_initialize=0.0002 # max rate of random points and loop through
         self.aj_size=4
         self.aj_std=0.2
         self.patches=None
@@ -377,7 +382,10 @@ class NoiseSet(FolderSet):
                 # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(lg_row,lri,lro,lg_col,lci,lco,p_row,pri,pro,p_col,pci,pco))
                 img[lri:lro,lci:lco]=np.minimum(img[lri:lro,lci:lco],self.patches[idx][pri:pro,pci:pco])
                 # imwrite('test_addnoise.jpg',img)
-                msk[lri:lro,lci:lco,0]=255
+                msk[lri:lro,lci:lco,...]=255
+                # msk[lri:lro,lci:lco,0]=255
+                # msk[lri:lro,lci:lco,1]=255
+                # msk[lri:lro,lci:lco,2]=255
                 # lr=(lri+lro)//2
                 # lc=(lci+lco)//2
                 # msk[lr:lr+1,lc:lc+1,1]=255
@@ -481,13 +489,13 @@ class ImageNoisePair(ImageMaskPair):
         prev_separate=cfg.separate
         cfg.separate=False  # separate=False to scan whole images
         self.nos_set=[]
+        self.msk_set=[]
         super(ImageNoisePair,self).__init__(cfg,wd,origin,targets,is_train)
-        for i in range(len(targets)):
-            tgt_noise=NoiseSet(cfg,wd,targets[i],is_train,True)
-            tgt_noise.sub_folder='_'.join([targets[i],origin])
-            msk_folder='_'.join([targets[i],"Mask"])
-            util.mk_dir_if_nonexist(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder))
-            util.mk_dir_if_nonexist(os.path.join(tgt_noise.work_directory,msk_folder))
+        i=0 # only 1 element allowed
+        tgt_noise=NoiseSet(cfg,wd,targets[i],is_train,True)
+        tgt_noise.sub_folder='_'.join([targets[i],origin])
+        msk_folder='_'.join([targets[i],"Mask"])
+        if not util.mk_dir_if_nonexist(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder)) or not util.mk_dir_if_nonexist(os.path.join(tgt_noise.work_directory,msk_folder)):
             self.cfg.separate=True # separate=True to read full scale
             for vc in self.img_set.view_coord:
                 img=vc.get_image(os.path.join(self.img_set.work_directory,self.img_set.sub_folder),self.cfg)
@@ -496,8 +504,15 @@ class ImageNoisePair(ImageMaskPair):
                 imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,vc.image_name),img)
                 imwrite(os.path.join(tgt_noise.work_directory,msk_folder,vc.image_name),msk)
             self.nos_set.append(tgt_noise)
-            targets[i]=tgt_noise.sub_folder
         self.cfg.separate=prev_separate # return to original setting
+
+        self.origin=tgt_noise.sub_folder
+        self.targets=[origin]
+        self.cfg.dep_out=3
+        self.cfg.out='tanh'
+
+        self.img_set=NoiseSet(cfg, wd, origin, is_train, is_image=True).size_folder_update()
+
 
         # self.cfg=cfg
         # self.wd = wd
@@ -542,16 +557,16 @@ class ImageNoisePair(ImageMaskPair):
                   (len(self.view_coord), len(tr_list), len(tr_image), len(val_list), len(val_image)))
             print("Training Images:"); print(tr_image)
             print("Validation Images:"); print(val_image)
-            yield(ImageGenerator(self, self.cfg.train_aug, tgt_list, tr_list), ImageGenerator(self, False, tgt_list, val_list),
+            yield(ImageGenerator(self, self.cfg.train_aug, tgt_list, tr_list,out_image=True), ImageGenerator(self, False, tgt_list, val_list,out_image=True),
                     self.join_targets(tgt_list))
             i=o
 
-    def predict_generator(self):
-        # yield (ImageGenerator(self, False, self.targets, self.view_coord),self.join_targets(self.targets), self.targets)
-        i = 0; nt = len(self.targets)
-        ps = self.cfg.predict_size
-        while i < nt:
-            o = min(i + ps, nt)
-            tgt_list=self.targets[i:o]
-            yield (self.join_targets(tgt_list),tgt_list)
-            i = o
+    # def predict_generator(self):
+    #     # yield (ImageGenerator(self, False, self.targets, self.view_coord),self.join_targets(self.targets), self.targets)
+    #     i = 0; nt = len(self.targets)
+    #     ps = self.cfg.predict_size
+    #     while i < nt:
+    #         o = min(i + ps, nt)
+    #         tgt_list=self.targets[i:o]
+    #         yield (self.join_targets(tgt_list),tgt_list)
+    #         i = o

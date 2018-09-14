@@ -3,8 +3,10 @@ import pandas as pd
 
 
 def mk_dir_if_nonexist(_dir):
-    if not os.path.exists(_dir):
+    exist=os.path.exists(_dir)
+    if not exist:
         os.mkdir(_dir)
+    return exist
 
 def to_excel_sheet(_df, _xls, _sheet):
     if os.path.exists(_xls):

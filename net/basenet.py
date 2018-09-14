@@ -18,10 +18,10 @@ class Net(Config):
 
     #     model_out = 'softmax'   model_loss='categorical_crossentropy'
     #     model_out='sigmoid'    model_loss=[loss_bce_dice] 'binary_crossentropy' "bcedice"
-    def __init__(self, dim_in=None, dim_out=None, act=None, out=None, loss=None, metrics=None, optimizer=None,
+    def __init__(self, dim_in=None, dim_out=None, act=None, out=None, loss=None, metrics=None, optimizer=None, indicator=None,
                  filename=None, **kwargs):
 
-        super().__init__(**kwargs)
+        super(Net,self).__init__(**kwargs)
         self.row_in, self.col_in, self.dep_in=dim_in or (512,512,3)
         self.row_out, self.col_out, self.dep_out=dim_out or (512,512,1)
         from metrics import jac, dice, dice67, dice33, acc, acc67, acc33, loss_bce_dice, custom_function_keras
@@ -33,7 +33,7 @@ class Net(Config):
         self.metrics=metrics or ([jac, dice, dice67, dice33] if self.dep_out==1 else [acc, acc67, acc33])
         from keras.optimizers import Adam
         self.optimizer=optimizer or Adam(1e-5)
-        self.indicator='val_dice' if self.dep_out==1 else 'val_acc'  # indicator to maximize
+        self.indicator=indicator if indicator is not None else ('val_dice' if self.dep_out==1 else 'val_acc')  # indicator to maximize
         self.net=None # abstract -> instatiate in subclass
         self.filename=filename
 

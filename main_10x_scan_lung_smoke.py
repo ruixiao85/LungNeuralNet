@@ -37,7 +37,7 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from net.unet import SegNet, SegNetS, UNet, UNet2, UNet2S, UNet2M, UNet2L, ResN131S, ResBN131S
+    from net.unet import SegNet, SegNetS, UNet, UNetS, UNet2, UNet2S, UNet2M, UNet2L, ResN131S, ResBN131S
     from net.refinenet import Refine
     from net.vgg import VggSegNet
     from net.module import ca1, ca2, ca3, ca3h, cadh, ca33, ca13, cba3, cb3, dmp, dca, uu, ut, uta, sk, ct,\
@@ -48,7 +48,7 @@ if __name__ == '__main__':
         # SegNetS(num_targets=len(targets), predict_all_inclusive=False),
         # UNet(num_targets=len(targets), predict_all_inclusive=False),
         # UNet2(num_targets=len(targets), predict_all_inclusive=False),
-        UNet2S(num_targets=len(targets), predict_all_inclusive=False),
+        UNet(num_targets=len(targets), predict_all_inclusive=False,dim_out=(768,768,3), out='tanh', indicator='val_acc', loss='mean_squared_error', metrics=['acc']),
         # UNet2M(num_targets=len(targets), predict_all_inclusive=False),
         # UNet2L(num_targets=len(targets), predict_all_inclusive=False),
         # VggSegNet(num_targets=len(targets), predict_all_inclusive=False),
@@ -62,8 +62,11 @@ if __name__ == '__main__':
             print("Network specifications: " + str(net))
             for origin in origins:
                 # multi_set = ImageMaskPair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
-                multi_set = ImageNoisePair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
-                model.train(multi_set)
+                # model.train(multi_set)
+                for target in targets:
+                    # ImageNoisePair(net, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
+                    multi_set=ImageMaskPair(net,os.path.join(os.getcwd(),args.train_dir),target+"_Original",[origin],is_train=True,out_image=False)
+                    model.train(multi_set)
 
     if mode != 't':
         for net in nets:
