@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
 
-from image_gen import ImagePair, ImageGenerator
+from image_gen import ImageMaskPair, ImageGenerator
 from net.basenet import Net
 from util import mk_dir_if_nonexist, to_excel_sheet
 
@@ -35,7 +35,7 @@ class Model:
     def __repr__(self):
         return '_'.join([str(self.net)+('A' if self.net.predict_all_inclusive else 'I')])
 
-    def train(self, multi:ImagePair):
+    def train(self,multi:ImageMaskPair):
         for tr, val, dir_out in multi.train_generator():
             export_name = multi.dir_out_ex(dir_out) +'_'+str(self)
             weight_file = export_name + ".h5"
@@ -68,7 +68,7 @@ class Model:
                 df['repeat']=r+1
                 df.to_csv(export_name + ".csv", mode="a", header=(not os.path.exists(export_name + ".csv")))
 
-    def predict(self, multi:ImagePair, pred_dir):
+    def predict(self,multi:ImageMaskPair,pred_dir):
         xls_file="Result_%s_%s.xlsx"%(pred_dir, repr(self))
         img_ext=self.net.image_format[1:] # *.jpg -> .jpg
         sum_i, sum_g = self.net.row_out * self.net.col_out, None
@@ -96,7 +96,7 @@ class Model:
                 while i < nt:
                     o=min(i+self.net.dep_out, nt)
                     tgt_sub=tgt_list[i:o]
-                    tgt_name=ImagePair.join_targets(tgt_sub)
+                    tgt_name=ImageMaskPair.join_targets(tgt_sub)
                     prd=ImageGenerator(multi, False, tgt_sub, view)
                     weight_file=tgt_name+'_'+dir_cfg_append+'.h5'
                     print(weight_file)
@@ -135,14 +135,10 @@ class Model:
                         ra,ca=view[i].ori_row,view[i].ori_col
                         tri, tro = 0, self.net.row_out
                         tci, tco = 0, self.net.col_out
-                        if ri<0:
-                            tri=-ri; ri=0
-                        if ci<0:
-                            tci=-ci; ci=0
-                        if ro>ra:
-                            tro=tro-(ro-ra); ro=ra
-                        if co>ca:
-                            tco=tco-(co-ca); co=ca
+                        if ri<0: tri=-ri; ri=0
+                        if ci<0: tci=-ci; ci=0
+                        if ro>ra: tro=tro-(ro-ra); ro=ra
+                        if co>ca: tco=tco-(co-ca); co=ca
                         mrg_in[ri:ro,ci:co] = origin[tri:tro,tci:tco]
                         for d in range(len(tgt_list)):
                             mrg_out[ri:ro,ci:co,d] += (msk[...,d] * mask_wt)[tri:tro,tci:tco]

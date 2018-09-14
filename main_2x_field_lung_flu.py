@@ -47,12 +47,12 @@ if __name__ == '__main__':
             model=Model(net)
             print("Network specifications: "+str(net))
             for origin in origins:
-                multi_set=ImagePair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
+                multi_set=ImageMaskPair(net,os.path.join(os.getcwd(),args.train_dir),origin,targets,is_train=True)
                 model.train(multi_set)
 
     if mode!='t':
         for net in nets:
             model=Model(net)
             for origin in origins:
-                multi_set=ImagePair(net, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
+                multi_set=ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False)
                 model.predict(multi_set, args.pred_dir)

@@ -1,6 +1,6 @@
 import argparse
 
-
+from image_gen import ImageMaskPair, ImageNoisePair
 from model import *
 
 if __name__ == '__main__':
@@ -22,7 +22,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--input', dest='input', type=str,
                         default='Original', help='input: Original')
     parser.add_argument('-o', '--output', dest='output', type=str,
-                        default='LargeBloodVessel', help='output: targets separated by comma')
+                        default='InflammatoryCell', help='output: targets separated by comma')
     #Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,RespiratoryAirway,SmallBloodVessel
     args = parser.parse_args()
 
@@ -48,11 +48,11 @@ if __name__ == '__main__':
         # SegNetS(num_targets=len(targets), predict_all_inclusive=False),
         # UNet(num_targets=len(targets), predict_all_inclusive=False),
         # UNet2(num_targets=len(targets), predict_all_inclusive=False),
-        # UNet2S(num_targets=len(targets), predict_all_inclusive=False),
+        UNet2S(num_targets=len(targets), predict_all_inclusive=False),
         # UNet2M(num_targets=len(targets), predict_all_inclusive=False),
         # UNet2L(num_targets=len(targets), predict_all_inclusive=False),
         # VggSegNet(num_targets=len(targets), predict_all_inclusive=False),
-        Refine(num_targets=len(targets),predict_all_inclusive=False)
+        # Refine(num_targets=len(targets),predict_all_inclusive=False)
     ]
 
     mode = args.mode[0].lower()
@@ -61,12 +61,13 @@ if __name__ == '__main__':
             model= Model(net)
             print("Network specifications: " + str(net))
             for origin in origins:
-                multi_set = ImagePair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
+                # multi_set = ImageMaskPair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
+                multi_set = ImageNoisePair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
                 model.train(multi_set)
 
     if mode != 't':
         for net in nets:
             model= Model(net)
             for origin in origins:
-                multi_set = ImagePair(net, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False)
+                multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False)
                 model.predict(multi_set, args.pred_dir)
