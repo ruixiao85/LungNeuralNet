@@ -23,7 +23,7 @@ class ICNet(Net):
                  preproc=None, downconv=None, downjoin=None, downsamp=None, downmerge=None, downproc=None,
                  upconv=None, upjoin=None, upsamp=None, upmerge=None, upproc=None, postproc=None, **kwargs
                  ):
-        super().__init__(kwargs)
+        super(ICNet,self).__init__(kwargs)
 
         from net.module import ca3, ca33, dmp, uu, ct, sk
         self.fs=filters or [64, 128, 256, 512, 1024]

@@ -31,7 +31,7 @@ class VggSegNet(Net):
                  downproc=None,
                  upconv=None, upjoin=None, upsamp=None, upmerge=None, upproc=None, postproc=None, **kwargs
                  ):
-        super().__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768, 768, 1), **kwargs)
+        super(VggSegNet,self).__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768, 768, 1), **kwargs)
         self.fs=filters or [64, 128, 256, 384, 384, 512, 512]
         self.ps=poolings or [2]*len(self.fs)
         self.preproc=preproc or cba3

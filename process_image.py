@@ -13,6 +13,19 @@ Portable image format - *.pbm, *.pgm, *.ppm (always supported)
 Sun rasters - *.sr, *.ras (always supported)
 TIFF files - *.tiff, *.tif (see the Notes section)
 '''
+
+def scale_sigmoid(_array):
+    return _array.astype(np.float32)/255.0  # 0 ~ 1
+
+def reverse_sigmoid(_array):
+    return (_array.astype(np.float32)*255.0).astype(np.uint8)  # 0 ~ 1
+
+def scale_tanh(_array):
+    return _array.astype(np.float32)/127.5-1.0  # -1 ~ +1
+
+def reverse_tanh(_array):
+    return ((_array.astype(np.float32)+1.0)*127.5).astype(np.uint8)  # -1 ~ +1
+
 def read_resize_padding(_file, _resize, _padding):
     if _resize < 1.0:
         img = cv2.resize(cv2.imread(_file), (0, 0), fx=_resize, fy=_resize, interpolation=cv2.INTER_AREA)

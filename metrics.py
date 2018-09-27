@@ -82,18 +82,30 @@ def focal_loss(y_true, y_pred, gamma=0.5, alpha=.25): # (1-alpha)^gamma x CE.  a
     pt_0 = tf.where(tf.equal(y_true, 0), y_pred, tf.zeros_like(y_pred))
     return -K.sum(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1))-K.sum((1-alpha) * K.pow( pt_0, gamma) * K.log(1. - pt_0))
 
-def flatten_pixel(y_true,y_pred):
-    return K.reshape(y_true,shape=[-1,3]), K.reshape(y_pred,shape=[-1,3])
-def loss_psse(y_true,y_pred):
-    y_true_r, y_pred_r=flatten_pixel(y_true,y_pred)
-    return K.sum(K.square(y_pred_r-y_true_r), axis=-1)
-def psse(y_true,y_pred):
-    return -loss_psse(y_true,y_pred)
-def loss_psae(y_true,y_pred):
-    y_true_r, y_pred_r=flatten_pixel(y_true,y_pred)
-    return K.sum(K.abs(y_pred_r - y_true_r), axis=-1)
-def psae(y_true,y_pred):
-    return -loss_psae(y_true,y_pred)
+def pixel_flat_diff(y_true,y_pred):
+    return K.reshape(y_true,shape=[-1,3]) - K.reshape(y_pred,shape=[-1,3])
+BOOST=1e2
+def loss_pmse(y_true,y_pred):
+    return BOOST*K.mean(K.square(pixel_flat_diff(y_true,y_pred)),axis=-1) # MSE
+def loss_prmse(y_true,y_pred):
+    return BOOST*K.sqrt(K.mean(K.square(pixel_flat_diff(y_true,y_pred)),axis=-1)) # RMSE
+def loss_pmae(y_true,y_pred):
+    return BOOST*K.mean(K.abs(pixel_flat_diff(y_true,y_pred)),axis=-1) # MAE
+def loss_pmul(y_true,y_pred):
+    diff=pixel_flat_diff(y_true,y_pred)
+    return BOOST*K.mean(K.square(diff)*K.abs(diff),axis=-1) # MSExMAE
+def loss_padd(y_true,y_pred):
+    diff=pixel_flat_diff(y_true,y_pred)
+    return BOOST*(K.sqrt(K.mean(K.square(diff),axis=-1)) + K.mean(K.abs(diff),axis=-1)) # RMSE+MAE
+REVERSE=-1.0
+def pmse(y_true,y_pred):
+    return REVERSE*loss_pmse(y_true,y_pred)
+def prmse(y_true,y_pred):
+    return REVERSE*loss_prmse(y_true,y_pred)
+def pmae(y_true,y_pred):
+    return REVERSE*loss_pmae(y_true,y_pred)
+def pl1mix(y_true,y_pred):
+    return REVERSE*loss_padd(y_true,y_pred)
 
 def swish(x):
     return x * K.sigmoid(x)
@@ -132,3 +144,4 @@ def acc67(y_true, y_pred):
     return acc(central_crop(y_true,0.67), central_crop(y_pred,0.67))
 def acc33(y_true, y_pred):
     return acc(central_crop(y_true,0.33), central_crop(y_pred,0.33))
+

@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
 from cv2.cv2 import imwrite
-from skimage.io import imsave
 
 from image_gen import ImageMaskPair, ImageGenerator
 from net.basenet import Net
@@ -35,7 +34,7 @@ class Model:
     def __str__(self):
         return str(self.net)
     def __repr__(self):
-        return '_'.join([str(self.net)+('A' if self.net.predict_all_inclusive else 'I')])
+        return str(self.net)+self.net.predict_proc.__name__[0:1].upper()
 
     def train(self,multi:ImageMaskPair):
         for tr, val, dir_out in multi.train_generator():
@@ -121,12 +120,12 @@ class Model:
                     ind_file = os.path.join(target_dir, ind_name)
                     origin = view[i].get_image(os.path.join(multi.wd, multi.dir_in_ex()), self.net)
                     print(ind_name); text_list = [ind_name]
-                    blend, r_i=self.mask_call(origin, msk)
+                    blend, r_i=self.net.predict_proc(origin, msk)
                     for d in range(len(tgt_list)):
                         text = "[  %d: %s] %d / %d  %.2f%%" % ( d, tgt_list[d], r_i[d], sum_i, 100. * r_i[d] / sum_i)
                         print(text); text_list.append(text)
                     if save_ind_image or not self.net.separate: # skip saving individual images
-                        blendtext = self.draw_text(blend, text_list, self.net.row_out)  # RGB:3x8-bit dark text
+                        blendtext = self.net.draw_text(blend, text_list, self.net.row_out)  # RGB:3x8-bit dark text
                         imwrite(ind_file,blendtext)
                     res_i =r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i, r_i[np.newaxis,...]))
 
@@ -150,11 +149,11 @@ class Model:
                     print(grp); text_list=[grp]
                     merge_name = view[0].image_name
                     merge_file = os.path.join(merge_dir, merge_name)
-                    blend, r_g = self.mask_call(mrg_in, mrg_out)
+                    blend, r_g = self.net.predict_proc(mrg_in, mrg_out)
                     for d in range(len(tgt_list)):
                         text = "[  %d: %s] %d / %d  %.2f%%" % (d, tgt_list[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
                         print(text); text_list.append(text)
-                    blendtext = self.draw_text(blend, text_list, ra)  # RGB:3x8-bit dark text
+                    blendtext = self.net.draw_text(self.net, blend, text_list, ra)  # RGB:3x8-bit dark text
                     imwrite(merge_file, blendtext) # [...,np.newaxis]
                     res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g, r_g[np.newaxis,...]))
             res_ind=res_i if res_ind is None else np.hstack((res_ind, res_i))
@@ -164,43 +163,3 @@ class Model:
         if self.net.separate:
             df = pd.DataFrame(res_grp, index=batch.keys(), columns=multi.targets*multi.cfg.dep_out)
             to_excel_sheet(df, xls_file, multi.origin + "_sum")
-
-
-    def draw_text(self, img, text_list, width):
-        font = "arial.ttf" #times.ttf
-        size = round(0.33*(26+0.03*width+width/len(max(text_list, key=len))))
-        txt_col = (10, 10, 10)
-        origin = Image.fromarray(img.astype(np.uint8),'RGB') # L RGB
-        draw = ImageDraw.Draw(origin)
-        draw.text((0, 0), '\n'.join(text_list), txt_col, ImageFont.truetype(font, size))
-        for i in range(len(text_list)-1):
-            sym_col = self.net.overlay_color[i]
-            draw.text((0, 0), ' \n'*(i+1)+' X', sym_col, ImageFont.truetype(font, size))
-        return np.array(origin)
-
-
-    def mask_call(self, img, msk):  # blend, np result
-        msk=ImageGenerator.reverse_sigmoid(msk)
-        # imsave("test.jpg",msk)
-        return msk, np.zeros(3)
-        blend=img.copy()
-        opa=self.net.overlay_opacity
-        col=self.net.overlay_color
-        dim=self.net.predict_size if self.net.predict_all_inclusive else self.net.dep_out # do argmax if predict categories covers all possibilities or consider them individually
-        if dim==1: # r x c x 1
-            for d in range(msk.shape[-1]):
-                msk[...,d]=np.rint(msk[...,d])  # sigmoid round to  0/1 # consider range(-1 ~ +1) for multi class voting
-                for c in range(3):
-                    blend[..., c] = np.where(msk[...,d] >= 0.5, blend[..., c] * (1 - opa) + col[d][c] * opa, blend[..., c]) # weighted average
-            return blend, np.sum(msk, axis=(0,1), keepdims=False)
-            # return blend, np.sum(msk, keepdims=True)
-        else: # softmax r x c x multi_label
-            msk=np.argmax(msk, axis=-1)
-            uni, count=np.unique(msk, return_counts=True)
-            map_count=dict(zip(uni,count))
-            count_vec=np.zeros(dim)
-            for d in range(dim):
-                count_vec[d]=map_count.get(d) or 0
-                for c in range(3):
-                    blend[..., c] = np.where(msk == d, blend[..., c] * (1 - opa) + col[d][c] * opa, blend[..., c])
-            return blend, count_vec

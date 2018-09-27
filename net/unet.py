@@ -73,13 +73,13 @@ class UNet(Net):
 class UNetS(UNet):
     # default 1296x1296 with 2 skip connections, small memory consumption with 3x3 convolution only once for output
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super().__init__(dim_in=dim_in or (1296,1296,3), dim_out=dim_out or (1296,1296,1),
+        super(UNetS,self).__init__(dim_in=dim_in or (1296,1296,3), dim_out=dim_out or (1296,1296,1),
                          filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3], **kwargs)
 
 class UNet2(UNet):
     # default 768x768 with 2 skip connections, standard 3x3 conv twice per block
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super().__init__(dim_in=dim_in or (768,768,3), dim_out=dim_out or (768,768,1),
+        super(UNet2,self).__init__(dim_in=dim_in or (768,768,3), dim_out=dim_out or (768,768,1),
                          filters=filters or [64, 128, 256, 512, 1024], poolings=poolings or [2, 2, 2, 2, 2],
                          preproc=ca3,downconv=ca3,downjoin=sk,downsamp=dmp,downmerge=sk,downproc=ca3,
                         upconv=sk,upjoin=ct,upsamp=uu,upmerge=ct,upproc=ca33,postproc=sk, **kwargs)
@@ -87,22 +87,23 @@ class UNet2(UNet):
 class UNet2S(UNet):
     # default 1296x1296 with 2 skip connections, small memory consumption with 3x3 convolution only once for output
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super().__init__(dim_in=dim_in or (1296,1296,3), dim_out=dim_out or (1296,1296,1),
-                         filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
+        super(UNet2S,self).__init__(dim_in=dim_in or (1296,1296,3), dim_out=dim_out or (1296,1296,1),
+                         filters=filters or [64, 64, 96, 96, 128, 128, 196, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3],
+                         # filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
                          preproc=ca3,downconv=ca3,downjoin=sk,downsamp=dmp,downmerge=sk,downproc=ca3,
                         upconv=sk,upjoin=ct,upsamp=uu,upmerge=ct,upproc=ca3,postproc=sk, **kwargs)
 
 class UNet2M(UNet):
     # default 1296x1296 with 2 skip connections, medium memory consumption with 3x3 convolution twice for output
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super().__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
+        super(UNet2M,self).__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
                          filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
                          preproc=ca3, downconv=ca3, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=ca3,
                          upconv=sk, upjoin=ct, upsamp=uu, upmerge=ct, upproc=ca33, postproc=sk, **kwargs)
 class UNet2L(UNet):
     # default 1296x1296 with 2 skip connections, large memory consumption with 3x3 convolution twice for output, once more for postproc
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super().__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
+        super(UNet2L,self).__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
                          filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
                          preproc=ca3, downconv=ca3, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=ca3,
                          upconv=sk, upjoin=ct, upsamp=uu, upmerge=ct, upproc=ca33, postproc=ca3, **kwargs)
@@ -111,14 +112,14 @@ class SegNet(UNet):
     # SegNet zero padding downwards: conv->batchnorm->activation downsample: maxpool upwards: conv->batchnorm (no act) upsamp: upsampling activation on output layer
     # #U-shape 64,128(/2),256(/4),512(/8),512(/8),256(/4),128(/2),64,
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super().__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768,768, 1),
+        super(SegNet,self).__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768,768, 1),
                          filters=filters or [64, 128, 256, 512], poolings=poolings or [2, 2, 2, 2],
                          preproc=cba3, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=cba3,
                          upconv=cb3, upjoin=sk, upsamp=uu, upmerge=sk, upproc=cb3, postproc=sk, **kwargs)
 class SegNetS(UNet):
     # SegNet 1296x1296
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super().__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
+        super(SegNetS,self).__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
                          filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
                          preproc=cba3, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=cba3,
                          upconv=cb3, upjoin=sk, upsamp=uu, upmerge=sk, upproc=cb3, postproc=sk, **kwargs)
@@ -126,26 +127,26 @@ class SegNetS(UNet):
 
 class ResN131(UNet):
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super().__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768,768, 1),
+        super(ResN131,self).__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768,768, 1),
                          filters=filters or [64, 128, 256, 512], poolings=poolings or [2, 2, 2, 2],
                          preproc=rn131r, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=rn131r,
                          upconv=rn131r, upjoin=sk, upsamp=uu, upmerge=sk, upproc=rn131r, postproc=sk, **kwargs)
 class ResBN131(UNet):
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super().__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768,768, 1),
+        super(ResBN131,self).__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768,768, 1),
                          filters=filters or [64, 128, 256, 512], poolings=poolings or [2, 2, 2, 2],
                          preproc=rn131nr, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=rn131nr,
                          upconv=rn131nr, upjoin=sk, upsamp=uu, upmerge=sk, upproc=rn131nr, postproc=sk, **kwargs)
 
 class ResN131S(UNet): # ResNet 1296x1296
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super().__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
+        super(ResN131S,self).__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
                          filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
                          preproc=rn131r, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=rn131r,
                          upconv=rn131r, upjoin=sk, upsamp=uu, upmerge=sk, upproc=rn131r, postproc=sk, **kwargs)
 class ResBN131S(UNet): # ResNet 1296x1296
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super().__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
+        super(ResBN131S,self).__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
                          filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
                          preproc=rn131nr, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=rn131nr,
                          upconv=rn131nr, upjoin=sk, upsamp=uu, upmerge=sk, upproc=rn131nr, postproc=sk, **kwargs)
