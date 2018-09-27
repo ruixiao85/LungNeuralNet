@@ -13,7 +13,7 @@ def generate_colors(n, shuffle=False):
 class Config:
     def __init__(self,
         num_targets=None, image_format=None, image_resize=None, image_padding=None, mask_color=None,
-        coverage_tr=None, coverage_prd=None, batch_size=None, separate=None,
+        coverage_tr=None, coverage_prd=None, batch_size=None, separate=None, out_image=None,
         call_hardness=None, overlay_color=None, overlay_opacity=None, predict_size=None, predict_all_inclusive=None,
         train_rep=None, train_epoch=None, train_step=None, train_vali_step=None,
         train_vali_split=None, train_aug=None, train_continue=None, train_shuffle=None):
@@ -22,6 +22,7 @@ class Config:
         self.image_resize=image_resize or 1.0  # default 1.0, reduce size <=1.0
         self.image_padding=image_padding or 1.0  # default 1.0, padding proportionally >=1.0
         self.mask_color=mask_color or "white"  # green/white
+        self.out_image=out_image if out_image is not None else False # output type: True=image False=mask
         self.separate=separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
         self.coverage_train=coverage_tr or 2.0
         self.coverage_predict=coverage_prd or 3.0
@@ -33,7 +34,7 @@ class Config:
         self.predict_size=predict_size or num_targets
         self.predict_all_inclusive=predict_all_inclusive if predict_all_inclusive is not None else False
         self.batch_size=batch_size or 1
-        self.train_rep=train_rep or 3  # times to repeat during training
+        self.train_rep=train_rep or 6  # times to repeat during training
         self.train_epoch=train_epoch or 12  # max epoches during training
         self.train_step=train_step or 120
         self.train_vali_step=train_vali_step or 60

@@ -48,12 +48,12 @@ class Net(Config):
         with open(json_net, "w") as json_file:
             json_file.write(self.net.to_json())
 
-    def compile_net(self, printSummary=True):
+    def compile_net(self, print_summary=True):
         self.net.compile(
             optimizer=self.optimizer,
             loss=self.loss,
             metrics=self.metrics)
-        if printSummary:
+        if print_summary:
             self.net.summary()
 
     def __str__(self):

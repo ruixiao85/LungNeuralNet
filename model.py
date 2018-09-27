@@ -4,6 +4,8 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
+from cv2.cv2 import imwrite
+from skimage.io import imsave
 
 from image_gen import ImageMaskPair, ImageGenerator
 from net.basenet import Net
@@ -37,7 +39,7 @@ class Model:
 
     def train(self,multi:ImageMaskPair):
         for tr, val, dir_out in multi.train_generator():
-            export_name = multi.dir_out_ex(dir_out) +'_'+str(self)
+            export_name = dir_out +'_'+str(self)
             weight_file = export_name + ".h5"
             if self.net.train_continue and os.path.exists(weight_file):
                 print("Continue from previous weights")
@@ -97,7 +99,7 @@ class Model:
                     o=min(i+self.net.dep_out, nt)
                     tgt_sub=tgt_list[i:o]
                     tgt_name=ImageMaskPair.join_targets(tgt_sub)
-                    prd=ImageGenerator(multi, False, tgt_sub, view)
+                    prd=ImageGenerator(multi, 0, tgt_sub, view)
                     weight_file=tgt_name+'_'+dir_cfg_append+'.h5'
                     print(weight_file)
                     self.net.net.load_weights(weight_file) # weights only
@@ -109,12 +111,12 @@ class Model:
                 # r_i=np.zeros((len(multi.img_set.images),len(tgt_list)), dtype=np.uint32)
                 if self.net.separate:
                     mrg_in = np.zeros((view[0].ori_row, view[0].ori_col, self.net.dep_in), dtype=np.float32)
-                    mrg_out = np.zeros((view[0].ori_row, view[0].ori_col, len(tgt_list)), dtype=np.float32)
+                    mrg_out = np.zeros((view[0].ori_row, view[0].ori_col, len(tgt_list)*self.net.dep_out), dtype=np.float32)
                     mrg_out_wt = np.zeros((view[0].ori_row, view[0].ori_col), dtype=np.float32) + np.finfo(np.float32).eps
                     sum_g = view[0].ori_row * view[0].ori_col
-                    # r_g=np.zeros((1,len(tgt_list)), dtype=np.uint32)
+                    # r_g=np.zeros((1,len(tgt_list)*self.net.dep_out), dtype=np.uint32)
                 for i, msk in enumerate(msks):
-                    # if i>=len(multi.view_coord): break # last batch may have unused entries
+                    # if i>=len(multi.view_coord): print("skip %d for overrange"%i); break # last batch may have unused entries
                     ind_name = view[i].file_name
                     ind_file = os.path.join(target_dir, ind_name)
                     origin = view[i].get_image(os.path.join(multi.wd, multi.dir_in_ex()), self.net)
@@ -124,9 +126,8 @@ class Model:
                         text = "[  %d: %s] %d / %d  %.2f%%" % ( d, tgt_list[d], r_i[d], sum_i, 100. * r_i[d] / sum_i)
                         print(text); text_list.append(text)
                     if save_ind_image or not self.net.separate: # skip saving individual images
-                        blend = self.draw_text(blend, text_list, self.net.row_out)  # RGB:3x8-bit dark text
-                        blend.save(ind_file.replace(img_ext, ".jpe"))
-                        # imsave(ind_file.replace(img_ext, ".jpe"), blend)
+                        blendtext = self.draw_text(blend, text_list, self.net.row_out)  # RGB:3x8-bit dark text
+                        imwrite(ind_file,blendtext)
                     res_i =r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i, r_i[np.newaxis,...]))
 
                     if self.net.separate:
@@ -140,11 +141,11 @@ class Model:
                         if ro>ra: tro=tro-(ro-ra); ro=ra
                         if co>ca: tco=tco-(co-ca); co=ca
                         mrg_in[ri:ro,ci:co] = origin[tri:tro,tci:tco]
-                        for d in range(len(tgt_list)):
+                        for d in range(len(tgt_list)*self.net.dep_out):
                             mrg_out[ri:ro,ci:co,d] += (msk[...,d] * mask_wt)[tri:tro,tci:tco]
                         mrg_out_wt[ri:ro,ci:co] += mask_wt[tri:tro,tci:tco]
                 if self.net.separate:
-                    for d in range(len(tgt_list)):
+                    for d in range(len(tgt_list)*self.net.dep_out):
                         mrg_out[...,d] /= mrg_out_wt
                     print(grp); text_list=[grp]
                     merge_name = view[0].image_name
@@ -153,17 +154,15 @@ class Model:
                     for d in range(len(tgt_list)):
                         text = "[  %d: %s] %d / %d  %.2f%%" % (d, tgt_list[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
                         print(text); text_list.append(text)
-                    # cv2.imwrite(merge_file, mrg_out[..., np.newaxis] * 255.)
-                    blend = self.draw_text(blend, text_list, ra)  # RGB:3x8-bit dark text
-                    blend.save(merge_file.replace(img_ext, ".jpe"))
-                    # imsave(merge_file.replace(img_ext, ".jpe"), blend)
+                    blendtext = self.draw_text(blend, text_list, ra)  # RGB:3x8-bit dark text
+                    imwrite(merge_file, blendtext) # [...,np.newaxis]
                     res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g, r_g[np.newaxis,...]))
             res_ind=res_i if res_ind is None else np.hstack((res_ind, res_i))
             res_grp=res_g if res_grp is None else np.hstack((res_grp, res_g))
-        df = pd.DataFrame(res_ind, index=multi.img_set.images, columns=multi.targets)
+        df = pd.DataFrame(res_ind, index=multi.img_set.images, columns=multi.targets*multi.cfg.dep_out)
         to_excel_sheet(df, xls_file, multi.origin)  # per slice
         if self.net.separate:
-            df = pd.DataFrame(res_grp, index=batch.keys(), columns=multi.targets)
+            df = pd.DataFrame(res_grp, index=batch.keys(), columns=multi.targets*multi.cfg.dep_out)
             to_excel_sheet(df, xls_file, multi.origin + "_sum")
 
 
@@ -177,10 +176,13 @@ class Model:
         for i in range(len(text_list)-1):
             sym_col = self.net.overlay_color[i]
             draw.text((0, 0), ' \n'*(i+1)+' X', sym_col, ImageFont.truetype(font, size))
-        return origin
+        return np.array(origin)
 
 
     def mask_call(self, img, msk):  # blend, np result
+        msk=ImageGenerator.reverse_sigmoid(msk)
+        # imsave("test.jpg",msk)
+        return msk, np.zeros(3)
         blend=img.copy()
         opa=self.net.overlay_opacity
         col=self.net.overlay_color

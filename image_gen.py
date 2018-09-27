@@ -201,7 +201,7 @@ class ImageSet(FolderSet):
 
 
 class ImageMaskPair:
-    def __init__(self, cfg:Net, wd, origin, targets, is_train, out_image):
+    def __init__(self, cfg:Net, wd, origin, targets, is_train, is_reverse=False):
         self.cfg=cfg
         self.wd = wd
         self.origin = origin
@@ -211,7 +211,7 @@ class ImageMaskPair:
         self.msk_set = None
         self.view_coord=self.img_set.view_coord
         self.is_train = is_train
-        self.out_image = out_image
+        self.is_reverse = is_reverse
 
     def train_generator(self):
         i = 0; no=self.cfg.dep_out; nt=len(self.targets)
@@ -246,8 +246,8 @@ class ImageMaskPair:
                   (len(self.view_coord), len(tr_list), len(tr_image), len(val_list), len(val_image)))
             print("Training Images:"); print(tr_image)
             print("Validation Images:"); print(val_image)
-            yield(ImageGenerator(self, self.cfg.train_aug, tgt_list, tr_list), ImageGenerator(self, False, tgt_list, val_list),
-                    self.join_targets(tgt_list))
+            yield(ImageGenerator(self, self.cfg.train_aug, tgt_list, tr_list), ImageGenerator(self, 0, tgt_list, val_list),
+                  self.dir_in_ex(self.origin) if self.is_reverse else self.dir_out_ex(self.join_targets(tgt_list)) )
             i=o
 
     def predict_generator(self):
@@ -257,14 +257,14 @@ class ImageMaskPair:
         while i < nt:
             o = min(i + ps, nt)
             tgt_list=self.targets[i:o]
-            yield (self.join_targets(tgt_list),tgt_list)
+            yield (self.join_targets(tgt_list), tgt_list)
             i = o
 
     @staticmethod
     def join_targets(tgt_list) :
         # return ','.join(tgt_list)
         # return ','.join(tgt_list[:max(1, int(24 / len(tgt_list)))]) #shorter but >= 1 char, may have error if categories share same leading chars
-        maxchar=max(1, int(24 / len(tgt_list))) # clip to fewer leading chars
+        maxchar=max(1, int(28 / len(tgt_list))) # clip to fewer leading chars
         # maxchar=9999 # include all
         return ','.join(tgt[:maxchar] for tgt in tgt_list)
 
@@ -280,13 +280,12 @@ class ImageMaskPair:
         return txt+'_'+ext if self.cfg.separate else txt
 
 class ImageGenerator(keras.utils.Sequence):
-    def __init__(self,pair:ImageMaskPair,aug,tgt_list,view_coord=None,out_image=None):
+    def __init__(self,pair:ImageMaskPair,aug_value,tgt_list,view_coord=None):
         self.pair=pair
         self.cfg=pair.cfg
-        self.train_aug=aug
+        self.aug_value=aug_value
         self.target_list=tgt_list
         self.view_coord=pair.view_coord if view_coord is None else view_coord
-        self.out_image=out_image if out_image is None else False
         self.indexes = np.arange(len(self.view_coord))
 
     def __len__(self):  # Denotes the number of batches per epoch
@@ -300,22 +299,24 @@ class ImageGenerator(keras.utils.Sequence):
             _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
                 _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex()), self.cfg)
-                if self.out_image:
-                    _tgt[vi,...]=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_out_ex(self.target_list[0])),self.cfg)
+                if self.cfg.out_image:
+                    # for ti,tgt in enumerate(self.target_list):
+                    #     _tgt[vi, ...,ti] =np.average( vc.get_image(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg), axis=-1) # average RGB to gray
+                    _tgt[vi, ...] =vc.get_image(os.path.join(self.pair.wd, self.pair.dir_out_ex(self.target_list[0])), self.cfg)
                 else:
                     for ti,tgt in enumerate(self.target_list):
                         _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg)
-            if self.train_aug>0:
-                _img, _tgt = augment_image_pair(_img, _tgt,self.train_aug)  # integer N: a <= N <= b. random.randint(0, 4)
+            if self.aug_value > 0:
+                _img, _tgt = augment_image_pair(_img, _tgt,self.cfg.train_aug)  # integer N: a <= N <= b. random.randint(0, 4)
                 # imwrite("tr_img.jpg",_img[0])
                 # imwrite("tr_tgt.jpg",_tgt[0])
-            return self.scale_input(_img), self.scale_input(_tgt) if self.out_image else self.scale_output(_tgt)
+            return self.scale_sigmoid(_img),self.scale_sigmoid(_tgt)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
                 _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex()), self.cfg)
                 # imwrite("prd_img.jpg",_img[0])
-            return self.scale_input(_img), None
+            return self.scale_sigmoid(_img),None
 
     def on_epoch_end(self):  # Updates indexes after each epoch
         self.indexes = np.arange(len(self.view_coord))
@@ -323,23 +324,25 @@ class ImageGenerator(keras.utils.Sequence):
             np.random.shuffle(self.indexes)
 
     @staticmethod
-    def scale_input(_array):
-        return _array.astype(np.float32) / 127.5 - 1.0
+    def scale_sigmoid(_array):
+        return _array.astype(np.float32) / 255.0  # 0 ~ 1
     @staticmethod
-    def scale_input_reverse(_array):
-        return (_array.astype(np.float32) + 1.0) * 127.5
+    def reverse_sigmoid(_array):
+        return (_array.astype(np.float32) * 255.0).astype(np.uint8)  # 0 ~ 1
     @staticmethod
-    def scale_output(_array):
-        return _array.astype(np.float32) / 255.0  # 0~1
-        # return _array.astype(np.float32) / 127.5 - 1.0  # tanh
+    def scale_tanh(_array):
+        return _array.astype(np.float32) / 127.5 - 1.0  # -1 ~ +1
+    @staticmethod
+    def reverse_tanh(_array):
+        return ((_array.astype(np.float32) + 1.0) * 127.5).astype(np.uint8)  # -1 ~ +1
 
 
 class NoiseSet(FolderSet):
     def __init__(self,cfg:Net,wd,sf,is_train,is_image):
         self.bright_diff=-10 # local brightness should be more than noise patch brightness,
         self.scale_factor=0.25 # 40X patch into 10X images
-        self.min_initialize=0.00001 # min rate of random points and loop through
-        self.max_initialize=0.0002 # max rate of random points and loop through
+        self.min_initialize=0.00005 # min rate of random points and loop through
+        self.max_initialize=0.001 # max rate of random points and loop through
         self.aj_size=4
         self.aj_std=0.2
         self.patches=None
@@ -359,15 +362,16 @@ class NoiseSet(FolderSet):
         # self.col=self.cfg.col_in if is_image else self.cfg.col_out
         # self.view_coord=None  # list
 
-    def add_noise(self,img):
+    def add_noise(self,img, divider=1, remainder=0):
         inserted=0
         lg_row,lg_col,lg_dep=img.shape
         msk=np.zeros(img.shape,dtype=np.uint8)
         lg_sum=lg_row*lg_col
         lg_min,lg_max=int(lg_sum*self.min_initialize),int(lg_sum*self.max_initialize)
         rand_num=[(random.random(),random.uniform(0,1),random.uniform(0,1)) for r in range(random.randint(lg_min,lg_max))] # index,row,col
+        times=self.num_patches//divider
         for irc in rand_num:
-            idx=int(self.num_patches*irc[0]) # index of patch to apply
+            idx=int(times*irc[0])+remainder # index of patch to apply
             patch=self.view_coord[idx]
             p_row,p_col,p_ave,p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
             lri=int(lg_row*irc[1])-p_row//2 # large row in/start
@@ -380,7 +384,10 @@ class NoiseSet(FolderSet):
             if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
                 int(np.std(img[lri-p_row*self.aj_size:lro+p_row*self.aj_size,lci-p_col*self.aj_size:lco+p_col*self.aj_size])>self.aj_std*p_std): # target area is brighter, then add patch
                 # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(lg_row,lri,lro,lg_col,lci,lco,p_row,pri,pro,p_col,pci,pco))
-                img[lri:lro,lci:lco]=np.minimum(img[lri:lro,lci:lco],self.patches[idx][pri:pro,pci:pco])
+                pat=self.patches[idx][pri:pro,pci:pco]
+                if random.random()>0.5: pat=np.fliplr(pat)
+                if random.random()>0.5: pat=np.flipud(pat)
+                img[lri:lro,lci:lco]=np.minimum(img[lri:lro,lci:lco],pat)
                 # imwrite('test_addnoise.jpg',img)
                 msk[lri:lro,lci:lco,...]=255
                 # msk[lri:lro,lci:lco,0]=255
@@ -495,12 +502,13 @@ class ImageNoisePair(ImageMaskPair):
         tgt_noise=NoiseSet(cfg,wd,targets[i],is_train,True)
         tgt_noise.sub_folder='_'.join([targets[i],origin])
         msk_folder='_'.join([targets[i],"Mask"])
+        ngroups=len(self.img_set.view_coord)
         if not util.mk_dir_if_nonexist(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder)) or not util.mk_dir_if_nonexist(os.path.join(tgt_noise.work_directory,msk_folder)):
             self.cfg.separate=True # separate=True to read full scale
-            for vc in self.img_set.view_coord:
+            for vi,vc in enumerate(self.img_set.view_coord):
                 img=vc.get_image(os.path.join(self.img_set.work_directory,self.img_set.sub_folder),self.cfg)
                 # imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
-                img,msk=tgt_noise.add_noise(img)
+                img,msk=tgt_noise.add_noise(img, divider=ngroups, remainder=vi)
                 imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,vc.image_name),img)
                 imwrite(os.path.join(tgt_noise.work_directory,msk_folder,vc.image_name),msk)
             self.nos_set.append(tgt_noise)
@@ -557,7 +565,7 @@ class ImageNoisePair(ImageMaskPair):
                   (len(self.view_coord), len(tr_list), len(tr_image), len(val_list), len(val_image)))
             print("Training Images:"); print(tr_image)
             print("Validation Images:"); print(val_image)
-            yield(ImageGenerator(self, self.cfg.train_aug, tgt_list, tr_list,out_image=True), ImageGenerator(self, False, tgt_list, val_list,out_image=True),
+            yield(ImageGenerator(self, self.cfg.train_aug, tgt_list, tr_list), ImageGenerator(self, 0, tgt_list, val_list),
                     self.join_targets(tgt_list))
             i=o
 

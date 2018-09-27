@@ -4,6 +4,7 @@ import cv2
 from keras import backend as K, metrics
 from keras.engine import Layer, InputSpec
 from keras.layers import Activation
+from keras.losses import mse,mae
 from keras.utils import get_custom_objects
 import tensorflow as tf
 from tensorflow.python.ops.image_ops_impl import central_crop
@@ -81,6 +82,18 @@ def focal_loss(y_true, y_pred, gamma=0.5, alpha=.25): # (1-alpha)^gamma x CE.  a
     pt_0 = tf.where(tf.equal(y_true, 0), y_pred, tf.zeros_like(y_pred))
     return -K.sum(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1))-K.sum((1-alpha) * K.pow( pt_0, gamma) * K.log(1. - pt_0))
 
+def flatten_pixel(y_true,y_pred):
+    return K.reshape(y_true,shape=[-1,3]), K.reshape(y_pred,shape=[-1,3])
+def loss_psse(y_true,y_pred):
+    y_true_r, y_pred_r=flatten_pixel(y_true,y_pred)
+    return K.sum(K.square(y_pred_r-y_true_r), axis=-1)
+def psse(y_true,y_pred):
+    return -loss_psse(y_true,y_pred)
+def loss_psae(y_true,y_pred):
+    y_true_r, y_pred_r=flatten_pixel(y_true,y_pred)
+    return K.sum(K.abs(y_pred_r - y_true_r), axis=-1)
+def psae(y_true,y_pred):
+    return -loss_psae(y_true,y_pred)
 
 def swish(x):
     return x * K.sigmoid(x)

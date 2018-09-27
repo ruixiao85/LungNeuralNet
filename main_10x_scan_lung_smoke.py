@@ -42,17 +42,23 @@ if __name__ == '__main__':
     from net.vgg import VggSegNet
     from net.module import ca1, ca2, ca3, ca3h, cadh, ca33, ca13, cba3, cb3, dmp, dca, uu, ut, uta, sk, ct,\
       du32, cdu33, rn131r, rn131nr, dn13r, dn13nr
+    from metrics import loss_psse, psse, loss_psae, psae
     from keras.optimizers import Adam, SGD, RMSprop, Nadam
     nets = [
         # SegNet(num_targets=len(targets), predict_all_inclusive=False),
         # SegNetS(num_targets=len(targets), predict_all_inclusive=False),
         # UNet(num_targets=len(targets), predict_all_inclusive=False),
         # UNet2(num_targets=len(targets), predict_all_inclusive=False),
-        UNet(num_targets=len(targets), predict_all_inclusive=False,dim_out=(768,768,3), out='tanh', indicator='val_acc', loss='mean_squared_error', metrics=['acc']),
+        # UNet(num_targets=len(targets), predict_all_inclusive=False),
         # UNet2M(num_targets=len(targets), predict_all_inclusive=False),
         # UNet2L(num_targets=len(targets), predict_all_inclusive=False),
         # VggSegNet(num_targets=len(targets), predict_all_inclusive=False),
         # Refine(num_targets=len(targets),predict_all_inclusive=False)
+        UNet2(num_targets=len(targets),predict_all_inclusive=False,filters=[96, 128, 256, 512, 768],dim_in=(768,768,3),dim_out=(768,768,3),out='sigmoid',out_image=True,indicator='val_psae',loss=loss_psae,metrics=[psae]),
+        UNet2(num_targets=len(targets),predict_all_inclusive=False,filters=[96, 128, 256, 512, 768],dim_in=(768,768,3),dim_out=(768,768,3),out='sigmoid',out_image=True,indicator='val_psse',loss=loss_psse,metrics=[psse]),
+        SegNet(num_targets=len(targets),predict_all_inclusive=False,dim_in=(768,768,3),dim_out=(768,768,3),out='sigmoid',out_image=True,indicator='val_psae',loss=loss_psae,metrics=[psae]),
+        UNet(num_targets=len(targets),predict_all_inclusive=False,dim_in=(768,768,3),dim_out=(768,768,3),out='sigmoid',out_image=True,indicator='val_psae',loss=loss_psae,metrics=[psae]),
+        UNet2(num_targets=len(targets),predict_all_inclusive=False,dim_in=(768,768,3),dim_out=(768,768,3),out='sigmoid',out_image=True,indicator='val_psae',loss=loss_psae,metrics=[psae]),
     ]
 
     mode = args.mode[0].lower()
@@ -65,12 +71,15 @@ if __name__ == '__main__':
                 # model.train(multi_set)
                 for target in targets:
                     # ImageNoisePair(net, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
-                    multi_set=ImageMaskPair(net,os.path.join(os.getcwd(),args.train_dir),target+"_Original",[origin],is_train=True,out_image=False)
+                    multi_set=ImageMaskPair(net,os.path.join(os.getcwd(),args.train_dir),target+"_Original",[origin],is_train=True,is_reverse=True)
                     model.train(multi_set)
 
     if mode != 't':
         for net in nets:
             model= Model(net)
             for origin in origins:
-                multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False)
-                model.predict(multi_set, args.pred_dir)
+                # multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False)
+                # model.predict(multi_set, args.pred_dir)
+                for target in targets:
+                    multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,[target+"_Original"],is_train=False)
+                    model.predict(multi_set, args.pred_dir)
