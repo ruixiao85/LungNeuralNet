@@ -8,7 +8,7 @@ from cv2.cv2 import imwrite
 
 import util
 from net.basenet import Net
-from process_image import augment_image_pair,read_resize_padding,extract_pad_image,scale_sigmoid
+from process_image import augment_image_pair,read_resize_padding,extract_pad_image,prep_scale
 
 ALL_TARGET = 'All'
 class MetaInfo:
@@ -310,13 +310,13 @@ class ImageGenerator(keras.utils.Sequence):
                 _img, _tgt = augment_image_pair(_img, _tgt,self.cfg.train_aug)  # integer N: a <= N <= b. random.randint(0, 4)
                 # imwrite("tr_img.jpg",_img[0])
                 # imwrite("tr_tgt.jpg",_tgt[0])
-            return scale_sigmoid(_img), scale_sigmoid(_tgt)
+            return prep_scale(_img, self.cfg.feed), prep_scale(_img, self.cfg.out)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
                 _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex()), self.cfg)
                 # imwrite("prd_img.jpg",_img[0])
-            return scale_sigmoid(_img),None
+            return prep_scale(_img, self.cfg.feed), None
 
     def on_epoch_end(self):  # Updates indexes after each epoch
         self.indexes = np.arange(len(self.view_coord))

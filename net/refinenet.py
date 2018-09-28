@@ -87,7 +87,7 @@ class Refine(Net):
             type(self).__name__,
             "%dF%dS%d-%dT%d-%dM%d"%(
                 len(self.sizes), self.filters, self.sizes[0], self.sizes[-1], self.steps[0], self.steps[-1], self.merge),
-            self.cap_lim_join(7, self.act, self.out,
+            self.cap_lim_join(4, self.feed, self.act, self.out,
                               (self.loss if isinstance(self.loss, str) else self.loss.__name__).
                               replace('_', '').replace('loss', ''))
             +str(self.dep_out)])

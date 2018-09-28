@@ -96,7 +96,7 @@ class VggSegNet(Net):
             self.cap_lim_join(10, self.upconv.__name__, self.upjoin.__name__,
                               self.upsamp.__name__, self.upmerge.__name__, self.upproc.__name__,
                               self.postproc.__name__),
-            self.cap_lim_join(7, self.act, self.out,
+            self.cap_lim_join(4, self.feed, self.act, self.out,
                               (self.loss if isinstance(self.loss, str) else self.loss.__name__).
                               replace('_', '').replace('loss', ''))
             +str(self.dep_out)])

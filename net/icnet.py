@@ -25,7 +25,7 @@ class ICNet(Net):
                  ):
         super(ICNet,self).__init__(kwargs)
 
-        from net.module import ca3, ca33, dmp, uu, ct, sk
+        from net.module import ca3, ca33, dmp, uu, ct, sk, cvac
         self.fs=filters or [64, 128, 256, 512, 1024]
         self.ps=poolings or [2]*len(self.fs)
         self.preproc=preproc or ca3
@@ -50,7 +50,7 @@ class ICNet(Net):
             locals()['dsamp%d'%(i+1)]=self.downsamp(locals()['djoin%d'%i], self.ps[i], 'dsamp%d'%(i+1), i, self.fs[i],
                                                     self.act)
             locals()['dmerge%d'%(i+1)]=self.downmerge(locals()['dsamp%d'%(i+1)], prev_layer, 'dmerge%d'%(i+1), i+1,
-                                                      self.fs[i+1], self.act, stride=ps[i])
+                                                      self.fs[i+1], self.act, stride=self.ps[i])
             locals()['dproc%d'%(i+1)]=self.downproc(locals()['dmerge%d'%(i+1)], 'dproc%d'%(i+1), i+1, self.fs[i+1],
                                                     self.act)
 
@@ -81,7 +81,7 @@ class ICNet(Net):
             self.cap_lim_join(10, self.upconv.__name__, self.upjoin.__name__,
                               self.upsamp.__name__, self.upmerge.__name__, self.upproc.__name__,
                               self.postproc.__name__),
-            self.cap_lim_join(7, self.act, self.out,
+            self.cap_lim_join(4, self.feed, self.act, self.out,
                               (self.loss if isinstance(self.loss, str) else self.loss.__name__).
                               replace('_', '').replace('loss', ''))
             +str(self.dep_out)])

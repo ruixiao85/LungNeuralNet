@@ -65,7 +65,7 @@ class UNet(Net):
             self.cap_lim_join(10, self.upconv.__name__, self.upjoin.__name__,
                               self.upsamp.__name__, self.upmerge.__name__, self.upproc.__name__,
                               self.postproc.__name__),
-            self.cap_lim_join(7, self.act, self.out,
+            self.cap_lim_join(4, self.feed, self.act, self.out,
                               (self.loss if isinstance(self.loss, str) else self.loss.__name__).
                               replace('_', '').replace('loss', ''))
             +str(self.dep_out)])
@@ -84,25 +84,31 @@ class UNet2(UNet):
                          preproc=ca3,downconv=ca3,downjoin=sk,downsamp=dmp,downmerge=sk,downproc=ca3,
                         upconv=sk,upjoin=ct,upsamp=uu,upmerge=ct,upproc=ca33,postproc=sk, **kwargs)
 
+class UNet2m(UNet):
+    # default 768x768 with 2 skip connections, lower case small detail. medium memory consumption with 3x3 convolution twice for output
+    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
+        super(UNet2m,self).__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
+                         filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
+                         preproc=ca3, downconv=ca3, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=ca3,
+                         upconv=sk, upjoin=ct, upsamp=uu, upmerge=ct, upproc=ca33, postproc=sk, **kwargs)
+
 class UNet2S(UNet):
-    # default 1296x1296 with 2 skip connections, small memory consumption with 3x3 convolution only once for output
+    # default 1296x1296 with 2 skip connections, UPPER case global context. small memory consumption with 3x3 convolution only once for output
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
         super(UNet2S,self).__init__(dim_in=dim_in or (1296,1296,3), dim_out=dim_out or (1296,1296,1),
-                         filters=filters or [64, 64, 96, 96, 128, 128, 196, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3],
-                         # filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
-                         preproc=sk,downconv=ca3,downjoin=sk,downsamp=dmp,downmerge=sk,downproc=ca3,
-                         # preproc=ca3,downconv=ca3,downjoin=sk,downsamp=dmp,downmerge=sk,downproc=ca3,
+                         filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
+                         preproc=ca3,downconv=ca3,downjoin=sk,downsamp=dmp,downmerge=sk,downproc=ca3,
                         upconv=sk,upjoin=ct,upsamp=uu,upmerge=ct,upproc=ca3,postproc=sk, **kwargs)
 
 class UNet2M(UNet):
-    # default 1296x1296 with 2 skip connections, medium memory consumption with 3x3 convolution twice for output
+    # default 1296x1296 with 2 skip connections, UPPER case global context. medium memory consumption with 3x3 convolution twice for output
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
         super(UNet2M,self).__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
                          filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
                          preproc=ca3, downconv=ca3, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=ca3,
                          upconv=sk, upjoin=ct, upsamp=uu, upmerge=ct, upproc=ca33, postproc=sk, **kwargs)
 class UNet2L(UNet):
-    # default 1296x1296 with 2 skip connections, large memory consumption with 3x3 convolution twice for output, once more for postproc
+    # default 1296x1296 with 2 skip connections, UPPER case global context. large memory consumption with 3x3 convolution twice for output, once more for postproc
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
         super(UNet2L,self).__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
                          filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
