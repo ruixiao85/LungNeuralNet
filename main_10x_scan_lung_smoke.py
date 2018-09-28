@@ -22,7 +22,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--input', dest='input', type=str,
                         default='Original', help='input: Original')
     parser.add_argument('-o', '--output', dest='output', type=str,
-                        default='ConductingAirway,LargeBloodVessel', help='output: targets separated by comma')
+                        default='InflammatoryCell', help='output: targets separated by comma')
     #Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,RespiratoryAirway,SmallBloodVessel
     #InflammatoryCell
     args = parser.parse_args()
@@ -44,7 +44,7 @@ if __name__ == '__main__':
     from net.module import ca1, ca2, ca3, ca3h, cadh, ca33, ca13, cba3, cb3, dmp, dca, uu, ut, uta, sk, ct,\
       du32, cdu33, rn131r, rn131nr, dn13r, dn13nr
     from metrics import loss_pmse, loss_pmae, loss_pmul, loss_padd, pmse, prmse, pmae, pl1mix
-    from model import Model
+    from model import single_call,multi_call,compare_call
     from keras.optimizers import Adam, SGD, RMSprop, Nadam
     nets = [
         # SegNet(num_targets=len(targets)),
@@ -52,13 +52,14 @@ if __name__ == '__main__':
         # UNet(num_targets=len(targets)),
         # UNet2(num_targets=len(targets)),
         # UNet(num_targets=len(targets)),
-        UNet2S(num_targets=len(targets)),
+        # UNet2S(num_targets=len(targets)),
         # UNet2M(num_targets=len(targets)),
         # UNet2L(num_targets=len(targets)),
         # VggSegNet(num_targets=len(targets)),
         # Refine(num_targets=len(targets))
 
-        # UNet2(num_targets=len(targets),filters=[96, 128, 256, 512, 768],dim_in=(768,768,3),dim_out=(768,768,3),out='sigmoid',out_image=True,indicator='val_pl1mix',loss=loss_pmse,metrics=[pl1mix],predict_proc=Model.compare_call),
+        # UNet2S(num_targets=len(targets),filters=[96, 128, 256, 512, 768],dim_in=(768,768,3),dim_out=(768,768,3),out='sigmoid',out_image=True,indicator='val_pl1mix',loss=loss_pmse,metrics=[pl1mix],predict_proc=compare_call),
+        UNet2S(num_targets=len(targets)), #,filters=[96, 128, 256, 512, 768]
     ]
 
     mode = args.mode[0].lower()
@@ -67,21 +68,23 @@ if __name__ == '__main__':
             model= Model(net)
             print("Network specifications: " + str(net))
             for origin in origins:
-                multi_set = ImageMaskPair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
-                model.train(multi_set)
+                # multi_set = ImageMaskPair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
+                # model.train(multi_set)
 
-                # for target in targets:
-                #     ImageNoisePair(net, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
-                    # multi_set=ImageMaskPair(net,os.path.join(os.getcwd(),args.train_dir),target+"_Original",[origin],is_train=True,is_reverse=True)
-                    # model.train(multi_set)
+                for target in targets:
+                    # ImageNoisePair(net, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
+                    # multi_set=ImageMaskPair(net,os.path.join(os.getcwd(),args.train_dir),target+"+",[origin],is_train=True,is_reverse=True)
+                    multi_set=ImageMaskPair(net,os.path.join(os.getcwd(),args.train_dir),target+"+",[target+"-"],is_train=True)
+                    model.train(multi_set)
 
     if mode != 't':
         for net in nets:
             model= Model(net)
             for origin in origins:
-                multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False)
-                model.predict(multi_set, args.pred_dir)
+                # multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False)
+                # model.predict(multi_set, args.pred_dir)
 
-                # for target in targets:
-                #     multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,[target+"_Original"],is_train=False)
-                #     model.predict(multi_set, args.pred_dir)
+                for target in targets:
+                    # multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,[target+"+"],is_train=False)
+                    multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,[target+"-"],is_train=False)
+                    model.predict(multi_set, args.pred_dir)
