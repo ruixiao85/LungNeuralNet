@@ -32,6 +32,15 @@ def normalize_meanstd(a, axis=(1,2)):
     # return norm/(1+np.abs(norm)) # softsign
     # return np.tanh(norm) # tanh
 
+def rev_scale(_img,fun=None):
+    if fun=='tanh':
+        return reverse_tanh(_img)
+        # return normalize_meanstd(_img)
+    elif fun=='sigmoid':
+        return reverse_sigmoid(_img)
+    else:
+        raise("function %s not supported" % fun)
+
 def scale_sigmoid(_array):
     return _array.astype(np.float32)/255.0  # 0 ~ 1
 
@@ -43,6 +52,7 @@ def scale_tanh(_array):
 
 def reverse_tanh(_array):
     return ((_array.astype(np.float32)+1.0)*127.5).astype(np.uint8)  # -1 ~ +1
+
 
 def read_resize_padding(_file, _resize, _padding):
     if _resize < 1.0:

@@ -8,7 +8,7 @@ from cv2.cv2 import imwrite,connectedComponents,connectedComponentsWithStats,CV_
 
 from image_gen import ImageMaskPair, ImageGenerator
 from net.basenet import Net
-from process_image import reverse_sigmoid,scale_sigmoid
+from process_image import prep_scale, rev_scale
 from util import mk_dir_if_nonexist, to_excel_sheet
 
 def g_kern(size, sigma):
@@ -39,27 +39,36 @@ def blur(a):
     return arraylist_sum
 
 def single_call(cfg,img,msk,file=None):  # sigmoid (r,c,1) blend, np result
-    blend=img.copy()
     res=None
+    blend=img.copy()
     # TODO apply blur
     msk=np.rint(msk)  # sigmoid round to  0/1 # consider range(-1 ~ +1) for multi class voting
     for d in range(msk.shape[-1]):
         curr=msk[...,d][...,np.newaxis].astype(np.uint8)
-        count, labels=connectedComponents(curr,connectivity=8,ltype=CV_32S)
-        newres=np.array([np.sum(curr,keepdims=False),count])
-        res=newres if res is None else np.concatenate([res,newres],axis=-1)
+        newres,labels=cal_area_count(curr)
+        res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres))
         for c in range(3):
             blend[...,c]=np.where(msk[...,d]>=0.5,blend[...,c]*(1-cfg.overlay_opacity)+cfg.overlay_color[d][c]*cfg.overlay_opacity,blend[...,c])  # weighted average
         if file is not None:
-            # output=connectedComponentsWithStats(msk[...,d],connectivity=8,ltype=CV_32S)
-            label_hue=np.uint8(179*labels/np.max(labels)) # Map component labels to hue val
-            blank_ch=255*np.ones_like(label_hue)
-            labeled_img=merge([label_hue,blank_ch,blank_ch])
-            labeled_img=cvtColor(labeled_img,COLOR_HSV2BGR) # cvt to BGR for display
-            labeled_img[label_hue==0]=0 # set bg label to black
-            imwrite(file+'_%d.png'%d,labeled_img)
+            connect_component_label(d,file,labels)
     return blend, res
     # return blend, np.sum(msk, keepdims=True)
+
+
+def connect_component_label(d,file,labels):
+    label_hue=np.uint8(179*labels/np.max(labels))  # Map component labels to hue val
+    blank_ch=255*np.ones_like(label_hue)
+    labeled_img=merge([label_hue,blank_ch,blank_ch])
+    labeled_img=cvtColor(labeled_img,COLOR_HSV2BGR)  # cvt to BGR for display
+    labeled_img[label_hue==0]=0  # set bg label to black
+    imwrite(file+'_%d.png'%d,labeled_img)
+
+
+def cal_area_count(rc1):
+    count,labels=connectedComponents(rc1,connectivity=8,ltype=CV_32S)
+    newres=np.array([np.sum(rc1,keepdims=False),count])
+    return newres,labels
+
 
 def multi_call(cfg,img,msk,file=None):  # softmax (r,c,multi_label) blend, np result
     blend=img.copy()
@@ -75,11 +84,15 @@ def multi_call(cfg,img,msk,file=None):  # softmax (r,c,multi_label) blend, np re
     return blend,count_vec
 
 def compare_call(cfg,img,msk,file=None):  # compare input and output with same dimension
-    diff=np.round(np.abs(msk-scale_sigmoid(img)))
-    # b=np.sum(diff,axis=(0,-1),keepdims=False)
-    # c=np.sum(diff,axis=-1,keepdims=False)
-    # imsave("test.jpg",reverse_sigmoid(msk))
-    return reverse_sigmoid(msk), np.sum(diff,axis=(0,1),keepdims=False)
+    res=None
+    diff=np.round(np.abs(msk.copy()-prep_scale(img,cfg.out))).astype(np.uint8)
+    for d in range(msk.shape[-1]):
+        curr=diff[...,d][...,np.newaxis]
+        newres,labels=cal_area_count(curr)
+        res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres))
+        if file is not None:
+            connect_component_label(d,file,labels)
+    return rev_scale(msk,cfg.feed), res
 
 def draw_text(cfg,img,text_list,width):
     font="arial.ttf"  #times.ttf
@@ -191,7 +204,7 @@ class Model:
                     print(ind_name); text_list = [ind_name]
                     blend, r_i=self.net.predict_proc(self.net, origin, msk, ind_file.replace(img_ext,''))
                     for d in range(len(tgt_list)):
-                        text = "[  %d: %s] %d / %d  %.2f%%" % (d, tgt_list[d], r_i[d], sum_i, 100. * r_i[d] / sum_i)
+                        text = "[  %d: %s] #%d %d / %d  %.2f%%" % (d, tgt_list[d], r_i[d][1], r_i[d][0], sum_i, 100. * r_i[d][0] / sum_i)
                         print(text); text_list.append(text)
                     if save_ind_image or not self.net.separate: # skip saving individual images
                         blendtext = draw_text(self.net, blend, text_list, self.net.row_out) # RGB:3x8-bit dark text
@@ -220,7 +233,7 @@ class Model:
                     merge_file = os.path.join(merge_dir, merge_name)
                     blend, r_g = self.net.predict_proc(self.net, mrg_in, mrg_out, merge_file.replace(img_ext,''))
                     for d in range(len(tgt_list)):
-                        text = "[  %d: %s] %d / %d  %.2f%%" % (d, tgt_list[d], r_g[d], sum_g, 100. * r_g[d] / sum_g)
+                        text = "[  %d: %s] #%d %d / %d  %.2f%%" % (d, tgt_list[d], r_g[d][1], r_g[d][0], sum_g, 100. * r_g[d][0] / sum_g)
                         print(text); text_list.append(text)
                     blendtext = draw_text(self.net, blend, text_list, ra) # RGB: 3x8-bit dark text
                     imwrite(merge_file, blendtext) # [...,np.newaxis]

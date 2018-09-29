@@ -87,8 +87,8 @@ class UNet2(UNet):
 class UNet2m(UNet):
     # default 768x768 with 2 skip connections, lower case small detail. medium memory consumption with 3x3 convolution twice for output
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super(UNet2m,self).__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
-                         filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
+        super(UNet2m,self).__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768, 768, 1),
+                         filters=filters or [96, 128, 196, 256, 392], poolings=poolings or [2, 2, 2, 2, 2],
                          preproc=ca3, downconv=ca3, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=ca3,
                          upconv=sk, upjoin=ct, upsamp=uu, upmerge=ct, upproc=ca33, postproc=sk, **kwargs)
 

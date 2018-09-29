@@ -38,7 +38,7 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from net.unet import SegNet, SegNetS, UNet, UNetS, UNet2, UNet2S, UNet2M, UNet2L, ResN131S, ResBN131S
+    from net.unet import SegNet, SegNetS, UNet, UNetS, UNet2, UNet2S, UNet2M, UNet2L, ResN131S, ResBN131S, UNet2m
     from net.refinenet import Refine
     from net.vgg import VggSegNet
     from net.module import ca1, ca2, ca3, ca3h, cadh, ca33, ca13, cba3, cb3, dmp, dca, uu, ut, uta, sk, ct,\
@@ -58,33 +58,31 @@ if __name__ == '__main__':
         # VggSegNet(num_targets=len(targets)),
         # Refine(num_targets=len(targets))
 
-        # UNet2S(num_targets=len(targets),filters=[96, 128, 256, 512, 768],dim_in=(768,768,3),dim_out=(768,768,3),out='sigmoid',out_image=True,indicator='val_pl1mix',loss=loss_pmse,metrics=[pl1mix],predict_proc=compare_call),
-        UNet2S(num_targets=len(targets)), #,filters=[96, 128, 256, 512, 768]
+        # UNet2m(num_targets=len(targets),dim_in=(768,768,3),dim_out=(768,768,3),filters=[96, 128, 256, 512, 768],out='tanh',
+        #      out_image=True,indicator='val_pl1mix',loss=loss_pmse,metrics=[pl1mix],predict_proc=compare_call),
+        # UNet2M(num_targets=len(targets),dim_in=(768,768,3),dim_out=(768,768,1),filters=[96, 192, 288, 384, 512],poolings=[2, 2, 2, 2, 2]), #
+        UNet2m(num_targets=len(targets)), #
     ]
 
     mode = args.mode[0].lower()
     if mode != 'p':
-        for net in nets:
-            model= Model(net)
-            print("Network specifications: " + str(net))
+        for model in [Model(n) for n in nets]:
+            print("Network specifications: " + str(model))
             for origin in origins:
                 # multi_set = ImageMaskPair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
                 # model.train(multi_set)
 
                 for target in targets:
-                    # ImageNoisePair(net, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
-                    # multi_set=ImageMaskPair(net,os.path.join(os.getcwd(),args.train_dir),target+"+",[origin],is_train=True,is_reverse=True)
-                    multi_set=ImageMaskPair(net,os.path.join(os.getcwd(),args.train_dir),target+"+",[target+"-"],is_train=True)
-                    model.train(multi_set)
+                    # ImageNoisePair(model.net, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
+                    # multi_set=ImageMaskPair(model.net,os.path.join(os.getcwd(),args.train_dir),target+"+",[origin],is_train=True,is_reverse=True); model.train(multi_set)
+                    multi_set=ImageMaskPair(model.net,os.path.join(os.getcwd(),args.train_dir),target+"+",[target+"-"],is_train=True); model.train(multi_set)
 
     if mode != 't':
-        for net in nets:
-            model= Model(net)
+        for model in [Model(n) for n in nets]:
             for origin in origins:
                 # multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False)
                 # model.predict(multi_set, args.pred_dir)
 
                 for target in targets:
-                    # multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,[target+"+"],is_train=False)
-                    multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,[target+"-"],is_train=False)
-                    model.predict(multi_set, args.pred_dir)
+                    # multi_set = ImageMaskPair(model.net,os.path.join(os.getcwd(),args.pred_dir),origin,[target+"+"],is_train=False); model.predict(multi_set, args.pred_dir)
+                    multi_set = ImageMaskPair(model.net,os.path.join(os.getcwd(),args.pred_dir),origin,[target+"-"],is_train=False); model.predict(multi_set, args.pred_dir)

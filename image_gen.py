@@ -310,7 +310,7 @@ class ImageGenerator(keras.utils.Sequence):
                 _img, _tgt = augment_image_pair(_img, _tgt,self.cfg.train_aug)  # integer N: a <= N <= b. random.randint(0, 4)
                 # imwrite("tr_img.jpg",_img[0])
                 # imwrite("tr_tgt.jpg",_tgt[0])
-            return prep_scale(_img, self.cfg.feed), prep_scale(_img, self.cfg.out)
+            return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
@@ -352,7 +352,7 @@ class NoiseSet(FolderSet):
     def add_noise(self,img, divider=1, remainder=0):
         inserted=0
         lg_row,lg_col,lg_dep=img.shape
-        msk=np.zeros(img.shape,dtype=np.uint8)
+        msk=img.copy()
         lg_sum=lg_row*lg_col
         lg_min,lg_max=int(lg_sum*self.min_initialize),int(lg_sum*self.max_initialize)
         rand_num=[(random.random(),random.uniform(0,1),random.uniform(0,1)) for r in range(random.randint(lg_min,lg_max))] # index,row,col
@@ -376,16 +376,12 @@ class NoiseSet(FolderSet):
                 if random.random()>0.5: pat=np.flipud(pat)
                 img[lri:lro,lci:lco]=np.minimum(img[lri:lro,lci:lco],pat)
                 # imwrite('test_addnoise.jpg',img)
-                msk[lri:lro,lci:lco,...]=255
-                # msk[lri:lro,lci:lco,0]=255
-                # msk[lri:lro,lci:lco,1]=255
-                # msk[lri:lro,lci:lco,2]=255
                 # lr=(lri+lro)//2
                 # lc=(lci+lco)//2
                 # msk[lr:lr+1,lc:lc+1,1]=255
                 inserted+=1
         print("inserted %d"%inserted)
-        return img,msk
+        return img, msk-img
 
     def view_coord_batch(self):
         view_batch={}
@@ -487,10 +483,12 @@ class ImageNoisePair(ImageMaskPair):
         super(ImageNoisePair,self).__init__(cfg,wd,origin,targets,is_train)
         i=0 # only 1 element allowed
         tgt_noise=NoiseSet(cfg,wd,targets[i],is_train,True)
-        tgt_noise.sub_folder='_'.join([targets[i],origin])
-        msk_folder='_'.join([targets[i],"Mask"])
+        tgt_noise.sub_folder=targets[i]+'+'
+        msk_folder=targets[i]+'-'
         ngroups=len(self.img_set.view_coord)
-        if not util.mk_dir_if_nonexist(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder)) or not util.mk_dir_if_nonexist(os.path.join(tgt_noise.work_directory,msk_folder)):
+        exist1=util.mk_dir_if_nonexist(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder))
+        exist2=util.mk_dir_if_nonexist(os.path.join(tgt_noise.work_directory,msk_folder))
+        if not exist1 or not exist2:
             self.cfg.separate=True # separate=True to read full scale
             for vi,vc in enumerate(self.img_set.view_coord):
                 img=vc.get_image(os.path.join(self.img_set.work_directory,self.img_set.sub_folder),self.cfg)
