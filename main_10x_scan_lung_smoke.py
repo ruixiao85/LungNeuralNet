@@ -58,9 +58,10 @@ if __name__ == '__main__':
         # VggSegNet(num_targets=len(targets)),
         # Refine(num_targets=len(targets))
 
-        # UNet2m(num_targets=len(targets),dim_in=(768,768,3),dim_out=(768,768,3),filters=[96, 128, 256, 512, 768],out='tanh',
-        #      out_image=True,indicator='val_pl1mix',loss=loss_pmse,metrics=[pl1mix],predict_proc=compare_call),
-        # UNet2M(num_targets=len(targets),dim_in=(768,768,3),dim_out=(768,768,1),filters=[96, 192, 288, 384, 512],poolings=[2, 2, 2, 2, 2]), #
+        # UNet2m(num_targets=len(targets),dim_in=(768,768,3),dim_out=(768,768,3),filters=[96, 128, 256, 512, 768],out_image=True,
+        #        out='sigmoid',indicator='val_pl1mix',loss=loss_pmse,metrics=[pl1mix],
+        #        predict_proc=compare_call),
+        # UNet2m(num_targets=len(targets),dim_in=(768,768,3),dim_out=(768,768,1),filters=[96, 192, 288, 384, 512],poolings=[2, 2, 2, 2, 2]), #
         UNet2m(num_targets=len(targets)), #
     ]
 
@@ -69,7 +70,7 @@ if __name__ == '__main__':
         for model in [Model(n) for n in nets]:
             print("Network specifications: " + str(model))
             for origin in origins:
-                # multi_set = ImageMaskPair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
+                # multi_set = ImageMaskPair(model.net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
                 # model.train(multi_set)
 
                 for target in targets:
@@ -80,7 +81,7 @@ if __name__ == '__main__':
     if mode != 't':
         for model in [Model(n) for n in nets]:
             for origin in origins:
-                # multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False)
+                # multi_set = ImageMaskPair(model.net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False)
                 # model.predict(multi_set, args.pred_dir)
 
                 for target in targets:

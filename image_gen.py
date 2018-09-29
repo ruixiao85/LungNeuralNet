@@ -8,7 +8,7 @@ from cv2.cv2 import imwrite
 
 import util
 from net.basenet import Net
-from process_image import augment_image_pair,read_resize_padding,extract_pad_image,prep_scale
+from process_image import augment_image_pair,read_resize_padding,extract_pad_image,prep_scale,rev_scale
 
 ALL_TARGET = 'All'
 class MetaInfo:
@@ -60,8 +60,10 @@ class MetaInfo:
             # imwrite("test_2f_-0.5.jpg",np.clip(5*(img[..., 1] - img[..., 0]-140), 0, 255)[..., np.newaxis])
             # imwrite("test_2f_-0.6.jpg",np.clip(5*(img[..., 1] - img[..., 0]-160), 0, 255)[..., np.newaxis])
             return np.clip(5*(img[..., 1] - img[..., 0]-110), 0, 255).astype(np.uint8)
-        else: # default to white/black from blue channel
-            return img[...,2]  # blue channel to only channel
+        else: # default to white/black
+            # return img[...,1]  # from green channel
+            # return np.max(img,axis=-1)  # max channel
+            return np.clip(np.sum(img,axis=-1), 0, 255).astype(np.uint8)  # sum channel
 
 
     def __str__(self):
@@ -494,8 +496,8 @@ class ImageNoisePair(ImageMaskPair):
                 img=vc.get_image(os.path.join(self.img_set.work_directory,self.img_set.sub_folder),self.cfg)
                 # imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
                 img,msk=tgt_noise.add_noise(img, divider=ngroups, remainder=vi)
-                imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,vc.image_name),img)
-                imwrite(os.path.join(tgt_noise.work_directory,msk_folder,vc.image_name),msk)
+                imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,vc.image_name),img,[int(cv2.IMWRITE_JPEG_QUALITY),100])
+                imwrite(os.path.join(tgt_noise.work_directory,msk_folder,vc.image_name),msk,[int(cv2.IMWRITE_JPEG_QUALITY),100])
             self.nos_set.append(tgt_noise)
         self.cfg.separate=prev_separate # return to original setting
 

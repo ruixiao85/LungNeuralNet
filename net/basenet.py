@@ -33,16 +33,16 @@ class Net(Config):
             loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy')  # 'binary_crossentropy'
         self.metrics=metrics or ([jac, dice, dice67, dice33] if self.dep_out==1 else [acc, acc67, acc33])
         from keras.optimizers import Adam
-        self.optimizer=optimizer or Adam(5e-6)
+        self.optimizer=optimizer or Adam(1e-5)
         self.indicator=indicator if indicator is not None else ('val_dice' if self.dep_out==1 else 'val_acc')  # indicator to maximize
         self.net=None # abstract -> instatiate in subclass
         self.filename=filename
 
     @classmethod
     def from_json(cls, filename):  # load model from json
-        myNet=cls(filename=filename)
+        my_net=cls(filename=filename)
         with open(filename+".json", 'r') as json_file:
-            myNet.net=model_from_json(json_file.read())
+            my_net.net=model_from_json(json_file.read())
 
     def save_net(self):
         json_net=(self.filename if self.filename is not None else str(self)) + ".json"

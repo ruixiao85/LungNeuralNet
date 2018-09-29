@@ -5,7 +5,7 @@ from keras import backend as K
 import tensorflow as tf
 from net.basenet import Net
 from net.module import cvac, ac, cv, ca3, ca33, cb3, cba3, dmp, uu, ct, sk, accv, ad
-from resize_layer import ResizeImages
+from net.resize_layer import ResizeImages
 
 
 def resize(inputs, name, target_size):
