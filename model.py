@@ -38,23 +38,6 @@ def blur(a):
     arraylist_sum = np.sum(arraylist, axis=0)
     return arraylist_sum
 
-def single_call(cfg,img,msk,file=None):  # sigmoid (r,c,1) blend, np result
-    res=None
-    blend=img.copy()
-    # TODO apply blur
-    msk=np.rint(msk)  # sigmoid round to  0/1 # consider range(-1 ~ +1) for multi class voting
-    for d in range(msk.shape[-1]):
-        curr=msk[...,d][...,np.newaxis].astype(np.uint8)
-        newres,labels=cal_area_count(curr)
-        res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres))
-        for c in range(3):
-            blend[...,c]=np.where(msk[...,d]>=0.5,blend[...,c]*(1-cfg.overlay_opacity)+cfg.overlay_color[d][c]*cfg.overlay_opacity,blend[...,c])  # weighted average
-        if file is not None:
-            connect_component_label(d,file,labels)
-    return blend, res
-    # return blend, np.sum(msk, keepdims=True)
-
-
 def connect_component_label(d,file,labels):
     label_hue=np.uint8(179*labels/np.max(labels))  # Map component labels to hue val
     blank_ch=255*np.ones_like(label_hue)
@@ -63,25 +46,42 @@ def connect_component_label(d,file,labels):
     labeled_img[label_hue==0]=0  # set bg label to black
     imwrite(file+'_%d.png'%d,labeled_img)
 
-
 def cal_area_count(rc1):
     count,labels=connectedComponents(rc1,connectivity=8,ltype=CV_32S)
-    newres=np.array([np.sum(rc1,keepdims=False),count])
+    newres=np.array([np.sum(rc1,keepdims=False),count-1])
     return newres,labels
 
+def single_call(cfg,img,msk,file=None):  # sigmoid (r,c,1) blend, np result
+    res=None; blend=img.copy()
+    # TODO apply blur
+    msk=np.rint(msk)  # sigmoid round to  0/1 # consider range(-1 ~ +1) for multi class voting
+    for d in range(msk.shape[-1]):
+        curr=msk[...,d][...,np.newaxis].astype(np.uint8)
+        newres,labels=cal_area_count(curr)
+        res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
+        for c in range(3):
+            blend[...,c]=np.where(msk[...,d]>=0.5,blend[...,c]*(1-cfg.overlay_opacity)+cfg.overlay_color[d][c]*cfg.overlay_opacity,blend[...,c])  # weighted average
+        if file is not None:
+            connect_component_label(d,file,labels)
+    return blend, res
 
 def multi_call(cfg,img,msk,file=None):  # softmax (r,c,multi_label) blend, np result
-    blend=img.copy()
-    dim=cfg.predict_size  # do argmax if predict categories covers all possibilities or consider them individually
-    msk=np.argmax(msk,axis=-1)
-    uni,count=np.unique(msk,return_counts=True)
-    map_count=dict(zip(uni,count))
-    count_vec=np.zeros(dim)
-    for d in range(dim):
-        count_vec[d]=map_count.get(d) or 0
+    res=None; blend=img.copy()
+    msk=np.argmax(msk,axis=-1) # do argmax if predict categories covers all possibilities or consider them individually
+    # uni,count=np.unique(msk,return_counts=True)
+    # map_count=dict(zip(uni,count))
+    # count_vec=np.zeros(cfg.predict_size)
+    for d in range(cfg.predict_size):
+        # curr=msk[..., d][..., np.newaxis].astype(np.uint8)
+        # count_vec[d]=map_count.get(d) or 0
+        curr=np.where(msk==d,1,0).astype(np.uint8)
+        newres,labels=cal_area_count(curr)
+        res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
             blend[...,c]=np.where(msk==d,blend[...,c]*(1-cfg.overlay_opacity)+cfg.overlay_color[d][c]*cfg.overlay_opacity,blend[...,c])
-    return blend,count_vec
+        if file is not None:
+            connect_component_label(d, file, labels)
+    return blend, res
 
 def compare_call(cfg,img,msk,file=None):  # compare input and output with same dimension
     res=None
@@ -89,7 +89,7 @@ def compare_call(cfg,img,msk,file=None):  # compare input and output with same d
     for d in range(msk.shape[-1]):
         curr=diff[...,d][...,np.newaxis]
         newres,labels=cal_area_count(curr)
-        res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres))
+        res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         if file is not None:
             connect_component_label(d,file,labels)
     return rev_scale(msk,cfg.feed), res
