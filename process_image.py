@@ -144,13 +144,34 @@ seq_img_4 = iaa.Sequential([  # only apply to original images not the mask
             iaa.Sharpen((0, 1.0), lightness=(0.8, 1.3))  # sharpen
         ]),
     ),
-    iaa.OneOf([
-        # iaa.Dropout((0.01, 0.05), per_channel=0.5),  # randomly remove pixels
-        iaa.SaltAndPepper(p=(0.01,0.05)), # same white same black
-        # iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5),  # add gaussian noise to images
-        iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
-        iaa.Grayscale(alpha=(0.0, 1.0))
-    ]),
+    iaa.Sometimes(0.7,
+        iaa.OneOf([
+          iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
+          iaa.Grayscale(alpha=(0.0, 1.0))
+        ]),
+    ),
+])
+seq_img_5 = iaa.Sequential([  # only apply to original images not the mask
+    iaa.Sometimes(0.7,
+        iaa.OneOf([
+            iaa.GaussianBlur((0, 2.0)),  # blur sigma
+            iaa.AverageBlur(k=(1, 5)),  # blur image using local means with kernel sizes between 2 and 7
+            iaa.Sharpen((0, 1.0), lightness=(0.8, 1.3))  # sharpen
+        ]),
+    ),
+    iaa.Sometimes(0.7,
+        iaa.OneOf([
+          iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
+          iaa.Grayscale(alpha=(0.0, 1.0))
+        ]),
+    ),
+    iaa.Sometimes(0.5,
+        iaa.OneOf([
+          iaa.Dropout((0.01, 0.05), per_channel=0.5),  # randomly remove pixels
+          iaa.SaltAndPepper(p=(0.01, 0.05)),  # same white same black
+          iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5),  # add gaussian noise to images
+        ]),
+    ),
 ])
 
 def augment_image_pair(_img, _tgt, _level=1.0):
@@ -165,6 +186,9 @@ def augment_image_pair(_img, _tgt, _level=1.0):
     elif 3<=_level<4:  # paired image augmentation 3
         seq_det = seg_both_3.to_deterministic()
         return seq_det.augment_images(_img), seq_det.augment_images(_tgt)
-    elif 4<=_level:  # paired aug + additional aug for original images
+    elif 4<=_level<5:  # paired aug + additional aug for original images
         seq_det = seg_both_3.to_deterministic()
         return seq_img_4.augment_images(seq_det.augment_images(_img)), seq_det.augment_images(_tgt)
+    elif 5<=_level:  # paired aug + additional aug for original images
+        seq_det = seg_both_3.to_deterministic()
+        return seq_img_5.augment_images(seq_det.augment_images(_img)), seq_det.augment_images(_tgt)
