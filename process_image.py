@@ -116,7 +116,7 @@ seg_both_1 = iaa.Sequential([
 seg_both_2 = iaa.Sequential([
     iaa.Fliplr(0.5),  # flip left-right 50% chance
     iaa.Flipud(0.5),  # flip up-down 50% chance
-    iaa.Sometimes(0.8, iaa.Affine(
+    iaa.Sometimes(0.7, iaa.Affine(
         rotate=(-180, 180),  # rotate
         mode='reflect',  # use any of scikit-image's warping modes
         cval=(0, 255),  # if mode is constant, use a cval between 0 and 255
@@ -126,7 +126,7 @@ seg_both_3 = iaa.Sequential([
     iaa.Fliplr(0.5),  # flip left-right 50% chance
     iaa.Flipud(0.5),  # flip up-down 50% chance
     iaa.CropAndPad(percent=0.2, pad_mode='reflect', pad_cval=0),
-    iaa.Sometimes(0.8, iaa.Affine(
+    iaa.Sometimes(0.7, iaa.Affine(
         scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},  # scale images to 80-120% of their size, individually per axis
         # translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},  # translate by -20 to +20 percent (per axis)
         rotate=(-180, 180),  # rotate
@@ -137,14 +137,7 @@ seg_both_3 = iaa.Sequential([
     )),
 ])
 seq_img_4 = iaa.Sequential([  # only apply to original images not the mask
-    iaa.Sometimes(0.7,
-        iaa.OneOf([
-            iaa.GaussianBlur((0, 2.0)),  # blur sigma
-            iaa.AverageBlur(k=(1, 5)),  # blur image using local means with kernel sizes between 2 and 7
-            iaa.Sharpen((0, 1.0), lightness=(0.8, 1.3))  # sharpen
-        ]),
-    ),
-    iaa.Sometimes(0.7,
+    iaa.Sometimes(0.6,
         iaa.OneOf([
           iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
           iaa.Grayscale(alpha=(0.0, 1.0))
@@ -152,20 +145,35 @@ seq_img_4 = iaa.Sequential([  # only apply to original images not the mask
     ),
 ])
 seq_img_5 = iaa.Sequential([  # only apply to original images not the mask
-    iaa.Sometimes(0.7,
-        iaa.OneOf([
-            iaa.GaussianBlur((0, 2.0)),  # blur sigma
-            iaa.AverageBlur(k=(1, 5)),  # blur image using local means with kernel sizes between 2 and 7
-            iaa.Sharpen((0, 1.0), lightness=(0.8, 1.3))  # sharpen
-        ]),
-    ),
-    iaa.Sometimes(0.7,
+    iaa.Sometimes(0.6,
         iaa.OneOf([
           iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
           iaa.Grayscale(alpha=(0.0, 1.0))
         ]),
     ),
     iaa.Sometimes(0.5,
+        iaa.OneOf([
+            iaa.GaussianBlur((0, 2.0)),  # blur sigma
+            iaa.AverageBlur(k=(1, 5)),  # blur image using local means with kernel sizes between 2 and 7
+            iaa.Sharpen((0, 1.0), lightness=(0.8, 1.3))  # sharpen
+        ]),
+    ),
+])
+seq_img_6 = iaa.Sequential([  # only apply to original images not the mask
+    iaa.Sometimes(0.6,
+        iaa.OneOf([
+          iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
+          iaa.Grayscale(alpha=(0.0, 1.0))
+        ]),
+    ),
+    iaa.Sometimes(0.5,
+        iaa.OneOf([
+            iaa.GaussianBlur((0, 2.0)),  # blur sigma
+            iaa.AverageBlur(k=(1, 5)),  # blur image using local means with kernel sizes between 2 and 7
+            iaa.Sharpen((0, 1.0), lightness=(0.8, 1.3))  # sharpen
+        ]),
+    ),
+    iaa.Sometimes(0.4,
         iaa.OneOf([
           iaa.Dropout((0.01, 0.05), per_channel=0.5),  # randomly remove pixels
           iaa.SaltAndPepper(p=(0.01, 0.05)),  # same white same black
@@ -189,6 +197,9 @@ def augment_image_pair(_img, _tgt, _level=1.0):
     elif 4<=_level<5:  # paired aug + additional aug for original images
         seq_det = seg_both_3.to_deterministic()
         return seq_img_4.augment_images(seq_det.augment_images(_img)), seq_det.augment_images(_tgt)
-    elif 5<=_level:  # paired aug + additional aug for original images
+    elif 5<=_level<6:  # paired aug + additional aug for original images
         seq_det = seg_both_3.to_deterministic()
         return seq_img_5.augment_images(seq_det.augment_images(_img)), seq_det.augment_images(_tgt)
+    elif 6<=_level:  # paired aug + additional aug for original images
+        seq_det = seg_both_3.to_deterministic()
+        return seq_img_6.augment_images(seq_det.augment_images(_img)), seq_det.augment_images(_tgt)
