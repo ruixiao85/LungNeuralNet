@@ -143,6 +143,7 @@ class Model:
                         # ReduceLROnPlateau(monitor=train_indicator, mode='max', factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
                         # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                     ]).history
+                tr.reduce_aug()
                 if not os.path.exists(export_name + ".txt"):
                     with open(export_name + ".txt", "w") as net_summary:
                         self.net.net.summary(print_fn=lambda x: net_summary.write(x+'\n'))

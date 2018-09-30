@@ -325,6 +325,12 @@ class ImageGenerator(keras.utils.Sequence):
         if self.pair.is_train and self.cfg.train_shuffle:
             np.random.shuffle(self.indexes)
 
+    def reduce_aug(self):
+        if self.cfg.train_aug > 0:
+            self.cfg.train_aug -= 1
+            print('image augmentation degree reduced by 1 to %d' % self.cfg.train_aug)
+
+
 
 class NoiseSet(FolderSet):
     def __init__(self,cfg:Net,wd,sf,is_train,is_image):
