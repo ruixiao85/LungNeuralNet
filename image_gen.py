@@ -62,8 +62,8 @@ class MetaInfo:
             return np.clip(5*(img[..., 1] - img[..., 0]-110), 0, 255).astype(np.uint8)
         else: # default to white/black
             # return img[...,1]  # from green channel
-            return np.max(img,axis=-1,keepdims=True)  # max channel
-            # return np.clip(np.sum(img,axis=-1,keepdims=True), 0, 255).astype(np.uint8)  # sum channel
+            # return np.max(img,axis=-1,keepdims=False)  # max channel
+            return np.clip(np.sum(img,axis=-1,keepdims=False), 0, 255).astype(np.uint8)  # sum channel
 
 
     def __str__(self):
@@ -330,7 +330,6 @@ class ImageGenerator(keras.utils.Sequence):
 class NoiseSet(FolderSet):
     def __init__(self,cfg:Net,wd,sf,is_train,is_image):
         self.bright_diff=-10 # local brightness should be more than noise patch brightness,
-        self.scale_factor=0.25 # 40X patch into 10X images
         self.min_initialize=0.00005 # min rate of random points and loop through
         self.max_initialize=0.001 # max rate of random points and loop through
         self.aj_size=4
@@ -417,8 +416,8 @@ class NoiseSet(FolderSet):
         self.view_coord=[]
         self.patches=[]
         for image_name in self.images:
-            # _img = read_resize_padding(os.path.join(self.work_directory, self.sub_folder, image_name),self.cfg.image_resize,self.cfg.image_padding)
-            _img = read_resize_padding(os.path.join(self.work_directory, self.sub_folder, image_name),self.scale_factor,0)
+            _img = read_resize_padding(os.path.join(self.work_directory, self.sub_folder, image_name),
+                                       _resize=1.0,_padding=1.0) # TODO 40X-40X resize=1.0
             self.patches.append(_img)
             entry=MetaInfo.from_single(image_name)
             if entry.row_start is None:
