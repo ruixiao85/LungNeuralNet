@@ -62,8 +62,8 @@ class MetaInfo:
             return np.clip(5*(img[..., 1] - img[..., 0]-110), 0, 255).astype(np.uint8)
         else: # default to white/black
             # return img[...,1]  # from green channel
-            # return np.max(img,axis=-1)  # max channel
-            return np.clip(np.sum(img,axis=-1), 0, 255).astype(np.uint8)  # sum channel
+            return np.max(img,axis=-1,keepdims=True)  # max channel
+            # return np.clip(np.sum(img,axis=-1,keepdims=True), 0, 255).astype(np.uint8)  # sum channel
 
 
     def __str__(self):
@@ -309,7 +309,9 @@ class ImageGenerator(keras.utils.Sequence):
                     for ti,tgt in enumerate(self.target_list):
                         _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg)
             if self.aug_value > 0:
-                _img, _tgt = augment_image_pair(_img, _tgt,self.cfg.train_aug)  # integer N: a <= N <= b. random.randint(0, 4)
+                aug_value=random.randint(0, self.cfg.train_aug) # random number between zero and pre-set value
+                # print("  aug: %.2f"%aug_value,end='')
+                _img, _tgt = augment_image_pair(_img, _tgt, aug_value)  # integer N: a <= N <= b.
                 # imwrite("tr_img.jpg",_img[0])
                 # imwrite("tr_tgt.jpg",_tgt[0])
             return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
@@ -324,13 +326,6 @@ class ImageGenerator(keras.utils.Sequence):
         self.indexes = np.arange(len(self.view_coord))
         if self.pair.is_train and self.cfg.train_shuffle:
             np.random.shuffle(self.indexes)
-
-    def reduce_aug(self):
-        if self.cfg.train_aug > 0:
-            self.cfg.train_aug -= 1
-            print('image augmentation degree reduced by 1 to %d' % self.cfg.train_aug)
-
-
 
 class NoiseSet(FolderSet):
     def __init__(self,cfg:Net,wd,sf,is_train,is_image):

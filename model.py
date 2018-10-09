@@ -5,15 +5,17 @@ import numpy as np
 import pandas as pd
 from PIL import ImageDraw, Image, ImageFont
 from cv2.cv2 import imwrite,connectedComponents,connectedComponentsWithStats,CV_32S,merge,cvtColor,COLOR_HSV2BGR
+from keras.engine.saving import load_model
 
 from image_gen import ImageMaskPair, ImageGenerator
+from metrics import custom_function_dict
 from net.basenet import Net
 from process_image import prep_scale, rev_scale
 from util import mk_dir_if_nonexist, to_excel_sheet
 
 def g_kern(size, sigma):
-    from scipy import signal
-    gkern1d = signal.gaussian(size, std=sigma).reshape(size, 1)
+    from scipy.signal.windows import gaussian
+    gkern1d = gaussian(size, std=sigma).reshape(size, 1)
     gkern2d = np.outer(gkern1d, gkern1d)
     return gkern2d
 
@@ -123,27 +125,27 @@ class Model:
             export_name = dir_out +'_'+str(self)
             weight_file = export_name + ".h5"
             if self.net.train_continue and os.path.exists(weight_file):
-                print("Continue from previous weights")
-                self.net.net.load_weights(weight_file)
-                # print("Continue from previous model with weights & optimizer")
-                # self.model=load_model(weight_file,custom_objects=custom_function_dict()) # does not work well with custom act, loss func
+                # print("Continue from previous weights")
+                # self.net.net.load_weights(weight_file)
+                print("Continue from previous model with weights & optimizer")
+                self.net.net=load_model(weight_file,custom_objects=custom_function_dict()) # does not work well with custom act, loss func
             print('Fitting neural net...')
             for r in range(self.net.train_rep):
                 print("Training %d/%d for %s" % (r + 1, self.net.train_rep, export_name))
                 tr.on_epoch_end()
                 val.on_epoch_end()
-                from keras.callbacks import ModelCheckpoint, EarlyStopping
+                from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
+                from tensorboard_train_val import TensorBoardTrainVal
                 history = self.net.net.fit_generator(tr, validation_data=val, verbose=1,
                                                  steps_per_epoch=min(self.net.train_step, len(tr.view_coord)) if isinstance(self.net.train_step , int) else len(tr.view_coord),
                                                  validation_steps=min(self.net.train_vali_step, len(val.view_coord)) if isinstance(self.net.train_vali_step, int) else len(val.view_coord),
                                                  epochs=self.net.train_epoch, max_queue_size=1, workers=0, use_multiprocessing=False, shuffle=False,
                                                  callbacks=[
                         ModelCheckpoint(weight_file, monitor=self.net.indicator, mode='max', save_weights_only=False, save_best_only=True),
+                        # ReduceLROnPlateau(monitor=self.net.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
                         EarlyStopping(monitor=self.net.indicator, mode='max', patience=1, verbose=1),
-                        # ReduceLROnPlateau(monitor=train_indicator, mode='max', factor=0.1, patience=10, min_delta=1e-5, cooldown=0, min_lr=0, verbose=1),
                         # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                     ]).history
-                tr.reduce_aug()
                 if not os.path.exists(export_name + ".txt"):
                     with open(export_name + ".txt", "w") as net_summary:
                         self.net.net.summary(print_fn=lambda x: net_summary.write(x+'\n'))

@@ -14,32 +14,33 @@ Sun rasters - *.sr, *.ras (always supported)
 TIFF files - *.tiff, *.tif (see the Notes section)
 '''
 
-def prep_scale(_img,fun=None):
-    if fun=='tanh':
-        return scale_tanh(_img)
-        # return normalize_meanstd(_img)
-    elif fun=='sigmoid':
-        return scale_sigmoid(_img)
-    else:
-        raise("function %s not supported" % fun)
-
 def normalize_meanstd(a, axis=(1,2)):
     # axis param denotes axes along which mean & std reductions are to be performed
     mean = np.mean(a, axis=axis, keepdims=True)
     std = np.sqrt(((a - mean)**2).mean(axis=axis, keepdims=True))
     norm = (a - mean) / std
+    # norm /= 3.0
     return norm
     # return norm/(1+np.abs(norm)) # softsign
     # return np.tanh(norm) # tanh
 
-def rev_scale(_img,fun=None):
+def prep_scale(_img,fun=None):
     if fun=='tanh':
-        return reverse_tanh(_img)
-        # return normalize_meanstd(_img)
+        return scale_tanh(_img)
+        # return normalize_meanstd(scale_tanh(_img))
     elif fun=='sigmoid':
-        return reverse_sigmoid(_img)
+        return scale_sigmoid(_img)
     else:
         raise("function %s not supported" % fun)
+
+def rev_scale(_img,fun=None):
+    if fun=='tanh':
+        rev=reverse_tanh(_img)
+    elif fun=='sigmoid':
+        rev=reverse_sigmoid(_img)
+    else:
+        raise("function %s not supported" % fun)
+    return rev
 
 def scale_sigmoid(_array):
     return _array.astype(np.float32)/255.0  # 0 ~ 1

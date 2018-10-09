@@ -35,11 +35,11 @@ class Config:
         from model import single_call,multi_call,compare_call
         self.predict_proc=predict_proc if predict_proc is not None else single_call
         self.batch_size=batch_size or 1
-        self.train_rep=train_rep or 5  # times to repeat during training
-        self.train_epoch=train_epoch or 12  # max epoches during training
-        self.train_step=train_step or 120
-        self.train_vali_step=train_vali_step or 60
+        self.train_rep=train_rep or 3  # times to repeat during training
+        self.train_epoch=train_epoch or 10  # max epoches during training
+        self.train_step=train_step or 128
+        self.train_vali_step=train_vali_step or 64
         self.train_vali_split=train_vali_split or 0.33
-        self.train_aug=train_aug or 5  # only to training set, not validation or prediction mode, 1Flip 2Rotate 3Zoom 4BlurSharpContrastGray 5NoiseDrop
+        self.train_aug=train_aug or 2  # only to training set, not validation or prediction mode, 1Flip 2Rotate 3Zoom 4ContrastGray 5BlurSharp 6NoiseDrop
         self.train_shuffle=train_shuffle if train_shuffle is not None else True  # only to training set, not validation or prediction mode
         self.train_continue=train_continue if train_continue is not None else True  # continue training by loading previous weights
