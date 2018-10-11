@@ -96,7 +96,7 @@ class UNet2S(UNet):
     # default 1296x1296 with 2 skip connections, UPPER case global context. small memory consumption with 3x3 convolution only once for output
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
         super(UNet2S,self).__init__(dim_in=dim_in or (1296,1296,3), dim_out=dim_out or (1296,1296,1),
-                         filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
+                         filters=filters or [48, 64, 96, 128, 196, 196, 196, 196, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
                          preproc=ca3,downconv=ca3,downjoin=sk,downsamp=dmp,downmerge=sk,downproc=ca3,
                         upconv=sk,upjoin=ct,upsamp=uu,upmerge=ct,upproc=ca3,postproc=sk, **kwargs)
 
