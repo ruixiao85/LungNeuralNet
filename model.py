@@ -76,7 +76,8 @@ def single_brighten(cfg,img,msk,file=None):  # sigmoid (r,c,1) blend, np result
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
             mskrev=rev_scale(msk,'sigmoid')
-            blend[...,c]=np.where(mskrev[...,d]>=blend[...,c],mskrev[...,d],blend[...,c])  # weighted average
+            # blend[...,c]=np.where(mskrev[...,d]>=blend[...,c],mskrev[...,d],blend[...,c])  # weighted average
+            blend[...,c]=np.maximum(mskrev[...,d],blend[...,c])  # brighter area
         if file is not None:
             connect_component_label(d,file,labels)
     return blend, res

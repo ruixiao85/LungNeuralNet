@@ -1,11 +1,8 @@
 import os
 import random
-
-import cv2
+from cv2 import cv2
 import numpy as np
 import keras
-from cv2.cv2 import imwrite
-
 import util
 from net.basenet import Net
 from process_image import augment_image_pair,read_resize_padding,extract_pad_image,prep_scale,rev_scale
@@ -62,8 +59,8 @@ class MetaInfo:
             return np.clip(5*(img[..., 1] - img[..., 0]-110), 0, 255).astype(np.uint8)
         else: # default to white/black
             # return img[...,1]  # from green channel
-            # return np.max(img,axis=-1,keepdims=False)  # max channel
-            return np.clip(np.sum(img,axis=-1,keepdims=False), 0, 255).astype(np.uint8)  # sum channel
+            return np.max(img,axis=-1,keepdims=False)  # max channel
+            # return np.clip(np.sum(img,axis=-1,keepdims=False), 0, 255).astype(np.uint8)  # sum channel
 
 
     def __str__(self):
@@ -166,7 +163,7 @@ class FolderSet:
                             print("skip tile r%d_c%d for low contrast (std=%.1f) for %s"%(r_index,c_index,std,image_name))
                             continue
                     entry=MetaInfo.from_whole(image_name,lg_row,lg_col,ri,ro,ci,co)
-                    imwrite(os.path.join(ex_dir,entry.file_name),s_img,
+                    cv2.imwrite(os.path.join(ex_dir,entry.file_name),s_img,
                             [int(cv2.IMWRITE_JPEG_QUALITY),100] if self.is_image else [int(cv2.IMWRITE_JPEG_QUALITY),80])
                     # entry.ri, entry.ro, entry.ci, entry.co = 0, self.row, 0, self.col
                     self.view_coord.append(entry)  # updated to target single exported file
@@ -327,11 +324,20 @@ class ImageGenerator(keras.utils.Sequence):
         if self.pair.is_train and self.cfg.train_shuffle:
             np.random.shuffle(self.indexes)
 
+
+def smooth_brighten(img):
+    from scipy.ndimage.filters import gaussian_filter
+    blur=np.average(cv2.blur(img,(10,10)),axis=-1).astype(np.uint8)
+    _,bin=cv2.threshold(blur,30,255, cv2.THRESH_BINARY)
+    # bin=cv2.adaptiveThreshold(blur,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,353,-50)
+    return cv2.morphologyEx(bin, cv2.MORPH_OPEN, (5,5))
+
+
 class NoiseSet(FolderSet):
     def __init__(self,cfg:Net,wd,sf,is_train,is_image):
         self.bright_diff=-10 # local brightness should be more than noise patch brightness,
-        self.min_initialize=0.00005 # min rate of random points and loop through
-        self.max_initialize=0.001 # max rate of random points and loop through
+        self.min_initialize=0.000005 # min rate of random points and loop through
+        self.max_initialize=0.0001 # max rate of random points and loop through
         self.aj_size=4
         self.aj_std=0.2
         self.patches=None
@@ -383,7 +389,7 @@ class NoiseSet(FolderSet):
                 # msk[lr:lr+1,lc:lc+1,1]=255
                 inserted+=1
         print("inserted %d"%inserted)
-        return img, msk-img
+        return img,smooth_brighten(msk-img)
 
     def view_coord_batch(self):
         view_batch={}
@@ -469,7 +475,7 @@ class NoiseSet(FolderSet):
                             print("skip tile r%d_c%d for low contrast (std=%.1f) for %s" % (r_index, c_index, std, image_name))
                             continue
                     entry = MetaInfo.from_whole(image_name, lg_row, lg_col, ri, ro, ci, co)
-                    imwrite(os.path.join(ex_dir, entry.file_name), s_img,
+                    cv2.imwrite(os.path.join(ex_dir, entry.file_name), s_img,
                         [int(cv2.IMWRITE_JPEG_QUALITY), 100] if self.is_image else [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                     # entry.ri, entry.ro, entry.ci, entry.co = 0, self.row, 0, self.col
                     self.view_coord.append(entry)  # updated to target single exported file
@@ -494,10 +500,10 @@ class ImageNoisePair(ImageMaskPair):
             self.cfg.separate=True # separate=True to read full scale
             for vi,vc in enumerate(self.img_set.view_coord):
                 img=vc.get_image(os.path.join(self.img_set.work_directory,self.img_set.sub_folder),self.cfg)
-                # imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
+                # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
                 img,msk=tgt_noise.add_noise(img, divider=ngroups, remainder=vi)
-                imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,vc.image_name),img,[int(cv2.IMWRITE_JPEG_QUALITY),100])
-                imwrite(os.path.join(tgt_noise.work_directory,msk_folder,vc.image_name),msk,[int(cv2.IMWRITE_JPEG_QUALITY),100])
+                cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,vc.image_name),img,[int(cv2.IMWRITE_JPEG_QUALITY),100])
+                cv2.imwrite(os.path.join(tgt_noise.work_directory,msk_folder,vc.image_name),msk,[int(cv2.IMWRITE_JPEG_QUALITY),100])
             self.nos_set.append(tgt_noise)
         self.cfg.separate=prev_separate # return to original setting
 
@@ -506,7 +512,7 @@ class ImageNoisePair(ImageMaskPair):
         self.cfg.dep_out=3
         self.cfg.out='tanh'
 
-        self.img_set=NoiseSet(cfg, wd, origin, is_train, is_image=True).size_folder_update()
+        # self.img_set=NoiseSet(cfg, wd, origin, is_train, is_image=True).size_folder_update()
 
 
         # self.cfg=cfg

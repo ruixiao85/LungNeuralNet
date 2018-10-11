@@ -30,13 +30,13 @@ class Config:
         self.overlay_color=overlay_color if isinstance(overlay_color, list) else \
             generate_colors(overlay_color) if isinstance(overlay_color, int) else \
                 generate_colors(self.num_targets)
-        self.overlay_opacity=overlay_opacity or 0.2
+        self.overlay_opacity=overlay_opacity or 0.3
         self.predict_size=predict_size or num_targets
         from model import single_call,multi_call,compare_call
         self.predict_proc=predict_proc if predict_proc is not None else single_call
         self.batch_size=batch_size or 1
         self.train_rep=train_rep or 3  # times to repeat during training
-        self.train_epoch=train_epoch or 10  # max epoches during training
+        self.train_epoch=train_epoch or 5  # max epoches during training
         self.train_step=train_step or 128
         self.train_vali_step=train_vali_step or 64
         self.train_vali_split=train_vali_split or 0.33
