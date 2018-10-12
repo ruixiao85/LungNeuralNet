@@ -327,10 +327,18 @@ class ImageGenerator(keras.utils.Sequence):
 
 def smooth_brighten(img):
     from scipy.ndimage.filters import gaussian_filter
-    blur=np.average(cv2.blur(img,(10,10)),axis=-1).astype(np.uint8)
-    _,bin=cv2.threshold(blur,30,255, cv2.THRESH_BINARY)
+    blur=np.average(gaussian_smooth(img),axis=-1).astype(np.uint8)
+    _,bin=cv2.threshold(blur,20,255, cv2.THRESH_BINARY)
     # bin=cv2.adaptiveThreshold(blur,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,353,-50)
-    return cv2.morphologyEx(bin, cv2.MORPH_OPEN, (5,5))
+    # return cv2.morphologyEx(bin, cv2.MORPH_OPEN, (5,5))
+    return morph_operation(bin)
+
+def gaussian_smooth(img,size=11):
+    # return cv2.blur(img,(size,size))
+    return cv2.GaussianBlur(img,(size,size),0)
+
+def morph_operation(bin,erode=5,dilate=9):
+    return cv2.morphologyEx(cv2.morphologyEx(bin,cv2.MORPH_ERODE,(erode,erode)),cv2.MORPH_DILATE,(dilate,dilate))
 
 
 class NoiseSet(FolderSet):
@@ -376,7 +384,8 @@ class NoiseSet(FolderSet):
             pci=0 if lci>=0 else -lci; lci=max(0,lci)
             pro=p_row if lro<=lg_row else p_row-lro+lg_row; lro=min(lg_row,lro)
             pco=p_col if lco<=lg_col else p_col-lco+lg_col; lco=min(lg_col,lco)
-            if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
+            # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
+            if np.min(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
                 int(np.std(img[lri-p_row*self.aj_size:lro+p_row*self.aj_size,lci-p_col*self.aj_size:lco+p_col*self.aj_size])>self.aj_std*p_std): # target area is brighter, then add patch
                 # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(lg_row,lri,lro,lg_col,lci,lco,p_row,pri,pro,p_col,pci,pco))
                 pat=self.patches[idx][pri:pro,pci:pco]
@@ -389,7 +398,7 @@ class NoiseSet(FolderSet):
                 # msk[lr:lr+1,lc:lc+1,1]=255
                 inserted+=1
         print("inserted %d"%inserted)
-        return img,smooth_brighten(msk-img)
+        return img, smooth_brighten(msk-img)
 
     def view_coord_batch(self):
         view_batch={}
@@ -507,10 +516,10 @@ class ImageNoisePair(ImageMaskPair):
             self.nos_set.append(tgt_noise)
         self.cfg.separate=prev_separate # return to original setting
 
-        self.origin=tgt_noise.sub_folder
-        self.targets=[origin]
-        self.cfg.dep_out=3
-        self.cfg.out='tanh'
+        # self.origin=tgt_noise.sub_folder
+        # self.targets=[origin]
+        # self.cfg.dep_out=3
+        # self.cfg.out='tanh'
 
         # self.img_set=NoiseSet(cfg, wd, origin, is_train, is_image=True).size_folder_update()
 
