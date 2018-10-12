@@ -326,19 +326,18 @@ class ImageGenerator(keras.utils.Sequence):
 
 
 def smooth_brighten(img):
-    from scipy.ndimage.filters import gaussian_filter
     blur=np.average(gaussian_smooth(img),axis=-1).astype(np.uint8)
     _,bin=cv2.threshold(blur,20,255, cv2.THRESH_BINARY)
     # bin=cv2.adaptiveThreshold(blur,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,353,-50)
     # return cv2.morphologyEx(bin, cv2.MORPH_OPEN, (5,5))
     return morph_operation(bin)
 
-def gaussian_smooth(img,size=11):
-    # return cv2.blur(img,(size,size))
-    return cv2.GaussianBlur(img,(size,size),0)
+def gaussian_smooth(_img,size=11):
+    # return cv2.blur(_img,(size,size))
+    return cv2.GaussianBlur(_img,(size,size),0)
 
-def morph_operation(bin,erode=5,dilate=9):
-    return cv2.morphologyEx(cv2.morphologyEx(bin,cv2.MORPH_ERODE,(erode,erode)),cv2.MORPH_DILATE,(dilate,dilate))
+def morph_operation(_bin,erode=5,dilate=9):
+    return cv2.morphologyEx(cv2.morphologyEx(_bin,cv2.MORPH_ERODE,(erode,erode)),cv2.MORPH_DILATE,(dilate,dilate))
 
 
 class NoiseSet(FolderSet):
