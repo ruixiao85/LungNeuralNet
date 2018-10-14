@@ -50,9 +50,11 @@ def reverse_sigmoid(_array):
 
 def scale_tanh(_array):
     return _array.astype(np.float32)/127.5-1.0  # -1 ~ +1
+    # return 1.0-_array.astype(np.float32)/127.5  # +1 ~ -1
 
 def reverse_tanh(_array):
     return ((_array.astype(np.float32)+1.0)*127.5).astype(np.uint8)  # -1 ~ +1
+    # return ((1.0-_array.astype(np.float32))*127.5).astype(np.uint8)  # +1 ~ -1
 
 
 def read_resize_padding(_file, _resize, _padding):

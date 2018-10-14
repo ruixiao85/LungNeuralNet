@@ -32,7 +32,7 @@ class Net(Config):
         self.loss=loss or (
             loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy')  # 'binary_crossentropy'
         self.metrics=metrics or ([jac, dice, dice67, dice33] if self.dep_out==1 else [acc, acc67, acc33])
-        from keras.optimizers import Adam
+        from keras.optimizers import SGD, RMSprop, Adagrad, Adadelta, Adam, Adamax, Nadam
         self.optimizer=optimizer or Adam(1e-5)
         self.indicator=indicator if indicator is not None else ('val_dice' if self.dep_out==1 else 'val_acc')  # indicator to maximize
         self.net=None # abstract -> instatiate in subclass
