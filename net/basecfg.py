@@ -24,18 +24,18 @@ class Config:
         self.mask_color=mask_color or "white"  # green/white
         self.out_image=out_image if out_image is not None else False # output type: True=image False=mask
         self.separate=separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
-        self.coverage_train=coverage_tr or 2.0
+        self.coverage_train=coverage_tr or 3.0
         self.coverage_predict=coverage_prd or 3.0
         self.call_hardness=call_hardness or 1.0  # 0-smooth 1-hard binary call
         self.overlay_color=overlay_color if isinstance(overlay_color, list) else \
             generate_colors(overlay_color) if isinstance(overlay_color, int) else \
                 generate_colors(self.num_targets)
-        self.overlay_opacity=overlay_opacity or 0.3
+        self.overlay_opacity=overlay_opacity if isinstance(overlay_color, list) else [0.3]*self.num_targets
         self.predict_size=predict_size or num_targets
         from model import single_call,multi_call,compare_call
         self.predict_proc=predict_proc if predict_proc is not None else single_call
         self.batch_size=batch_size or 1
-        self.train_rep=train_rep or 3  # times to repeat during training
+        self.train_rep=train_rep or 8  # times to repeat during training
         self.train_epoch=train_epoch or 5  # max epoches during training
         self.train_step=train_step or 128
         self.train_vali_step=train_vali_step or 64

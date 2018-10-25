@@ -46,7 +46,7 @@ def single_call(cfg,img,msk,file=None):  # sigmoid (r,c,1) blend, np result
         newres,labels=cal_area_count(curr)
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
-            blend[...,c]=np.where(msk[...,d]>=0.5,blend[...,c]*(1-cfg.overlay_opacity)+cfg.overlay_color[d][c]*cfg.overlay_opacity,blend[...,c])  # weighted average
+            blend[...,c]=np.where(msk[...,d]>=0.5,blend[...,c]*(1-cfg.overlay_opacity[d])+cfg.overlay_color[d][c]*cfg.overlay_opacity[d],blend[...,c])  # weighted average
         if file is not None:
             connect_component_label(d,file,labels)
     return blend, res
@@ -79,7 +79,7 @@ def multi_call(cfg,img,msk,file=None):  # softmax (r,c,multi_label) blend, np re
         newres,labels=cal_area_count(curr)
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
-            blend[...,c]=np.where(msk==d,blend[...,c]*(1-cfg.overlay_opacity)+cfg.overlay_color[d][c]*cfg.overlay_opacity,blend[...,c])
+            blend[...,c]=np.where(msk==d,blend[...,c]*(1-cfg.overlay_opacity[d])+cfg.overlay_color[d][c]*cfg.overlay_opacity[d],blend[...,c])
         if file is not None:
             connect_component_label(d, file, labels)
     return blend, res
@@ -101,11 +101,11 @@ def draw_text(cfg,img,text_list,width):
     origin=Image.fromarray(img.astype(np.uint8),'RGB')  # L RGB
     draw=ImageDraw.Draw(origin)
     txtblk='\n'.join(text_list)
-    draw.text((0,0),txtblk,(255,255,255),ImageFont.truetype(font,size))
-    draw.text((5,3),txtblk,(20,20,20),ImageFont.truetype(font,size))
+    draw.text((0,0),txtblk,(225,225,225),ImageFont.truetype(font,size))
+    draw.text((4,4),txtblk,(30,30,30),ImageFont.truetype(font,size))
     for i in range(len(text_list)-1):
         txtcrs=' \n'*(i+1)+' X'
-        draw.text((0,0),txtcrs,(255,255,255),ImageFont.truetype(font,size))
+        draw.text((0,0),txtcrs,(225,225,225),ImageFont.truetype(font,size))
         draw.text((5,3),txtcrs,cfg.overlay_color[i],ImageFont.truetype(font,size))
     return np.array(origin)
 
