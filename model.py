@@ -11,7 +11,7 @@ from image_gen import ImageMaskPair,ImageGenerator,gaussian_smooth,morph_operati
 from metrics import custom_function_dict
 from net.basenet import Net
 from process_image import prep_scale, rev_scale
-from util import mk_dir_if_nonexist, to_excel_sheet
+from util import mkdir_ifexist, to_excel_sheet
 
 def g_kern(size, sigma):
     from scipy.signal.windows import gaussian
@@ -172,10 +172,10 @@ class Model:
             export_name = dir_out+'_'+dir_cfg_append
             target_dir = os.path.join(multi.wd, export_name)
             if save_ind_image or not self.net.separate: # skip saving individual images
-                mk_dir_if_nonexist(target_dir)
+                mkdir_ifexist(target_dir)
             if self.net.separate:
                 merge_dir = os.path.join(multi.wd, dir_out+'+'+dir_cfg_append) # group
-                mk_dir_if_nonexist(merge_dir)
+                mkdir_ifexist(merge_dir)
                 mask_wt = g_kern_rect(self.net.row_out, self.net.col_out)
             for grp, view in batch.items():
                 msks=None

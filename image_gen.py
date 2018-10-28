@@ -202,15 +202,15 @@ class ImageSet(FolderSet):
 class ImageMaskPair:
     def __init__(self, cfg:Net, wd, origin, targets, is_train, is_reverse=False):
         self.cfg=cfg
-        self.wd = wd
-        self.origin = origin
-        self.targets = targets if isinstance(targets,list) else [targets]
+        self.wd=wd
+        self.origin=origin
+        self.targets=targets if isinstance(targets,list) else [targets]
         # self.dir_out=targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
         self.img_set=ImageSet(cfg, wd, origin, is_train, is_image=True).size_folder_update()
-        self.msk_set = None
+        self.msk_set=None
         self.view_coord=self.img_set.view_coord
-        self.is_train = is_train
-        self.is_reverse = is_reverse
+        self.is_train=is_train
+        self.is_reverse=is_reverse
 
     def train_generator(self):
         i = 0; no=self.cfg.dep_out; nt=len(self.targets)
@@ -342,11 +342,7 @@ def morph_operation(_bin,erode=5,dilate=9):
 
 class NoiseSet(FolderSet):
     def __init__(self,cfg:Net,wd,sf,is_train,is_image):
-        self.bright_diff=-10 # local brightness should be more than noise patch brightness,
-        self.min_initialize=0.000005 # min rate of random points and loop through
-        self.max_initialize=0.0001 # max rate of random points and loop through
-        self.aj_size=4
-        self.aj_std=0.2
+
         self.patches=None
         super(NoiseSet,self).__init__(cfg,wd,sf,is_train,is_image)
         self.size_folder_update()
@@ -365,39 +361,7 @@ class NoiseSet(FolderSet):
         # self.view_coord=None  # list
 
     def add_noise(self,img, divider=1, remainder=0):
-        inserted=0
-        lg_row,lg_col,lg_dep=img.shape
-        msk=img.copy()
-        lg_sum=lg_row*lg_col
-        lg_min,lg_max=int(lg_sum*self.min_initialize),int(lg_sum*self.max_initialize)
-        rand_num=[(random.random(),random.uniform(0,1),random.uniform(0,1)) for r in range(random.randint(lg_min,lg_max))] # index,row,col
-        times=self.num_patches//divider
-        for irc in rand_num:
-            idx=int(times*irc[0])+remainder # index of patch to apply
-            patch=self.view_coord[idx]
-            p_row,p_col,p_ave,p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
-            lri=int(lg_row*irc[1])-p_row//2 # large row in/start
-            lci=int(lg_col*irc[2])-p_col//2 # large col in/start
-            lro,lco=lri+p_row,lci+p_col # large row/col out/end
-            pri=0 if lri>=0 else -lri; lri=max(0,lri)
-            pci=0 if lci>=0 else -lci; lci=max(0,lci)
-            pro=p_row if lro<=lg_row else p_row-lro+lg_row; lro=min(lg_row,lro)
-            pco=p_col if lco<=lg_col else p_col-lco+lg_col; lco=min(lg_col,lco)
-            # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
-            if np.min(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
-                int(np.std(img[lri-p_row*self.aj_size:lro+p_row*self.aj_size,lci-p_col*self.aj_size:lco+p_col*self.aj_size])>self.aj_std*p_std): # target area is brighter, then add patch
-                # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(lg_row,lri,lro,lg_col,lci,lco,p_row,pri,pro,p_col,pci,pco))
-                pat=self.patches[idx][pri:pro,pci:pco]
-                if random.random()>0.5: pat=np.fliplr(pat)
-                if random.random()>0.5: pat=np.flipud(pat)
-                img[lri:lro,lci:lco]=np.minimum(img[lri:lro,lci:lco],pat)
-                # imwrite('test_addnoise.jpg',img)
-                # lr=(lri+lro)//2
-                # lc=(lci+lco)//2
-                # msk[lr:lr+1,lc:lc+1,1]=255
-                inserted+=1
-        print("inserted %d"%inserted)
-        return img, smooth_brighten(msk-img)
+        pass
 
     def view_coord_batch(self):
         view_batch={}
@@ -411,20 +375,20 @@ class NoiseSet(FolderSet):
         else:
             n = self.cfg.train_step
             return { x:self.view_coord[x:x + n] for x in range(0, len(self.view_coord), n)}  # break into sub-lists
-    #
-    # def size_folder_update(self):
-    #     self.find_file_recursive_rel()
-    #     if self.cfg.separate:
-    #         new_dir="%s_%s" % (self.sub_folder, self.ext_folder(self.cfg, self.is_image))
-    #         new_path=os.path.join(self.work_directory, new_dir)
-    #         # shutil.rmtree(new_path)  # force delete
-    #         if not os.path.exists(new_path): # change folder and not found
-    #             os.makedirs(new_path)
-    #             self.split_image_coord(new_path)
-    #         self.sub_folder=new_dir
-    #         self.find_file_recursive_rel()
-    #     self.single_image_coord()
-    #     return self
+
+    def size_folder_update(self):
+        self.find_file_recursive_rel()
+        # if self.cfg.separate:
+        #     new_dir="%s_%s" % (self.sub_folder, self.ext_folder(self.cfg, self.is_image))
+        #     new_path=os.path.join(self.work_directory, new_dir)
+            # shutil.rmtree(new_path)  # force delete
+            # if not os.path.exists(new_path): # change folder and not found
+            #     os.makedirs(new_path)
+            #     self.split_image_coord(new_path)
+            # self.sub_folder=new_dir
+            # self.find_file_recursive_rel()
+        self.single_image_coord()
+        return self
 
     def single_image_coord(self):
         self.view_coord=[]
@@ -492,46 +456,58 @@ class NoiseSet(FolderSet):
 
 class ImageNoisePair(ImageMaskPair):
     def __init__(self,cfg: Net,wd,origin,targets,is_train):
-        prev_separate=cfg.separate
-        cfg.separate=False  # separate=False to scan whole images
-        self.nos_set=[]
-        self.msk_set=[]
-        super(ImageNoisePair,self).__init__(cfg,wd,origin,targets,is_train)
-        i=0 # only 1 element allowed
-        tgt_noise=NoiseSet(cfg,wd,targets[i],is_train,True)
-        tgt_noise.sub_folder=targets[i]+'+'
-        msk_folder=targets[i]+'-'
-        ngroups=len(self.img_set.view_coord)
-        exist1=util.mk_dir_if_nonexist(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder))
-        exist2=util.mk_dir_if_nonexist(os.path.join(tgt_noise.work_directory,msk_folder))
-        if not exist1 or not exist2:
-            self.cfg.separate=True # separate=True to read full scale
-            for vi,vc in enumerate(self.img_set.view_coord):
-                img=vc.get_image(os.path.join(self.img_set.work_directory,self.img_set.sub_folder),self.cfg)
+        premade=util.mkdir_ifexist(os.path.join(wd, '+'.join([origin]+targets))) # e.g., Original+LYM+MONO+PMN
+        print(premade)
+        for tgt in targets:
+            premade=premade and util.mkdir_ifexist(os.path.join(wd, tgt+'+')) # e.g., MONO+
+        print(premade)
+        if not premade:
+            super(ImageNoisePair,self).__init__(cfg,wd,origin,targets,is_train) # split original image
+            self.bright_diff=-10  # local brightness should be more than noise patch brightness,
+            self.aj_size=4
+            self.aj_std=0.2
+            self.msk_set=[]
+            tgt_set=[NoiseSet(cfg, wd, tgt, is_train, is_image=True) for tgt in targets]
+            pixels=cfg.row_in*cfg.col_in
+            for vi, vc in enumerate(self.img_set.view_coord):
+                rand_num=[(random.randint(0,len(targets)-1), random.random(), random.uniform(0, 1), random.uniform(0, 1))
+                          for r in range(random.randint(pixels//20000, pixels//8000))]  # index,label/class,row,col
+                img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.sub_folder), self.cfg)
+                lg_row, lg_col, lg_dep=img.shape
                 # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
-                img,msk=tgt_noise.add_noise(img, divider=ngroups, remainder=vi)
-                cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,vc.image_name),img,[int(cv2.IMWRITE_JPEG_QUALITY),100])
-                cv2.imwrite(os.path.join(tgt_noise.work_directory,msk_folder,vc.image_name),msk,[int(cv2.IMWRITE_JPEG_QUALITY),100])
-            self.nos_set.append(tgt_noise)
-        self.cfg.separate=prev_separate # return to original setting
+                inserted=[0]*len(self.targets) # track # of inserts per category
+                for lirc in rand_num:
+                    the_tgt=tgt_set[lirc[0]]
+                    prev=img.copy()
+                    idx=int(the_tgt.num_patches*lirc[1])  # index of patch to apply
+                    patch=self.view_coord[idx]
+                    p_row, p_col, p_ave, p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
+                    lri=int(lg_row*lirc[2])-p_row//2  # large row in/start
+                    lci=int(lg_col*lirc[3])-p_col//2  # large col in/start
+                    lro, lco=lri+p_row, lci+p_col  # large row/col out/end
+                    pri=0 if lri>=0 else -lri; lri=max(0, lri)
+                    pci=0 if lci>=0 else -lci; lci=max(0, lci)
+                    pro=p_row if lro<=lg_row else p_row-lro+lg_row; lro=min(lg_row, lro)
+                    pco=p_col if lco<=lg_col else p_col-lco+lg_col; lco=min(lg_col, lco)
+                    # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
+                    if np.min(img[lri:lro, lci:lco])-p_ave>self.bright_diff and \
+                            int(np.std(img[lri-p_row*self.aj_size:lro+p_row*self.aj_size,
+                                       lci-p_col*self.aj_size:lco+p_col*self.aj_size])>self.aj_std*p_std):  # target area is brighter, then add patch
+                        # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(lg_row,lri,lro,lg_col,lci,lco,p_row,pri,pro,p_col,pci,pco))
+                        pat=patch.get_image(os.path.join(self.wd, the_tgt.sub_folder),self.cfg)  # TODO 40X-40X resize=1.0
+                        if random.random()>0.5: pat=np.fliplr(pat)
+                        if random.random()>0.5: pat=np.flipud(pat)
+                        img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco])
+                        cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder,vc.file_name+'' if lirc[1]>self.cfg.train_vali_split else '*'+'.jpg'),
+                                    smooth_brighten(prev-img))
+                        # lr=(lri+lro)//2
+                        # lc=(lci+lco)//2
+                        # msk[lr:lr+1,lc:lc+1,1]=255
+                        inserted[lirc[0]]+=1
+                print("inserted %s for %s"%(inserted,vc.file_name))
+                cv2.imwrite(os.path.join(self.wd, self.img_set.sub_folder+'+', vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
 
-        # self.origin=tgt_noise.sub_folder
-        # self.targets=[origin]
-        # self.cfg.dep_out=3
-        # self.cfg.out='tanh'
-
-        # self.img_set=NoiseSet(cfg, wd, origin, is_train, is_image=True).size_folder_update()
-
-
-        # self.cfg=cfg
-        # self.wd = wd
-        # self.origin = origin
-        # self.targets = targets if isinstance(targets,list) else [targets]
-        # # self.dir_out=targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
-        # self.img_set=NoiseSet(cfg, wd, origin, is_train, is_image=True).size_folder_update()
-        # self.msk_set = None
-        # self.view_coord=self.img_set.view_coord
-        # self.is_train = is_train
+        super(ImageNoisePair, self).__init__(cfg, wd, '+'.join([origin]+targets), [tgt+'+' for tgt in self.targets], is_train)
 
     def train_generator(self):
         i = 0; no=self.cfg.dep_out; nt=len(self.targets)

@@ -2,7 +2,7 @@ import os
 import pandas as pd
 
 
-def mk_dir_if_nonexist(_dir):
+def mkdir_ifexist(_dir):
     exist=os.path.exists(_dir)
     if not exist:
         os.mkdir(_dir)

@@ -1,7 +1,7 @@
 import argparse
-
 from image_gen import ImageMaskPair, ImageNoisePair
-from model import *
+from model import Model
+import os
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train and predict with biomedical images.')
@@ -22,7 +22,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--input', dest='input', type=str,
                         default='Original', help='input: Original')
     parser.add_argument('-o', '--output', dest='output', type=str,
-                        default='InflammatoryCell', help='output: targets separated by comma')
+                        default='LYM,MONO,PMN', help='output: targets separated by comma')
     args = parser.parse_args()
 
     script_dir = os.path.realpath(__file__)
@@ -57,14 +57,9 @@ if __name__ == '__main__':
         for model in [Model(n) for n in nets]:
             print("Network specifications: " + str(model))
             for origin in origins:
-                for target in targets:
-                    ImageNoisePair(model.net, os.path.join(os.getcwd(), args.train_dir), origin, [target], is_train=True)
-                    # multi_set=ImageMaskPair(model.net,os.path.join(os.getcwd(),args.train_dir),target+"+",[origin],is_train=True,is_reverse=True); model.train(multi_set)
-                    multi_set=ImageMaskPair(model.net,os.path.join(os.getcwd(),args.train_dir),target+"+",[target+"-"],is_train=True); model.train(multi_set)
+                multi_set=ImageNoisePair(model.net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True); model.train(multi_set)
 
     if mode != 't':
         for model in [Model(n) for n in nets]:
             for origin in origins:
-                for target in targets:
-                    # multi_set = ImageMaskPair(model.net,os.path.join(os.getcwd(),args.pred_dir),origin,[target+"+"],is_train=False); model.predict(multi_set, args.pred_dir)
-                    multi_set = ImageMaskPair(model.net,os.path.join(os.getcwd(),args.pred_dir),origin,[target+"-"],is_train=False); model.predict(multi_set, args.pred_dir)
+                multi_set=ImageNoisePair(model.net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False); model.predict(multi_set, args.pred_dir)

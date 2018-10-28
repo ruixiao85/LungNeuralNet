@@ -104,11 +104,11 @@ def skip_image(s_img, mode, if_print=True):
     col = mode[0].lower()
     if col == 'g':  # green mask
         gmin = float(np.min(s_img[..., 0])) + float(np.min(s_img[..., 2]))  # min_R min_B
-        if_skip = gmin > 15.0
+        if_skip = gmin > 12.0
         return print_return(if_skip, "checking tile for green mask (min_R+B=%.1f)" % gmin) if if_print else if_skip
     else:  # default white/black or rgb
         std = float(np.std(s_img))
-        if_skip = std < 15.0
+        if_skip = std < 12.0
         return print_return(if_skip, "checking tile for contrast (std=%.1f)" % std) if if_print else if_skip
 
 
