@@ -19,6 +19,10 @@ class MetaInfo:
         self.col_start = ci
         self.col_end = co
 
+    def file_name_insert(self, cfg:Net, text=None):
+        ext=cfg.image_format[1:]
+        return self.file_name.replace(ext,'') if text is None else self.file_name.replace(ext,text+ext)
+
     @classmethod
     def from_single(cls, file):
         ls = file.split("_#")
@@ -459,7 +463,7 @@ class ImageNoisePair(ImageMaskPair):
         premade=util.mkdir_ifexist(os.path.join(wd, '+'.join([origin]+targets))) # e.g., Original+LYM+MONO+PMN
         print(premade)
         for tgt in targets:
-            premade=premade and util.mkdir_ifexist(os.path.join(wd, tgt+'+')) # e.g., MONO+
+            premade=util.mkdir_ifexist(os.path.join(wd, tgt+'+')) and premade # force mkdir e.g., MONO+
         print(premade)
         if not premade:
             super(ImageNoisePair,self).__init__(cfg,wd,origin,targets,is_train) # split original image
@@ -471,16 +475,21 @@ class ImageNoisePair(ImageMaskPair):
             pixels=cfg.row_in*cfg.col_in
             for vi, vc in enumerate(self.img_set.view_coord):
                 rand_num=[(random.randint(0,len(targets)-1), random.random(), random.uniform(0, 1), random.uniform(0, 1))
-                          for r in range(random.randint(pixels//20000, pixels//8000))]  # index,label/class,row,col
+                          for r in range(random.randint(pixels//12000, pixels//3000))]  # index,label/class,row,col
                 img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.sub_folder), self.cfg)
                 lg_row, lg_col, lg_dep=img.shape
                 # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
                 inserted=[0]*len(self.targets) # track # of inserts per category
+                vcfilenoext=vc.file_name_insert(cfg)
+                util.mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext))
+                util.mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,'images'))
+                for tgt in targets:
+                    util.mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,tgt))
                 for lirc in rand_num:
                     the_tgt=tgt_set[lirc[0]]
                     prev=img.copy()
                     idx=int(the_tgt.num_patches*lirc[1])  # index of patch to apply
-                    patch=self.view_coord[idx]
+                    patch=the_tgt.view_coord[idx]
                     p_row, p_col, p_ave, p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
                     lri=int(lg_row*lirc[2])-p_row//2  # large row in/start
                     lci=int(lg_col*lirc[3])-p_col//2  # large col in/start
@@ -494,18 +503,22 @@ class ImageNoisePair(ImageMaskPair):
                             int(np.std(img[lri-p_row*self.aj_size:lro+p_row*self.aj_size,
                                        lci-p_col*self.aj_size:lco+p_col*self.aj_size])>self.aj_std*p_std):  # target area is brighter, then add patch
                         # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(lg_row,lri,lro,lg_col,lci,lco,p_row,pri,pro,p_col,pci,pco))
-                        pat=patch.get_image(os.path.join(self.wd, the_tgt.sub_folder),self.cfg)  # TODO 40X-40X resize=1.0
+                        # pat=patch.get_image(os.path.join(self.wd, the_tgt.sub_folder),self.cfg)  # TODO 40X-40X resize=1.0
+                        pat=the_tgt.patches[idx]
                         if random.random()>0.5: pat=np.fliplr(pat)
                         if random.random()>0.5: pat=np.flipud(pat)
                         img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco])
-                        cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder,vc.file_name+'' if lirc[1]>self.cfg.train_vali_split else '*'+'.jpg'),
+                        # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if lirc[1]>self.cfg.train_vali_split else '^'))),
+                        #             smooth_brighten(prev-img))
+                        cv2.imwrite(os.path.join(self.wd, '+'.join([origin]+targets), vcfilenoext, the_tgt.sub_folder,
+                                                 vc.file_name_insert(cfg,'_'+str(idx))), #+('' if lirc[1]>self.cfg.train_vali_split else '^'))
                                     smooth_brighten(prev-img))
                         # lr=(lri+lro)//2
                         # lc=(lci+lco)//2
                         # msk[lr:lr+1,lc:lc+1,1]=255
                         inserted[lirc[0]]+=1
                 print("inserted %s for %s"%(inserted,vc.file_name))
-                cv2.imwrite(os.path.join(self.wd, self.img_set.sub_folder+'+', vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+                cv2.imwrite(os.path.join(self.wd, '+'.join([origin]+targets), vcfilenoext, 'images', vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
 
         super(ImageNoisePair, self).__init__(cfg, wd, '+'.join([origin]+targets), [tgt+'+' for tgt in self.targets], is_train)
 
