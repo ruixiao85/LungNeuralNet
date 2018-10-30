@@ -77,8 +77,9 @@ class NucleusConfig(Config):
     LEARNING_RATE=0.001
     # Adjust depending on your GPU memory
     IMAGES_PER_GPU = 2
+
     # Number of classes (including background)
-    NUM_CLASSES = 1 + 1  # Background + nucleus
+    NUM_CLASSES = 1 + 3  # Background + nucleus
 
     # Number of training and validation steps per epoch
     STEPS_PER_EPOCH = (657 - len(VAL_IMAGE_IDS)) // IMAGES_PER_GPU
@@ -89,8 +90,8 @@ class NucleusConfig(Config):
     DETECTION_MIN_CONFIDENCE = 0
 
     # Backbone network architecture
-    # Supported values are: resnet50, resnet101
-    BACKBONE = "resnet50"
+    # BACKBONE = "resnet50"
+    BACKBONE = "resnet101"
 
     # Input image resizing
     # Random crops of size 512x512
@@ -168,8 +169,8 @@ class NucleusDataset(utils.Dataset):
         # Add classes. We have one class.
         # Naming the dataset nucleus, and the class nucleus
         # self.add_class("nucleus", 1, "nucleus")
-        for i, t in enumerate(self.targets.split(',')):
-            self.add_class('nucleus', i+1, t)
+        for i, tgt in enumerate(self.targets.split(',')):
+            self.add_class('nucleus', i+1, tgt)
 
         # Which subset?
         # "val": use hard-coded list above
@@ -198,19 +199,27 @@ class NucleusDataset(utils.Dataset):
         class_ids: a 1D array of class IDs of the instance masks.
         """
         info = self.image_info[image_id]
-        # Get mask directory from image path
-        mask_dir = os.path.join(os.path.dirname(os.path.dirname(info['path'])), self.targets)
-
-        # Read mask files from image
-        mask = []
-        for f in next(os.walk(mask_dir))[2]:
-            if f.endswith(".jpg"):
-                m = skimage.io.imread(os.path.join(mask_dir, f)).astype(np.bool)
-                mask.append(m)
-        mask = np.stack(mask, axis=-1)
+        class_ids=[]
+        mask = None
+        for i, tgt in enumerate(self.targets.split(',')):
+            # Get mask directory from image path
+            mask_dir = os.path.join(os.path.dirname(os.path.dirname(info['path'])), tgt)
+            # Read mask files from image
+            for f in next(os.walk(mask_dir))[2]:
+                if f.endswith(".jpg"):
+                    m = skimage.io.imread(os.path.join(mask_dir, f),as_grey=True).astype(np.bool)[...,np.newaxis]
+                    # print(np.shape(m))
+                    mask=m if mask is None else np.concatenate((mask, m),axis=-1)
+                    class_ids.append(i+1)
+        # Handle occlusions
+        # occlusion=np.logical_not(mask[:,:,-1]).astype(np.uint8)
+        # for i in range(count-2,-1,-1):
+        #     mask[:,:,i]=mask[:,:,i]*occlusion
+        #     occlusion=np.logical_and(occlusion,np.logical_not(mask[:,:,i]))
+        return mask, np.array(class_ids).astype(np.int32)
         # Return mask, and array of class IDs of each instance. Since we have
         # one class ID, we return an array of ones
-        return mask, np.ones([mask.shape[-1]], dtype=np.int32)
+        # return mask, np.ones([mask.shape[-1]], dtype=np.int32)
 
     def image_reference(self, image_id):
         """Return the path of the image."""
@@ -404,13 +413,13 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', required=False, default='D:/kaggle_nucleus',
                         metavar="/path/to/dataset/",
                         help='Root directory of the dataset')
-    parser.add_argument('--subset', required=False, default='pred', # Original+LYM+MONO+PMN
+    parser.add_argument('--subset', required=False, default='reppred', #'10xkyle', # 'Original+LYM+MONO+PMN',
                         metavar="Dataset sub-directory",
                         help="Subset of dataset to run training/prediction on")
     parser.add_argument('--original', required=False, default='images',
                         metavar="Dataset sub-directory",
                         help="Subset of dataset to run training/prediction on")
-    parser.add_argument('--targets', required=False, default='MONO', #LYM+MONO+PMN
+    parser.add_argument('--targets', required=False, default='LYM,MONO,PMN', #LYM,MONO,PMN
                         metavar="Dataset sub-directory",
                         help="Subset of dataset to run training/prediction on")
     parser.add_argument('--weights', required=False, default='last', #'imagenet'

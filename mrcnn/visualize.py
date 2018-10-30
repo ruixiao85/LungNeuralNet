@@ -111,7 +111,8 @@ def display_instances(image, boxes, masks, class_ids, class_names,
         auto_show = True
 
     # Generate random colors
-    colors = colors or random_colors(N)
+    # colors = colors or random_colors(N)
+    colors = colors or ['b','g','r','c','m','y','k','w']
 
     # Show area outside image boundaries.
     height, width = image.shape[:2]
@@ -122,8 +123,8 @@ def display_instances(image, boxes, masks, class_ids, class_names,
 
     masked_image = image.astype(np.uint32).copy()
     for i in range(N):
-        color = colors[i]
-
+        # color = colors[i]
+        color =colors[class_ids[i]]
         # Bounding box
         if not np.any(boxes[i]):
             # Skip this instance. Has no bbox. Likely lost in image cropping.
@@ -141,11 +142,11 @@ def display_instances(image, boxes, masks, class_ids, class_names,
             score = scores[i] if scores is not None else None
             label = class_names[class_id]
             x = random.randint(x1, (x1 + x2) // 2)
-            caption = "{} {:.3f}".format(label, score) if score else label
+            caption = "{} {:.1f}".format(label, score) if score else label
         else:
             caption = captions[i]
-        ax.text(x1, y1 + 8, caption,
-                color='w', size=11, backgroundcolor="none")
+        # ax.text(x1-1, y1 + 7, caption, color='w', size=11, backgroundcolor="none")
+        ax.text(x1+1, y1 + 9, caption, color=color, size=11, backgroundcolor="none")
 
         # Mask
         mask = masks[:, :, i]
@@ -154,8 +155,7 @@ def display_instances(image, boxes, masks, class_ids, class_names,
 
         # Mask Polygon
         # Pad to ensure proper polygons for masks that touch image edges.
-        padded_mask = np.zeros(
-            (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+        padded_mask = np.zeros((mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
         padded_mask[1:-1, 1:-1] = mask
         contours = find_contours(padded_mask, 0.5)
         for verts in contours:
