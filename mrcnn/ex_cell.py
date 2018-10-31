@@ -43,25 +43,48 @@ from mrcnn import visualize
 # The dataset doesn't have a standard train/val split, so I picked
 # a variety of images to serve as a validation set.
 VAL_IMAGE_IDS = [
-    "024435_2017-09-07 13_54_54_#5003#9025#0#768#2064#2832#",
-"024435_2017-09-07 13_54_54_#5003#9025#0#768#4128#4896#",
-"024435_2017-09-07 13_54_54_#5003#9025#0#768#4903#5671#",
-"024435_2017-09-07 13_54_54_#5003#9025#0#768#6193#6961#",
-"024435_2017-09-07 13_54_54_#5003#9025#0#768#7741#8509#",
-"024435_2017-09-07 13_54_54_#5003#9025#1495#2263#0#768#",
-"024435_2017-09-07 13_54_54_#5003#9025#1495#2263#1032#1800#",
-"024435_2017-09-07 13_54_54_#5003#9025#1744#2512#1032#1800#",
-"024435_2017-09-07 13_54_54_#5003#9025#1744#2512#6709#7477#",
-"024435_2017-09-07 13_54_54_#5003#9025#1993#2761#6709#7477#",
-"024435_2017-09-07 13_54_54_#5003#9025#1993#2761#7483#8251#",
-"024435_2017-09-07 13_54_54_#5003#9025#2242#3010#7225#7993#",
-"024435_2017-09-07 13_54_54_#5003#9025#249#1017#3096#3864#",
-"024435_2017-09-07 13_54_54_#5003#9025#249#1017#7741#8509#",
-"024435_2017-09-07 13_54_54_#5003#9025#2491#3259#0#768#",
-"024435_2017-09-07 13_54_54_#5003#9025#2491#3259#8257#9025#",
-"024435_2017-09-07 13_54_54_#5003#9025#2740#3508#4128#4896#",
-"024435_2017-09-07 13_54_54_#5003#9025#2989#3757#1032#1800#",
-"024435_2017-09-07 13_54_54_#5003#9025#2989#3757#5677#6445#"
+'37_3-WT-WT-SM_001',
+'37_3-WT-WT-SM_001---Copy'
+
+# '024435_2017-09-07 13_54_54_#5003#9025#2420#3188#635#1403#',
+# '024435_2017-09-07 13_54_54_#5003#9025#2420#3188#6352#7120#',
+# '024435_2017-09-07 13_54_54_#5003#9025#2420#3188#6987#7755#',
+# '024435_2017-09-07 13_54_54_#5003#9025#2420#3188#7622#8390#',
+# '024435_2017-09-07 13_54_54_#5003#9025#2420#3188#8257#9025#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3025#3793#0#768#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3025#3793#1270#2038#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3025#3793#1905#2673#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3025#3793#2541#3309#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3025#3793#3176#3944#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3025#3793#3811#4579#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3025#3793#4446#5214#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3025#3793#5081#5849#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3025#3793#5716#6484#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3025#3793#635#1403#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3025#3793#6352#7120#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3630#4398#0#768#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3630#4398#1270#2038#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3630#4398#1905#2673#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3630#4398#2541#3309#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3630#4398#3176#3944#',
+# '024435_2017-09-07 13_54_54_#5003#9025#3630#4398#635#1403#',
+# '024435_2017-09-07 13_54_54_#5003#9025#4235#5003#0#768#',
+# '024435_2017-09-07 13_54_54_#5003#9025#4235#5003#1270#2038#',
+# '024435_2017-09-07 13_54_54_#5003#9025#4235#5003#1905#2673#',
+# '024435_2017-09-07 13_54_54_#5003#9025#4235#5003#635#1403#',
+# '024435_2017-09-07 13_54_54_#5003#9025#605#1373#1270#2038#',
+# '024435_2017-09-07 13_54_54_#5003#9025#605#1373#1905#2673#',
+# '024435_2017-09-07 13_54_54_#5003#9025#605#1373#2541#3309#',
+# '024435_2017-09-07 13_54_54_#5003#9025#605#1373#3176#3944#',
+# '024435_2017-09-07 13_54_54_#5003#9025#605#1373#3811#4579#',
+# '024435_2017-09-07 13_54_54_#5003#9025#605#1373#4446#5214#',
+# '024435_2017-09-07 13_54_54_#5003#9025#605#1373#5081#5849#',
+# '024435_2017-09-07 13_54_54_#5003#9025#605#1373#5716#6484#',
+# '024435_2017-09-07 13_54_54_#5003#9025#605#1373#635#1403#',
+# '024435_2017-09-07 13_54_54_#5003#9025#605#1373#6352#7120#',
+# '024435_2017-09-07 13_54_54_#5003#9025#605#1373#6987#7755#',
+# '024435_2017-09-07 13_54_54_#5003#9025#605#1373#7622#8390#',
+# '024435_2017-09-07 13_54_54_#5003#9025#605#1373#8257#9025#'
 ]
 
 
@@ -76,8 +99,7 @@ class NucleusConfig(Config):
     # mask rcnn default 0.02 matterport default 0.001
     LEARNING_RATE=0.001
     # Adjust depending on your GPU memory
-    IMAGES_PER_GPU = 2
-
+    IMAGES_PER_GPU = 1
     # Number of classes (including background)
     NUM_CLASSES = 1 + 3  # Background + nucleus
 
@@ -90,8 +112,8 @@ class NucleusConfig(Config):
     DETECTION_MIN_CONFIDENCE = 0
 
     # Backbone network architecture
-    # BACKBONE = "resnet50"
-    BACKBONE = "resnet101"
+    BACKBONE = "resnet50"
+    # BACKBONE = "resnet101"
 
     # Input image resizing
     # Random crops of size 512x512
@@ -101,18 +123,21 @@ class NucleusConfig(Config):
     IMAGE_MIN_SCALE = 2.0
 
     # Length of square anchor side in pixels
-    RPN_ANCHOR_SCALES = (8, 16, 32, 64, 128)
+    RPN_ANCHOR_SCALES = (8, 16, 32, 64, 128) # already reduced
 
     # ROIs kept after non-maximum supression (training and inference)
-    POST_NMS_ROIS_TRAINING = 1000
+    POST_NMS_ROIS_TRAINING = 2000
     POST_NMS_ROIS_INFERENCE = 2000
+
+    # threshold to determine fore/back-ground
+    DETECTION_MASK_THRESHOLD=0.35
 
     # Non-max suppression threshold to filter RPN proposals.
     # You can increase this during training to generate more propsals.
     RPN_NMS_THRESHOLD = 0.9
 
-    # How many anchors per image to use for RPN training
-    RPN_TRAIN_ANCHORS_PER_IMAGE = 64
+    # How many anchors per image to use for RPN training default 256
+    # RPN_TRAIN_ANCHORS_PER_IMAGE = 64
 
     # Image mean (RGB)
     MEAN_PIXEL = np.array([43.53, 39.56, 48.22])
@@ -126,8 +151,8 @@ class NucleusConfig(Config):
     # The Mask RCNN paper uses 512 but often the RPN doesn't generate
     # enough positive proposals to fill this and keep a positive:negative
     # ratio of 1:3. You can increase the number of proposals by adjusting
-    # the RPN NMS threshold.
-    TRAIN_ROIS_PER_IMAGE = 128
+    # the RPN NMS threshold. default 256
+    # TRAIN_ROIS_PER_IMAGE = 128
 
     # Maximum number of ground truth instances to use in one image
     MAX_GT_INSTANCES = 200
@@ -141,6 +166,7 @@ class NucleusInferenceConfig(NucleusConfig):
     GPU_COUNT = 1
     IMAGES_PER_GPU = 1
     # Don't resize imager for inferencing
+    # IMAGE_RESIZE_MODE = "crop" # pad still dividable by 64
     IMAGE_RESIZE_MODE = "pad64" # pad still dividable by 64
     # IMAGE_RESIZE_MODE = "none"
     # Non-max suppression threshold to filter RPN proposals.
@@ -265,14 +291,14 @@ def train(model,subset_dir,args):
     print("Train network heads")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
-                epochs=20,
+                epochs=5, # 20
                 augmentation=augmentation,
                 layers='heads')
 
     print("Train all layers")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
-                epochs=40,
+                epochs=10, # 40
                 augmentation=augmentation,
                 layers='all')
 
@@ -413,7 +439,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', required=False, default='D:/kaggle_nucleus',
                         metavar="/path/to/dataset/",
                         help='Root directory of the dataset')
-    parser.add_argument('--subset', required=False, default='reppred', #'10xkyle', # 'Original+LYM+MONO+PMN',
+    parser.add_argument('--subset', required=False, default='10xkyle', #'Original+LYM+MONO+PMN', # '40xpred', #'10xkyle',
                         metavar="Dataset sub-directory",
                         help="Subset of dataset to run training/prediction on")
     parser.add_argument('--original', required=False, default='images',
@@ -422,7 +448,7 @@ if __name__ == '__main__':
     parser.add_argument('--targets', required=False, default='LYM,MONO,PMN', #LYM,MONO,PMN
                         metavar="Dataset sub-directory",
                         help="Subset of dataset to run training/prediction on")
-    parser.add_argument('--weights', required=False, default='last', #'imagenet'
+    parser.add_argument('--weights', required=False, default='last', # 'imagenet', #
                         metavar="/path/to/weights.h5",
                         help="Path to weights .h5 file or 'coco' 'imagenet'")
     args = parser.parse_args()

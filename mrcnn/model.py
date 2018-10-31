@@ -1311,13 +1311,13 @@ def build_detection_targets(rpn_rois, gt_class_ids, gt_boxes, gt_masks, config):
     rpn_roi_gt_boxes = gt_boxes[rpn_roi_iou_argmax]
     rpn_roi_gt_class_ids = gt_class_ids[rpn_roi_iou_argmax]
 
-    # Positive ROIs are those with >= 0.5 IoU with a GT box.
-    fg_ids = np.where(rpn_roi_iou_max > 0.5)[0]
+    # Positive ROIs are those with >= threshold 0.5 IoU with a GT box.
+    fg_ids = np.where(rpn_roi_iou_max > config.DETECTION_MASK_THRESHOLD)[0]
 
-    # Negative ROIs are those with max IoU 0.1-0.5 (hard example mining)
+    # Negative ROIs are those with max IoU <= threshold 0.1-0.5 (hard example mining)
     # TODO: To hard example mine or not to hard example mine, that's the question
     # bg_ids = np.where((rpn_roi_iou_max >= 0.1) & (rpn_roi_iou_max < 0.5))[0]
-    bg_ids = np.where(rpn_roi_iou_max < 0.5)[0]
+    bg_ids = np.where(rpn_roi_iou_max < config.DETECTION_MASK_THRESHOLD)[0]
 
     # Subsample ROIs. Aim for 33% foreground.
     # FG
@@ -2296,6 +2296,7 @@ class MaskRCNN():
             keras.callbacks.TensorBoard(log_dir=self.log_dir,
                                         histogram_freq=0, write_graph=True, write_images=False),
             keras.callbacks.ModelCheckpoint(self.checkpoint_path,
+                                            save_best_only=False,
                                             verbose=0, save_weights_only=True),
         ]
 
