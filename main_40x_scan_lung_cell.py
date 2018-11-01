@@ -1,6 +1,5 @@
 import argparse
-from image_gen import ImageMaskPair, ImageNoisePair
-from model import Model
+from image_gen import ImageNoisePair
 import os
 
 if __name__ == '__main__':
@@ -8,7 +7,7 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--dir', dest='dir', action='store',
                         default='40x_scan_lung_cell', help='work directory, empty->current dir')
     parser.add_argument('-t', '--train', dest='train_dir', action='store',
-                        default='train', help='train sub-directory')
+                        default='train_10xkyle', help='train sub-directory')
     parser.add_argument('-p', '--pred', dest='pred_dir', action='store',
                         default='pred', help='predict sub-directory')
     parser.add_argument('-m', '--mode', dest='mode', action='store',
@@ -36,30 +35,25 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from net.unet import SegNet, SegNetS, UNet, UNetS, UNet2, UNet2S, UNet2M, UNet2L, ResN131S, ResBN131S, UNet2m
-    from net.refinenet import Refine
-    from net.vgg import VggSegNet
-    from net.module import ca1, ca2, ca3, ca3h, cadh, ca33, ca13, cba3, cb3, dmp, dca, uu, ut, uta, sk, ct,\
-      du32, cdu33, rn131r, rn131nr, dn13r, dn13nr
-    from metrics import loss_pmse, loss_pmae, loss_pmul, loss_padd, pmse, prmse, pmae, pl1mix
-    from model import single_call,multi_call,compare_call,single_brighten
-    from keras.optimizers import Adam, SGD, RMSprop, Nadam
+    from net.unet import UNet2m
+    from osio import single_brighten
+
     nets = [
         # UNet2m(num_targets=len(targets),dim_in=(768,768,3),dim_out=(768,768,3),filters=[96, 128, 256, 512, 768],out_image=True,
         #        out='sigmoid',indicator='val_pl1mix',loss=loss_pmse,metrics=[pl1mix],
         #        predict_proc=compare_call),
         # UNet2m(num_targets=len(targets),dim_in=(768,768,3),dim_out=(768,768,1),filters=[96, 192, 288, 384, 512],poolings=[2, 2, 2, 2, 2]), #
-        UNet2m(num_targets=len(targets),predict_proc=single_brighten),
+        UNet2m(num_targets=len(targets),predict_proc=single_brighten,coverage_tr=1.2,coverage_prd=1.2),
     ]
 
     mode = args.mode[0].lower()
     if mode != 'p':
-        for model in [Model(n) for n in nets]:
-            print("Network specifications: " + str(model))
+        for net in nets:
+            print("Network specifications: " + str(net))
             for origin in origins:
-                multi_set=ImageNoisePair(model.net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True); model.train(multi_set)
+                multi_set=ImageNoisePair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True); net.train(multi_set)
 
     if mode != 't':
-        for model in [Model(n) for n in nets]:
+        for net in nets:
             for origin in origins:
-                multi_set=ImageNoisePair(model.net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False); model.predict(multi_set, args.pred_dir)
+                multi_set=ImageNoisePair(net, os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False); net.predict(multi_set, args.pred_dir)

@@ -5,7 +5,7 @@ from keras.models import Model
 from keras.layers import Input
 from keras import backend as K
 import tensorflow as tf
-from net.basenet import Net
+from net.baseunet import Net
 from net.module import cvac, ca3, ca33, cb3, cba3, dmp, uu, ct, sk, rn131r, rn131nr
 
 class UNet(Net):
@@ -52,6 +52,7 @@ class UNet(Net):
         locals()['post0']=self.postproc(locals()['uproc0'],'post0',0,self.fs[0],self.act)
         locals()['out0']=cvac(locals()['post0'], 'out0', 0, self.dep_out, self.out, size=1)
         self.net=Model(locals()['in0'], locals()['out0'])
+        self.compile_net()
 
     def __str__(self):
         return '_'.join([

@@ -3,7 +3,7 @@ from keras.models import Model
 from keras.layers import Input,Lambda
 from keras import backend as K
 import tensorflow as tf
-from net.basenet import Net
+from net.baseunet import Net
 from net.module import cvac, ac, cv, ca3, ca33, cb3, cba3, dmp, uu, ct, sk, accv, ad
 from net.resize_layer import ResizeImages
 
@@ -80,7 +80,7 @@ class Refine(Net):
         locals()['out_scale']=resize(locals()['outconv%d'%last_idx],'out_scale',self.row_out)
         locals()['out0']=cvac(locals()['out_scale'],'out0',last_idx,self.dep_out,self.out,size=1) # self.fs[last_idx]
         self.net=Model(locals()['in0'], locals()['out_scale'])
-
+        self.compile_net()
 
     def __str__(self):
         return '_'.join([

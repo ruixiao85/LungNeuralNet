@@ -1,6 +1,7 @@
 import argparse
 
-from model import *
+from image_gen import ImageMaskPair
+from osio import *
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train and predict with biomedical images.')
@@ -35,7 +36,8 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from net.unet import UNet, UNet2, SegNet
+    from net.unet import UNet2
+
     nets=[
         # SegNet(num_targets=len(targets), predict_all_inclusive=False),
         # UNet(num_targets=len(targets), predict_all_inclusive=False),
@@ -44,15 +46,13 @@ if __name__ == '__main__':
     mode = args.mode[0].lower()
     if mode!='p':
         for net in nets:
-            model=Model(net)
             print("Network specifications: "+str(net))
             for origin in origins:
                 multi_set=ImageMaskPair(net,os.path.join(os.getcwd(),args.train_dir),origin,targets,is_train=True)
-                model.train(multi_set)
+                net.train(multi_set)
 
     if mode!='t':
         for net in nets:
-            model=Model(net)
             for origin in origins:
                 multi_set=ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False)
-                model.predict(multi_set, args.pred_dir)
+                net.predict(multi_set, args.pred_dir)

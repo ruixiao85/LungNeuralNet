@@ -3,9 +3,11 @@ import random
 from cv2 import cv2
 import numpy as np
 import keras
-import util
-from net.basenet import Net
+
+from basecfg import Config
+from osio import mkdir_ifexist,find_file_recursive
 from process_image import augment_image_pair,read_resize_padding,extract_pad_image,prep_scale,rev_scale
+from util import smooth_brighten
 
 ALL_TARGET = 'All'
 class MetaInfo:
@@ -19,7 +21,7 @@ class MetaInfo:
         self.col_start = ci
         self.col_end = co
 
-    def file_name_insert(self, cfg:Net, text=None):
+    def file_name_insert(self, cfg:Config, text=None):
         ext=cfg.image_format[1:]
         return self.file_name.replace(ext,'') if text is None else self.file_name.replace(ext,text+ext)
 
@@ -46,11 +48,11 @@ class MetaInfo:
         return self.image_name.replace(".jpg", "_#%d#%d#%d#%d#%d#%d#.jpg"
                  % (self.ori_row, self.ori_col, self.row_start,self.row_end,self.col_start,self.col_end))
 
-    def get_image(self, _path, cfg:Net):
+    def get_image(self, _path, cfg:Config):
         return read_resize_padding(os.path.join(_path, self.file_name),_resize=1.0,_padding=1.0) if cfg.separate else\
             extract_pad_image(read_resize_padding(os.path.join(_path, self.image_name),cfg.image_resize,cfg.image_padding), self.row_start, self.row_end, self.col_start, self.col_end)
 
-    def get_mask(self, _path, cfg:Net):
+    def get_mask(self, _path, cfg:Config):
         img=self.get_image(_path, cfg)
         # imwrite("test_img.jpg",img)
         code=cfg.mask_color[0].lower()
@@ -77,7 +79,7 @@ class MetaInfo:
         return str(self).__hash__()
 
 class FolderSet:
-    def __init__(self,cfg: Net,wd,sf,is_train,is_image):
+    def __init__(self,cfg:Config,wd,sf,is_train,is_image):
         self.cfg=cfg
         self.work_directory=wd
         self.sub_folder=sf
@@ -91,7 +93,7 @@ class FolderSet:
 
     def find_file_recursive_rel(self):
         path=os.path.join(self.work_directory,self.sub_folder)
-        self.images=[os.path.relpath(absp,path) for absp in util.find_file_recursive(path, self.cfg.image_format)]
+        self.images=[os.path.relpath(absp,path) for absp in find_file_recursive(path, self.cfg.image_format)]
 
     def size_folder_update(self):
         self.find_file_recursive_rel()
@@ -186,7 +188,7 @@ class FolderSet:
             if is_image else "%.1f_%dx%d" % (cfg.image_resize, cfg.row_out, cfg.col_out)
 
 class ImageSet(FolderSet):
-    def __init__(self,cfg: Net,wd,sf,is_train,is_image):
+    def __init__(self,cfg:Config,wd,sf,is_train,is_image):
         super(ImageSet,self).__init__(cfg,wd,sf,is_train,is_image)
 
     def view_coord_batch(self):
@@ -204,7 +206,7 @@ class ImageSet(FolderSet):
 
 
 class ImageMaskPair:
-    def __init__(self, cfg:Net, wd, origin, targets, is_train, is_reverse=False):
+    def __init__(self, cfg:Config, wd, origin, targets, is_train, is_reverse=False):
         self.cfg=cfg
         self.wd=wd
         self.origin=origin
@@ -262,6 +264,9 @@ class ImageMaskPair:
             tgt_list=self.targets[i:o]
             yield (self.join_targets(tgt_list), tgt_list)
             i = o
+
+    def predict_generator_partial(self,subset,view):
+        return ImageGenerator(self,0,subset,view), self.join_targets(subset)
 
     @staticmethod
     def join_targets(tgt_list) :
@@ -329,23 +334,8 @@ class ImageGenerator(keras.utils.Sequence):
             np.random.shuffle(self.indexes)
 
 
-def smooth_brighten(img):
-    blur=np.average(gaussian_smooth(img),axis=-1).astype(np.uint8)
-    _,bin=cv2.threshold(blur,20,255, cv2.THRESH_BINARY)
-    # bin=cv2.adaptiveThreshold(blur,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,353,-50)
-    # return cv2.morphologyEx(bin, cv2.MORPH_OPEN, (5,5))
-    return morph_operation(bin)
-
-def gaussian_smooth(_img,size=11):
-    # return cv2.blur(_img,(size,size))
-    return cv2.GaussianBlur(_img,(size,size),0)
-
-def morph_operation(_bin,erode=5,dilate=9):
-    return cv2.morphologyEx(cv2.morphologyEx(_bin,cv2.MORPH_ERODE,(erode,erode)),cv2.MORPH_DILATE,(dilate,dilate))
-
-
 class NoiseSet(FolderSet):
-    def __init__(self,cfg:Net,wd,sf,is_train,is_image):
+    def __init__(self,cfg:Config,wd,sf,is_train,is_image):
 
         self.patches=None
         super(NoiseSet,self).__init__(cfg,wd,sf,is_train,is_image)
@@ -459,32 +449,32 @@ class NoiseSet(FolderSet):
 
 
 class ImageNoisePair(ImageMaskPair):
-    def __init__(self,cfg: Net,wd,origin,targets,is_train):
-        premade=util.mkdir_ifexist(os.path.join(wd, '+'.join([origin]+targets))) # e.g., Original+LYM+MONO+PMN
+    def __init__(self,cfg:Config,wd,origin,targets,is_train):
+        premade=mkdir_ifexist(os.path.join(wd, '+'.join([origin]+targets))) # e.g., Original+LYM+MONO+PMN
         print(premade)
         for tgt in targets:
-            premade=util.mkdir_ifexist(os.path.join(wd, tgt+'+')) and premade # force mkdir e.g., MONO+
+            premade=mkdir_ifexist(os.path.join(wd, tgt+'+')) and premade # force mkdir e.g., MONO+
         print(premade)
         if not premade:
             super(ImageNoisePair,self).__init__(cfg,wd,origin,targets,is_train) # split original image
             self.bright_diff=-10  # local brightness should be more than noise patch brightness,
-            self.aj_size=4
+            self.aj_size=2
             self.aj_std=0.2
             self.msk_set=[]
             tgt_set=[NoiseSet(cfg, wd, tgt, is_train, is_image=True) for tgt in targets]
             pixels=cfg.row_in*cfg.col_in
             for vi, vc in enumerate(self.img_set.view_coord):
                 rand_num=[(random.randint(0,len(targets)-1), random.random(), random.uniform(0, 1), random.uniform(0, 1))
-                          for r in range(random.randint(pixels//12000, pixels//3000))]  # index,label/class,row,col
+                          for r in range(random.randint(pixels//5000, pixels//2000))]  # index,label/class,row,col
                 img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.sub_folder), self.cfg)
                 lg_row, lg_col, lg_dep=img.shape
                 # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
                 inserted=[0]*len(self.targets) # track # of inserts per category
                 vcfilenoext=vc.file_name_insert(cfg)
-                util.mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext))
-                util.mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,'images'))
+                mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext))
+                mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,'images'))
                 for tgt in targets:
-                    util.mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,tgt))
+                    mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,tgt))
                 for lirc in rand_num:
                     the_tgt=tgt_set[lirc[0]]
                     prev=img.copy()
@@ -534,7 +524,7 @@ class ImageNoisePair(ImageMaskPair):
                 msk = NoiseSet(self.cfg, self.wd, t, is_train=True, is_image=False).size_folder_update()
                 self.msk_set.append(msk)
                 views = views.intersection(msk.view_coord)
-            self.view_coord = list(views)
+            self.view_coord = list(views) # TODO refactor split method
             tr_list, val_list = [], []  # list view_coords, can be from slices
             tr_image, val_image = set(), set()  # set whole images
             for vc in self.view_coord:

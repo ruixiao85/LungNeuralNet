@@ -1,6 +1,7 @@
 import argparse
 
-from model import *
+from image_gen import ImageMaskPair
+from osio import *
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train and predict with biomedical images.')
@@ -21,7 +22,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--input', dest='input', type=str,
                         default='Original', help='input: Original')
     parser.add_argument('-o', '--output', dest='output', type=str,
-                        default='Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,RespiratoryAirway,SmallBloodVessel', help='output: targets separated by comma')
+                        default='SmallBloodVessel,Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,RespiratoryAirway', help='output: targets separated by comma')
     args = parser.parse_args()
 
     script_dir = os.path.realpath(__file__)
@@ -35,14 +36,8 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from net.unet import SegNet, SegNetS, UNet, UNetS, UNet2, UNet2S, UNet2M, UNet2L, ResN131S, ResBN131S, UNet2m
-    from net.refinenet import Refine
-    from net.vgg import VggSegNet
-    from net.module import ca1, ca2, ca3, ca3h, cadh, ca33, ca13, cba3, cb3, dmp, dca, uu, ut, uta, sk, ct,\
-      du32, cdu33, rn131r, rn131nr, dn13r, dn13nr
-    from metrics import loss_pmse, loss_pmae, loss_pmul, loss_padd, pmse, prmse, pmae, pl1mix
-    from model import single_call, multi_call, compare_call, single_brighten
-    from keras.optimizers import Adam, SGD, RMSprop, Nadam
+    from net.unet import UNet2S
+
     nets = [
         # SegNet(num_targets=len(targets)),
         # SegNetS(num_targets=len(targets)),
@@ -58,14 +53,14 @@ if __name__ == '__main__':
 
     mode = args.mode[0].lower()
     if mode != 'p':
-        for model in [Model(n) for n in nets]:
-            print("Network specifications: " + str(model))
+        for net in nets:
+            print("Network specifications: " + str(net))
             for origin in origins:
-                multi_set = ImageMaskPair(model.net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
-                model.train(multi_set)
+                multi_set = ImageMaskPair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True)
+                net.train(multi_set)
 
     if mode != 't':
-        for model in [Model(n) for n in nets]:
+        for net in nets:
             for origin in origins:
-                multi_set = ImageMaskPair(model.net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False)
-                model.predict(multi_set, args.pred_dir)
+                multi_set = ImageMaskPair(net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False)
+                net.predict(multi_set, args.pred_dir)

@@ -10,7 +10,6 @@ import tensorflow as tf
 from tensorflow.python.ops.image_ops_impl import central_crop
 import numpy as np
 
-from image_gen import ImageGenerator
 
 SMOOTH_LOSS = 1e-5
 # def depth_softmax(matrix, is_tensor=True): # increase temperature to make the softmax more sure of itself
@@ -129,7 +128,6 @@ def custom_function_dict():
         'loss_bce_dice':loss_bce_dice,
         'loss_bce':loss_bce,
         'loss_dice':loss_dice,
-        'ImageGenerator':ImageGenerator,
     }
 
 def top5acc(y_true, y_pred, k=5):  # top_N_categorical_accuracy

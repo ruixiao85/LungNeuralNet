@@ -1,7 +1,7 @@
 import colorsys
 import random
 import numpy as np
-from PIL import Image,ImageDraw,ImageFont
+
 
 def generate_colors(n, shuffle=False):
     hsv = [(i / n, 1.0, 0.85) for i in range(n)]
@@ -32,7 +32,7 @@ class Config:
                 generate_colors(self.num_targets)
         self.overlay_opacity=overlay_opacity if isinstance(overlay_color, list) else [0.3]*self.num_targets
         self.predict_size=predict_size or num_targets
-        from model import single_call,multi_call,compare_call
+        from .util import single_call
         self.predict_proc=predict_proc if predict_proc is not None else single_call
         self.batch_size=batch_size or 1
         self.train_rep=train_rep or 8  # times to repeat during training
