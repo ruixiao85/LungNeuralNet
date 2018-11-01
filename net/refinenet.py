@@ -3,7 +3,7 @@ from keras.models import Model
 from keras.layers import Input,Lambda
 from keras import backend as K
 import tensorflow as tf
-from net.baseunet import Net
+from net.basenetu import BaseNetU
 from net.module import cvac, ac, cv, ca3, ca33, cb3, cba3, dmp, uu, ct, sk, accv, ad
 from net.resize_layer import ResizeImages
 
@@ -41,7 +41,7 @@ def chained_residual_pooling(inputs, name, idx, fs, act,rep=1):
     return x
 
 
-class Refine(Net):
+class Refine(BaseNetU):
     #  40X  20X  10X  4X  2X  1X .4X .2X .1X
     # 4000,2000,1000,400,200,100, 40, 20, 10
 

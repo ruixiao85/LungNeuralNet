@@ -1,6 +1,5 @@
 import argparse
-
-from image_gen import ImageMaskPair
+from basenetu import ImageMaskPair
 from osio import *
 
 if __name__ == '__main__':

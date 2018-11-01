@@ -1,6 +1,6 @@
-import argparse
-from image_gen import ImageNoisePair
 import os
+import argparse
+from basenetm import ImageNoisePair
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train and predict with biomedical images.')

@@ -1,18 +1,22 @@
 import datetime
+import random
 
+import keras
 from keras.engine.saving import model_from_json,load_model
 
+from basecfg import Config
+from image_set import ImageSet
 from metrics import custom_function_dict
-from net.basecfg import Config
 import os, cv2
 import pandas as pd
 import numpy as np
 
 from osio import mkdir_ifexist,to_excel_sheet
+from process_image import augment_image_pair,prep_scale
 from util import g_kern_rect,draw_text
 
 
-class Net(Config):
+class BaseNetU(Config):
     # 'relu6'  # min(max(features, 0), 6)
     # 'crelu'  # Concatenates ReLU (only positive part) with ReLU (only the negative part). Note that this non-linearity doubles the depth of the activations
     # 'elu'  # Exponential Linear Units exp(features)-1, if <0, features
@@ -26,12 +30,9 @@ class Net(Config):
 
     #     model_out = 'softmax'   model_loss='categorical_crossentropy'
     #     model_out='sigmoid'    model_loss=[loss_bce_dice] 'binary_crossentropy' "bcedice"
-    def __init__(self, dim_in=None, dim_out=None, feed=None, act=None, out=None, loss=None, metrics=None, optimizer=None, indicator=None,
+    def __init__(self, feed=None, act=None, out=None, loss=None, metrics=None, optimizer=None, indicator=None,
                  filename=None, **kwargs):
-
-        super(Net,self).__init__(**kwargs)
-        self.row_in, self.col_in, self.dep_in=dim_in or (512,512,3)
-        self.row_out, self.col_out, self.dep_out=dim_out or (512,512,1)
+        super(BaseNetU,self).__init__(**kwargs)
         from metrics import jac, dice, dice67, dice33, acc, acc67, acc33, loss_bce_dice, custom_function_keras
         custom_function_keras()  # leakyrelu, swish
         self.feed=feed or 'tanh'
@@ -58,10 +59,7 @@ class Net(Config):
             json_file.write(self.net.to_json())
 
     def compile_net(self,save_net=False,print_summary=True):
-        self.net.compile(
-            optimizer=self.optimizer,
-            loss=self.loss,
-            metrics=self.metrics)
+        self.net.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
         print("Model compiled")
         if save_net:
             self.save_net()
@@ -96,19 +94,15 @@ class Net(Config):
                 from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau
                 from tensorboard_train_val import TensorBoardTrainVal
                 history=self.net.fit_generator(tr,validation_data=val,verbose=1,
-                                                   steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(
-                                                       tr.view_coord),
-                                                   validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,
-                                                                                                                                    int) else len(
-                                                       val.view_coord),
-                                                   epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,
-                                                   callbacks=[
-                                                       ModelCheckpoint(weight_file,monitor=self.indicator,mode='max',save_weights_only=False,
-                                                                       save_best_only=True),
-                                                       # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
-                                                       EarlyStopping(monitor=self.indicator,mode='max',patience=1,verbose=1),
-                                                       # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
-                                                   ]).history
+                   steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
+                   validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
+                   epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,
+                   callbacks=[
+                       ModelCheckpoint(weight_file,monitor=self.indicator,mode='max',save_weights_only=False,save_best_only=True),
+                       # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
+                       EarlyStopping(monitor=self.indicator,mode='max',patience=1,verbose=1),
+                       # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
+                   ]).history
                 if not os.path.exists(export_name+".txt"):
                     with open(export_name+".txt","w") as net_summary:
                         self.net.summary(print_fn=lambda x:net_summary.write(x+'\n'))
@@ -170,8 +164,7 @@ class Net(Config):
                     blend,r_i=self.predict_proc(self.net,origin,msk,ind_file.replace(img_ext,''))
                     for d in range(len(tgt_list)):
                         text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_i[d][1],r_i[d][0],sum_i,100.*r_i[d][0]/sum_i)
-                        print(text);
-                        text_list.append(text)
+                        print(text); text_list.append(text)
                     if save_ind_image or not self.separate:  # skip saving individual images
                         blendtext=draw_text(self.net,blend,text_list,self.row_out)  # RGB:3x8-bit dark text
                         cv2.imwrite(ind_file,blendtext)
@@ -213,3 +206,132 @@ class Net(Config):
             for i,note in [(0,'_area'),(1,'_count')]:
                 df=pd.DataFrame(res_grp[...,i],index=batch.keys(),columns=pair.targets*pair.cfg.dep_out)
                 to_excel_sheet(df,xls_file,pair.origin+note+"_sum")
+
+
+class ImageMaskPair:
+    def __init__(self,cfg:BaseNetU,wd,origin,targets,is_train,is_reverse=False):
+        self.cfg=cfg
+        self.wd=wd
+        self.origin=origin
+        self.targets=targets if isinstance(targets,list) else [targets]
+        # self.dir_out=targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
+        self.img_set=ImageSet(cfg, wd, origin, is_train, is_image=True).size_folder_update()
+        self.msk_set=None
+        self.view_coord=self.img_set.view_coord
+        self.is_train=is_train
+        self.is_reverse=is_reverse
+
+    def train_generator(self):
+        i = 0; no=self.cfg.dep_out; nt=len(self.targets)
+        while i < nt:
+            o=min(i+no, nt)
+            views = set(self.img_set.view_coord)
+            self.msk_set = []
+            tgt_list=[]
+            for t in self.targets[i:o]:
+                tgt_list.append(t)
+                msk = ImageSet(self.cfg, self.wd, t, is_train=True, is_image=False).size_folder_update()
+                self.msk_set.append(msk)
+                views = views.intersection(msk.view_coord)
+            self.view_coord = list(views)
+            tr_list, val_list = [], []  # list view_coords, can be from slices
+            tr_image, val_image = set(), set()  # set whole images
+            for vc in self.view_coord:
+                if vc.image_name in tr_image:
+                    tr_list.append(vc)
+                    tr_image.add(vc.image_name)
+                elif vc.image_name in val_image:
+                    val_list.append(vc)
+                    val_image.add(vc.image_name)
+                else:
+                    if (len(val_list) + 0.05) / (len(tr_list) + 0.05) > self.cfg.train_vali_split:
+                        tr_list.append(vc)
+                        tr_image.add(vc.image_name)
+                    else:
+                        val_list.append(vc)
+                        val_image.add(vc.image_name)
+            print("From %d split into train: %d views %d images; validation %d views %d images" %
+                  (len(self.view_coord), len(tr_list), len(tr_image), len(val_list), len(val_image)))
+            print("Training Images:"); print(tr_image)
+            print("Validation Images:"); print(val_image)
+            yield(ImageMaskGenerator(self,self.cfg.train_aug,tgt_list,tr_list),ImageMaskGenerator(self,0,tgt_list,val_list),
+                  self.dir_in_ex(self.origin) if self.is_reverse else self.dir_out_ex(self.join_targets(tgt_list)))
+            i=o
+
+    def predict_generator(self):
+        # yield (ImageGenerator(self, False, self.targets, self.view_coord),self.join_targets(self.targets), self.targets)
+        i = 0; nt = len(self.targets)
+        ps = self.cfg.predict_size
+        while i < nt:
+            o = min(i + ps, nt)
+            tgt_list=self.targets[i:o]
+            yield (self.join_targets(tgt_list), tgt_list)
+            i = o
+
+    def predict_generator_partial(self,subset,view):
+        return ImageMaskGenerator(self,0,subset,view),self.join_targets(subset)
+
+    @staticmethod
+    def join_targets(tgt_list) :
+        # return ','.join(tgt_list)
+        # return ','.join(tgt_list[:max(1, int(24 / len(tgt_list)))]) #shorter but >= 1 char, may have error if categories share same leading chars
+        maxchar=max(1, int(28 / len(tgt_list))) # clip to fewer leading chars
+        # maxchar=9999 # include all
+        return ','.join(tgt[:maxchar] for tgt in tgt_list)
+
+    def dir_in_ex(self,txt=None):
+        ext=ImageSet.ext_folder(self.cfg, True)
+        txt=txt or self.origin
+        return txt+'_'+ext if self.cfg.separate else txt
+
+    def dir_out_ex(self,txt=None):
+        ext=ImageSet.ext_folder(self.cfg, False)
+        if txt is None:
+            return ext if self.cfg.separate else None
+        return txt+'_'+ext if self.cfg.separate else txt
+
+class ImageMaskGenerator(keras.utils.Sequence):
+    def __init__(self,pair:ImageMaskPair,aug_value,tgt_list,view_coord=None):
+        self.pair=pair
+        self.cfg=pair.cfg
+        self.aug_value=aug_value
+        self.target_list=tgt_list
+        self.view_coord=pair.view_coord if view_coord is None else view_coord
+        self.indexes = np.arange(len(self.view_coord))
+
+    def __len__(self):  # Denotes the number of batches per epoch
+        return int(np.ceil(len(self.view_coord) / self.cfg.batch_size))
+
+    def __getitem__(self, index):  # Generate one batch of data
+        indexes = self.indexes[index * self.cfg.batch_size:(index + 1) * self.cfg.batch_size]
+        # print(" getting index %d with %d batch size"%(index,self.batch_size))
+        if self.pair.is_train:
+            _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
+            _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
+            for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
+                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex()), self.cfg)
+                if self.cfg.out_image:
+                    # for ti,tgt in enumerate(self.target_list):
+                    #     _tgt[vi, ...,ti] =np.average( vc.get_image(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg), axis=-1) # average RGB to gray
+                    _tgt[vi, ...] =vc.get_image(os.path.join(self.pair.wd, self.pair.dir_out_ex(self.target_list[0])), self.cfg)
+                else:
+                    for ti,tgt in enumerate(self.target_list):
+                        _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg)
+            if self.aug_value > 0:
+                aug_value=random.randint(0, self.cfg.train_aug) # random number between zero and pre-set value
+                # print("  aug: %.2f"%aug_value,end='')
+                _img, _tgt = augment_image_pair(_img, _tgt, aug_value)  # integer N: a <= N <= b.
+                # imwrite("tr_img.jpg",_img[0])
+                # imwrite("tr_tgt.jpg",_tgt[0])
+            return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
+        else:
+            _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
+            for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
+                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex()), self.cfg)
+                # imwrite("prd_img.jpg",_img[0])
+            return prep_scale(_img, self.cfg.feed), None
+
+    def on_epoch_end(self):  # Updates indexes after each epoch
+        self.indexes = np.arange(len(self.view_coord))
+        if self.pair.is_train and self.cfg.train_shuffle:
+            np.random.shuffle(self.indexes)

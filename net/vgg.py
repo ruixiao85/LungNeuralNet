@@ -12,7 +12,7 @@ from keras.layers.normalization import BatchNormalization
 from keras.layers.pooling import MaxPooling2D
 from keras.layers import Input, merge
 from keras import backend as K
-from net.baseunet import Net
+from net.basenetu import BaseNetU
 from net.module import cvac, ca3, ca33, cb3, cba3, dmp, uu, ct, sk
 
 K.set_image_data_format("channels_last")
@@ -25,7 +25,7 @@ K.set_image_data_format("channels_last")
 # conv3x3-512 conv3x3-512 conv3x3/1x1-512 maxpool
 # conv3x3-512 conv3x3-512 conv3x3/1x1-512 maxpool
 # FC-4096 -> FC-4096 -> FC-1000 -> softmax
-class VggSegNet(Net):
+class VggSegNet(BaseNetU):
     # also base class for U-shaped networks
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, preproc=None, downconv=None, downjoin=None, downsamp=None, downmerge=None,
                  downproc=None,

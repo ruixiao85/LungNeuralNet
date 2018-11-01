@@ -11,12 +11,14 @@ def generate_colors(n, shuffle=False):
     return colors
 
 class Config:
-    def __init__(self,
+    def __init__(self, dim_in=None, dim_out=None,
                  num_targets=None,image_format=None,image_resize=None,image_padding=None,mask_color=None,
                  coverage_tr=None,coverage_prd=None,batch_size=None,separate=None,out_image=None,
                  call_hardness=None,overlay_color=None,overlay_opacity=None,predict_size=None,predict_proc=None,
                  train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
                  train_vali_split=None,train_aug=None,train_continue=None,train_shuffle=None):
+        self.row_in, self.col_in, self.dep_in=dim_in or (512,512,3)
+        self.row_out, self.col_out, self.dep_out=dim_out or (512,512,1)
         self.num_targets=num_targets or 10  # lead to default overlay_color predict_group
         self.image_format=image_format or "*.jpg"
         self.image_resize=image_resize or 1.0  # default 1.0, reduce size <=1.0
@@ -32,7 +34,7 @@ class Config:
                 generate_colors(self.num_targets)
         self.overlay_opacity=overlay_opacity if isinstance(overlay_color, list) else [0.3]*self.num_targets
         self.predict_size=predict_size or num_targets
-        from .util import single_call
+        from util import single_call
         self.predict_proc=predict_proc if predict_proc is not None else single_call
         self.batch_size=batch_size or 1
         self.train_rep=train_rep or 8  # times to repeat during training

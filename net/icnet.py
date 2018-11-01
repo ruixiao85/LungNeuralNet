@@ -15,10 +15,10 @@ from keras.models import Model
 import keras.backend as K
 import tensorflow as tf
 
-from net.baseunet import Net
+from net.basenetu import BaseNetU
 
 
-class ICNet(Net):
+class ICNet(BaseNetU):
     def __init__(self, filters=None, poolings=None,
                  preproc=None, downconv=None, downjoin=None, downsamp=None, downmerge=None, downproc=None,
                  upconv=None, upjoin=None, upsamp=None, upmerge=None, upproc=None, postproc=None, **kwargs

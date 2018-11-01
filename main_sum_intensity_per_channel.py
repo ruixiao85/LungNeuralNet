@@ -1,5 +1,5 @@
 import argparse
-from util import find_file_recursive
+from osio import find_file_recursive
 import cv2
 import numpy as np
 
@@ -16,4 +16,5 @@ if __name__ == '__main__':
         im=cv2.imread(img)
         # print(im.dtype)
         # print(im.shape)
-        print(img+','+','.join(str(n) for n in np.sum(im,axis=(0,1)).tolist()))
+        print(img+','+np.array2string(np.sum(im,axis=(0,1)),separator=','))
+        # print(img+','+','.join(str(n) for n in np.sum(im,axis=(0,1)).tolist()))

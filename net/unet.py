@@ -5,10 +5,10 @@ from keras.models import Model
 from keras.layers import Input
 from keras import backend as K
 import tensorflow as tf
-from net.baseunet import Net
+from net.basenetu import BaseNetU
 from net.module import cvac, ca3, ca33, cb3, cba3, dmp, uu, ct, sk, rn131r, rn131nr
 
-class UNet(Net):
+class UNet(BaseNetU):
     # also base class for U-shaped networks
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, preproc=None, downconv=None,downjoin=None,downsamp=None,downmerge=None,downproc=None,
                  upconv=None, upjoin=None, upsamp=None, upmerge=None, upproc=None, postproc=None, **kwargs
