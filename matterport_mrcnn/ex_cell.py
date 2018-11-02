@@ -378,13 +378,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Mask R-CNN for nuclei counting and segmentation')
     # parser.add_argument("command", metavar="<command>", help="'train' or 'detect'")
     parser.add_argument("--command",
-                        # default='train',
-                        default='detect',
+                        default='train',
+                        # default='detect',
                         metavar="<command>", help="'train' or 'detect'")
     parser.add_argument('--dataset', required=False, default='D:/kaggle_nucleus',
                         metavar="/path/to/dataset/",
                         help='Root directory of the dataset')
-    parser.add_argument('--subset', required=False, default='10xkyle', #'Original+LYM+MONO+PMN', # '40xpred', #'10xkyle',
+    parser.add_argument('--subset', required=False, default='10xkyle+', #'Original+LYM+MONO+PMN', # '40xpred', #'10xkyle',
                         metavar="Dataset sub-directory",
                         help="Subset of dataset to run training/prediction on")
     parser.add_argument('--original', required=False, default='images',
@@ -393,7 +393,7 @@ if __name__ == '__main__':
     parser.add_argument('--targets', required=False, default='LYM,MONO,PMN', #LYM,MONO,PMN
                         metavar="Dataset sub-directory",
                         help="Subset of dataset to run training/prediction on")
-    parser.add_argument('--weights', required=False, default='last', # 'imagenet', #
+    parser.add_argument('--weights', required=False, default='imagenet', # 'last', #
                         metavar="/path/to/weights.h5",
                         help="Path to weights .h5 file or 'coco' 'imagenet'")
     args = parser.parse_args()

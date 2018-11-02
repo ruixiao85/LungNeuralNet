@@ -1,5 +1,5 @@
 import argparse
-from basenetu import ImageMaskPair
+from b1_net_pair import ImageMaskPair
 from osio import *
 
 if __name__ == '__main__':
@@ -35,7 +35,7 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from net.unet import UNet2S
+    from c1_unet import UNet2S
 
     nets = [
         # SegNet(num_targets=len(targets)),

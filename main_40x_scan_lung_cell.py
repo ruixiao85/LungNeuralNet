@@ -1,6 +1,6 @@
 import os
 import argparse
-from basenetm import ImageNoisePair
+from b2_net_multi import ImageNoisePair
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train and predict with biomedical images.')
@@ -35,7 +35,7 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from net.unet import UNet2m
+    from c1_unet import UNet2m
     from osio import single_brighten
 
     nets = [

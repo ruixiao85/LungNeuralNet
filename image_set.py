@@ -1,13 +1,10 @@
 import os
-import random
 from cv2 import cv2
 import numpy as np
-import keras
 
-from basecfg import Config
-from osio import mkdir_ifexist,find_file_recursive
-from process_image import augment_image_pair,read_resize_padding,extract_pad_image,prep_scale,rev_scale
-from util import smooth_brighten
+from a_config import Config
+from osio import find_file_recursive
+from process_image import read_resize_padding,extract_pad_image
 
 ALL_TARGET = 'All'
 class MetaInfo:
