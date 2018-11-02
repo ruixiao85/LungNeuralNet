@@ -4,7 +4,7 @@ import numpy as np
 
 from a_config import Config
 from osio import find_file_recursive
-from process_image import read_resize_padding,extract_pad_image
+from preprocess import read_resize_padding,extract_pad_image
 
 ALL_TARGET = 'All'
 class MetaInfo:

@@ -34,7 +34,7 @@ class Config:
                 generate_colors(self.num_targets)
         self.overlay_opacity=overlay_opacity if isinstance(overlay_color, list) else [0.3]*self.num_targets
         self.predict_size=predict_size or num_targets
-        from output_util import single_call
+        from postprocess import single_call
         self.predict_proc=predict_proc if predict_proc is not None else single_call
         self.batch_size=batch_size or 1
         self.train_rep=train_rep or 8  # times to repeat during training
