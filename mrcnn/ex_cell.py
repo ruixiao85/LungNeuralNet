@@ -126,7 +126,7 @@ class NucleusConfig(Config):
     IMAGE_RESIZE_MODE = "crop"
     IMAGE_MIN_DIM = 512
     IMAGE_MAX_DIM = 512
-    IMAGE_MIN_SCALE = 2.0
+    IMAGE_MIN_SCALE = 3.0
 
     # Length of square anchor side in pixels
     RPN_ANCHOR_SCALES = (8, 16, 32, 64, 128) # already reduced
@@ -304,7 +304,7 @@ def train(model,subset_dir,args):
     print("Train all layers")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
-                epochs=10, # 40
+                epochs=8, # 40
                 augmentation=augmentation,
                 layers='all')
 
@@ -350,7 +350,7 @@ def detect(model,subset_dir,args):
         plt.savefig("{}/{}.png".format(submit_dir, source_id))
 
     # Save to csv file
-    submission = "ImageId,\n" + "\n".join(submission)
+    submission = "\n".join(submission)
     file_path = os.path.join(submit_dir, "submit.csv")
     with open(file_path, "w") as f:
         f.write(submission)
@@ -378,13 +378,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Mask R-CNN for nuclei counting and segmentation')
     # parser.add_argument("command", metavar="<command>", help="'train' or 'detect'")
     parser.add_argument("--command",
-                        default='train',
-                        # default='detect',
+                        # default='train',
+                        default='detect',
                         metavar="<command>", help="'train' or 'detect'")
     parser.add_argument('--dataset', required=False, default='D:/kaggle_nucleus',
                         metavar="/path/to/dataset/",
                         help='Root directory of the dataset')
-    parser.add_argument('--subset', required=False, default='10xkyle+', #'Original+LYM+MONO+PMN', # '40xpred', #'10xkyle',
+    parser.add_argument('--subset', required=False, default='10xkyle', #'Original+LYM+MONO+PMN', # '40xpred', #'10xkyle',
                         metavar="Dataset sub-directory",
                         help="Subset of dataset to run training/prediction on")
     parser.add_argument('--original', required=False, default='images',
@@ -393,7 +393,7 @@ if __name__ == '__main__':
     parser.add_argument('--targets', required=False, default='LYM,MONO,PMN', #LYM,MONO,PMN
                         metavar="Dataset sub-directory",
                         help="Subset of dataset to run training/prediction on")
-    parser.add_argument('--weights', required=False, default='imagenet', # 'last', #
+    parser.add_argument('--weights', required=False, default='last', #'imagenet', # 'last',
                         metavar="/path/to/weights.h5",
                         help="Path to weights .h5 file or 'coco' 'imagenet'")
     args = parser.parse_args()
