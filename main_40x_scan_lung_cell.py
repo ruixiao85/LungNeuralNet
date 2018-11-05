@@ -1,6 +1,6 @@
 import os
 import argparse
-from b2_net_multi import ImageNoisePair
+from b2_net_multi import ImagePatchSet
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train and predict with biomedical images.')
@@ -35,7 +35,7 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from c1_unet import UNet2m
+    from c2_resnet import MRCNN_ResNet_50, MRCNN_ResNet_101, MRCNN_ResNet_152
     from osio import single_brighten
 
     nets = [
@@ -43,7 +43,8 @@ if __name__ == '__main__':
         #        out='sigmoid',indicator='val_pl1mix',loss=loss_pmse,metrics=[pl1mix],
         #        predict_proc=compare_call),
         # UNet2m(num_targets=len(targets),dim_in=(768,768,3),dim_out=(768,768,1),filters=[96, 192, 288, 384, 512],poolings=[2, 2, 2, 2, 2]), #
-        UNet2m(num_targets=len(targets),predict_proc=single_brighten,coverage_tr=1.2,coverage_prd=1.2),
+        # UNet2m(num_targets=len(targets),predict_proc=single_brighten,coverage_tr=1.2,coverage_prd=1.2),
+        MRCNN_ResNet_50(num_targets=len(targets))
     ]
 
     mode = args.mode[0].lower()
@@ -51,9 +52,9 @@ if __name__ == '__main__':
         for net in nets:
             print("Network specifications: " + str(net))
             for origin in origins:
-                multi_set=ImageNoisePair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True); net.train(multi_set)
+                multi_set=ImagePatchSet(net,os.path.join(os.getcwd(),args.train_dir),origin,targets,is_train=True); net.train(multi_set)
 
     if mode != 't':
         for net in nets:
             for origin in origins:
-                multi_set=ImageNoisePair(net, os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False); net.predict(multi_set, args.pred_dir)
+                multi_set=ImagePatchSet(net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False); net.predict(multi_set,args.pred_dir)
