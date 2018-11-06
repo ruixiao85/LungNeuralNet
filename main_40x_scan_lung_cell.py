@@ -7,7 +7,7 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--dir', dest='dir', action='store',
                         default='40x_scan_lung_cell', help='work directory, empty->current dir')
     parser.add_argument('-t', '--train', dest='train_dir', action='store',
-                        default='train_10xkyle', help='train sub-directory')
+                        default='train', help='train sub-directory')
     parser.add_argument('-p', '--pred', dest='pred_dir', action='store',
                         default='pred', help='predict sub-directory')
     parser.add_argument('-m', '--mode', dest='mode', action='store',
@@ -19,7 +19,7 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--ext', dest='ext', action='store',
                         default='*.jpg', help='extension')
     parser.add_argument('-i', '--input', dest='input', type=str,
-                        default='Original', help='input: Original')
+                        default='Original_1.0_768x768', help='input: Original')
     parser.add_argument('-o', '--output', dest='output', type=str,
                         default='LYM,MONO,PMN', help='output: targets separated by comma')
     args = parser.parse_args()

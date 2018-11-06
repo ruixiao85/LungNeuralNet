@@ -18,6 +18,8 @@ from image_set import NoiseSet,ImageSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten
 from mrcnn import utils
+from preprocess import augment_image_pair,prep_scale
+
 
 class BaseNetM(Config):
     def __init__(self,is_train=None,num_classes=None,mini_mask_shape=None,out_mask_shape=None,
@@ -251,7 +253,7 @@ class BaseNetM(Config):
         dir_cfg_append=str(self) if dir_ex is None else dir_ex+'_'+str(self)
         res_ind,res_grp=None,None
         save_ind_image=False
-        for dir_out,tgt_list in pair.predict_generator():
+        for dir_out,tgt_list in pair.predict_generator_note():
             res_i,res_g=None,None
             print('Load model and predict to [%s]...'%dir_out)
             export_name=dir_out+'_'+dir_cfg_append
@@ -412,60 +414,36 @@ class ImagePatchSet:
         super(ImagePatchSet,self).__init__(cfg,wd,'+'.join([origin]+targets),[tgt+'+' for tgt in self.targets],is_train)
 
     def train_generator(self):
-        i = 0; no=self.cfg.dep_out; nt=len(self.targets)
-        while i < nt:
-            o=min(i+no, nt)
-            views = set(self.img_set.view_coord)
-            self.msk_set = []
-            tgt_list=[]
-            for t in self.targets[i:o]:
-                tgt_list.append(t)
-                msk = NoiseSet(self.cfg, self.wd, t, is_train=True, is_image=False).size_folder_update()
-                self.msk_set.append(msk)
-                views = views.intersection(msk.view_coord)
-            self.view_coord = list(views) # TODO refactor split method
-            tr_list, val_list = [], []  # list view_coords, can be from slices
-            tr_image, val_image = set(), set()  # set whole images
-            for vc in self.view_coord:
-                if vc.image_name in tr_image:
-                    tr_list.append(vc)
-                    tr_image.add(vc.image_name)
-                elif vc.image_name in val_image:
-                    val_list.append(vc)
-                    val_image.add(vc.image_name)
-                else:
-                    if (len(val_list) + 0.05) / (len(tr_list) + 0.05) > self.cfg.train_vali_split:
-                        tr_list.append(vc)
-                        tr_image.add(vc.image_name)
-                    else:
-                        val_list.append(vc)
-                        val_image.add(vc.image_name)
-            print("From %d split into train: %d views %d images; validation %d views %d images" %
-                  (len(self.view_coord), len(tr_list), len(tr_image), len(val_list), len(val_image)))
-            print("Training Images:"); print(tr_image)
-            print("Validation Images:"); print(val_image)
-            yield(ImageGenerator(self, self.cfg.train_aug, tgt_list, tr_list), ImageGenerator(self, 0, tgt_list, val_list),
-                    self.join_targets(tgt_list))
-            i=o
+        self.msk_set = [NoiseSet(self.cfg, self.wd, t, is_train=True, is_image=False).size_folder_update() for t in self.targets]
+        self.view_coord = self.img_set.view_coord
+        tr_list,val_list=self.cfg.train_vali_split(self.view_coord)
+        yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets, tr_list), ImagePatchGenerator(self, 0, self.targets, val_list),
+              self.cfg.join_targets(self.targets))
 
-    def predict_generator(self):
-        # yield (ImageGenerator(self, False, self.targets, self.view_coord),self.join_targets(self.targets), self.targets)
-        i = 0; nt = len(self.targets)
-        ps = self.cfg.predict_size
-        while i < nt:
-            o = min(i + ps, nt)
-            tgt_list=self.targets[i:o]
-            yield (self.join_targets(tgt_list),tgt_list)
-            i = o
+    def predict_generator_note(self):
+            yield (self.cfg.join_targets(self.targets),self.targets)
+
+    def predict_generator_partial(self,subset,view):
+        return ImagePatchGenerator(self,0,subset,view),self.cfg.join_targets(subset)
+
+    def dir_in_ex(self,txt=None):
+        ext=ImageSet.ext_folder(self.cfg, True)
+        txt=txt or '+'.join([self.origin,self.targets])
+        return txt+'_'+ext if self.cfg.separate else txt
+
+    def dir_out_ex(self,txt=None):
+        ext=ImageSet.ext_folder(self.cfg, False)
+        txt=txt or '-'.join([self.origin,self.targets])
+        return txt+'_'+ext if self.cfg.separate else txt
 
 
-class ImageMasksGenerator(keras.utils.Sequence):
-    def __init__(self,pair:ImageMasksPair,aug_value,tgt_list,view_coord=None):
-        self.pair=pair
-        self.cfg=pair.cfg
+class ImagePatchGenerator(keras.utils.Sequence):
+    def __init__(self,set:ImagePatchSet,aug_value,tgt_list,view_coord=None):
+        self.set=set
+        self.cfg=set.cfg
         self.aug_value=aug_value
         self.target_list=tgt_list
-        self.view_coord=pair.view_coord if view_coord is None else view_coord
+        self.view_coord=set.view_coord if view_coord is None else view_coord
         self.indexes = np.arange(len(self.view_coord))
 
     def __len__(self):  # Denotes the number of batches per epoch
@@ -474,35 +452,35 @@ class ImageMasksGenerator(keras.utils.Sequence):
     def __getitem__(self, index):  # Generate one batch of data
         indexes = self.indexes[index * self.cfg.batch_size:(index + 1) * self.cfg.batch_size]
         # print(" getting index %d with %d batch size"%(index,self.batch_size))
-        if self.pair.is_train:
+        if self.set.is_train:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex()), self.cfg)
+                _img[vi, ...] = vc.get_image(os.path.join(self.set.wd,self.set.dir_in_ex()),self.cfg)
                 if self.cfg.out_image:
                     # for ti,tgt in enumerate(self.target_list):
                     #     _tgt[vi, ...,ti] =np.average( vc.get_image(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg), axis=-1) # average RGB to gray
-                    _tgt[vi, ...] =vc.get_image(os.path.join(self.pair.wd, self.pair.dir_out_ex(self.target_list[0])), self.cfg)
+                    _tgt[vi, ...] =vc.get_image(os.path.join(self.set.wd,self.set.dir_out_ex()),self.cfg)
                 else:
                     for ti,tgt in enumerate(self.target_list):
-                        _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg)
+                        _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.set.wd,self.set.dir_out_ex()),self.cfg)
             if self.aug_value > 0:
                 aug_value=random.randint(0, self.cfg.train_aug) # random number between zero and pre-set value
                 # print("  aug: %.2f"%aug_value,end='')
-                _img, _tgt = augment_image_pair(_img, _tgt, aug_value)  # integer N: a <= N <= b.
+                _img, _tgt = augment_image_pair(_img, _tgt, _tgt_ch=1, _level=aug_value)  # integer N: a <= N <= b.
                 # imwrite("tr_img.jpg",_img[0])
                 # imwrite("tr_tgt.jpg",_tgt[0])
             return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex()), self.cfg)
+                _img[vi, ...] = vc.get_image(os.path.join(self.set.wd,self.set.dir_in_ex()),self.cfg)
                 # imwrite("prd_img.jpg",_img[0])
             return prep_scale(_img, self.cfg.feed), None
 
     def on_epoch_end(self):  # Updates indexes after each epoch
         self.indexes = np.arange(len(self.view_coord))
-        if self.pair.is_train and self.cfg.train_shuffle:
+        if self.set.is_train and self.cfg.train_shuffle:
             np.random.shuffle(self.indexes)
 
 # Anchors #

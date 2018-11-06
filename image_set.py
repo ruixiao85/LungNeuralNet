@@ -45,12 +45,13 @@ class MetaInfo:
         return self.image_name.replace(".jpg", "_#%d#%d#%d#%d#%d#%d#.jpg"
                  % (self.ori_row, self.ori_col, self.row_start,self.row_end,self.col_start,self.col_end))
 
-    def get_image(self, _path, cfg:Config):
-        return read_resize_padding(os.path.join(_path, self.file_name),_resize=1.0,_padding=1.0) if cfg.separate else\
-            extract_pad_image(read_resize_padding(os.path.join(_path, self.image_name),cfg.image_resize,cfg.image_padding), self.row_start, self.row_end, self.col_start, self.col_end)
+    def get_image(self, _path, cfg:Config, override=None):
+        file=override or self.file_name
+        return read_resize_padding(os.path.join(_path, file),_resize=1.0,_padding=1.0) if cfg.separate else\
+            extract_pad_image(read_resize_padding(os.path.join(_path, file),cfg.image_resize,cfg.image_padding), self.row_start, self.row_end, self.col_start, self.col_end)
 
-    def get_mask(self, _path, cfg:Config):
-        img=self.get_image(_path, cfg)
+    def get_mask(self, _path, cfg:Config, override=None):
+        img=self.get_image(_path, cfg, override)
         # imwrite("test_img.jpg",img)
         code=cfg.mask_color[0].lower()
         if code=='g': # green
@@ -64,6 +65,18 @@ class MetaInfo:
             # return img[...,1]  # from green channel
             return np.max(img,axis=-1,keepdims=False)  # max channel
             # return np.clip(np.sum(img,axis=-1,keepdims=False), 0, 255).astype(np.uint8)  # sum channel
+
+    def get_masks(self, _path, cfg:Config):
+        import glob
+        files=glob.glob(os.path.join(_path,self.file_name.replace(cfg.image_format[1:],cfg.image_format)))
+        print(files)
+        msks,clss=None,[]
+        for f in files:
+            class_split=f.split('^')
+            clss.append(class_split[int(len(class_split)-2)])
+            msk=self.get_mask(_path, cfg, f)[...,np.newaxis] # np.uint8 0-255
+            msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
+        return msks, np.array(clss)
 
     def __str__(self):
         return self.file_name
@@ -199,7 +212,6 @@ class ImageSet(FolderSet):
         else:
             n = self.cfg.train_step
             return { x:self.view_coord[x:x + n] for x in range(0, len(self.view_coord), n)}  # break into sub-lists
-
 
 
 class NoiseSet(FolderSet):

@@ -13,6 +13,7 @@ def generate_colors(n, shuffle=False):
 class Config:
     def __init__(self, dim_in=None, dim_out=None,
                  num_targets=None,image_format=None,image_resize=None,image_padding=None,mask_color=None,
+                 feed=None, act=None, out=None,
                  coverage_tr=None,coverage_prd=None,batch_size=None,separate=None,out_image=None,
                  call_hardness=None,overlay_color=None,overlay_opacity=None,predict_size=None,predict_proc=None,
                  train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
@@ -24,6 +25,9 @@ class Config:
         self.image_resize=image_resize or 1.0  # default 1.0, reduce size <=1.0
         self.image_padding=image_padding or 1.0  # default 1.0, padding proportionally >=1.0
         self.mask_color=mask_color or "white"  # green/white
+        self.feed=feed or 'tanh'
+        self.act=act or 'elu'
+        self.out=out or ('sigmoid' if self.dep_out==1 else 'softmax')
         self.out_image=out_image if out_image is not None else False # output type: True=image False=mask
         self.separate=separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
         self.coverage_train=coverage_tr or 3.0
@@ -45,3 +49,34 @@ class Config:
         self.train_aug=train_aug or 2  # only to training set, not validation or prediction mode, 1Flip 2Rotate 3Zoom 4ContrastGray 5BlurSharp 6NoiseDrop
         self.train_shuffle=train_shuffle if train_shuffle is not None else True  # only to training set, not validation or prediction mode
         self.train_continue=train_continue if train_continue is not None else True  # continue training by loading previous weights
+
+    def train_vali_split(self,view_coords):
+        tr_list,val_list=[],[]  # list view_coords, can be from slices
+        tr_image,val_image=set(),set()  # set whole images
+        for vc in view_coords:
+            if vc.image_name in tr_image:
+                tr_list.append(vc)
+                tr_image.add(vc.image_name)
+            elif vc.image_name in val_image:
+                val_list.append(vc)
+                val_image.add(vc.image_name)
+            else:
+                if (len(val_list)+0.05)/(len(tr_list)+0.05)>self.train_vali_split:
+                    tr_list.append(vc)
+                    tr_image.add(vc.image_name)
+                else:
+                    val_list.append(vc)
+                    val_image.add(vc.image_name)
+        print("From %d split into train: %d views %d images; validation %d views %d images"%
+              (len(view_coords),len(tr_list),len(tr_image),len(val_list),len(val_image)))
+        print("Training Images:"); print(tr_image)
+        print("Validation Images:"); print(val_image)
+        return tr_list,val_list
+
+    @staticmethod
+    def join_targets(tgt_list) :
+        # return ','.join(tgt_list)
+        # return ','.join(tgt_list[:max(1, int(24 / len(tgt_list)))]) #shorter but >= 1 char, may have error if categories share same leading chars
+        maxchar=max(1, int(28 / len(tgt_list))) # clip to fewer leading chars
+        # maxchar=9999 # include all
+        return ','.join(tgt[:maxchar] for tgt in tgt_list)

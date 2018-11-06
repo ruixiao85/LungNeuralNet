@@ -30,14 +30,11 @@ class BaseNetU(Config):
 
     #     model_out = 'softmax'   model_loss='categorical_crossentropy'
     #     model_out='sigmoid'    model_loss=[loss_bce_dice] 'binary_crossentropy' "bcedice"
-    def __init__(self, feed=None, act=None, out=None, loss=None, metrics=None, optimizer=None, indicator=None,
+    def __init__(self, loss=None, metrics=None, optimizer=None, indicator=None,
                  filename=None, **kwargs):
         super(BaseNetU,self).__init__(**kwargs)
         from metrics import jac, dice, dice67, dice33, acc, acc67, acc33, loss_bce_dice, custom_function_keras
         custom_function_keras()  # leakyrelu, swish
-        self.feed=feed or 'tanh'
-        self.act=act or 'elu'
-        self.out=out or ('sigmoid' if self.dep_out==1 else 'softmax')
         self.loss=loss or (
             loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy')  # 'binary_crossentropy'
         self.metrics=metrics or ([jac, dice, dice67, dice33] if self.dep_out==1 else [acc, acc67, acc33])
@@ -121,7 +118,7 @@ class BaseNetU(Config):
         dir_cfg_append=str(self) if dir_ex is None else dir_ex+'_'+str(self)
         res_ind,res_grp=None,None
         save_ind_image=False
-        for dir_out,tgt_list in pair.predict_generator():
+        for dir_out,tgt_list in pair.predict_generator_note():
             res_i,res_g=None,None
             print('Load model and predict to [%s]...'%dir_out)
             export_name=dir_out+'_'+dir_cfg_append
@@ -143,7 +140,7 @@ class BaseNetU(Config):
                     print(weight_file)
                     self.net.load_weights(weight_file)  # weights only
                     # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
-                    msk=self.net.predict_generator(prd,max_queue_size=1,workers=0,use_multiprocessing=False,verbose=1)
+                    msk=self.net.predict_generator_note(prd,max_queue_size=1,workers=0,use_multiprocessing=False,verbose=1)
                     msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
                     i=o
                 print('Saving predicted results [%s] to folder [%s]...'%(grp,export_name))
@@ -233,50 +230,22 @@ class ImageMaskPair:
                 self.msk_set.append(msk)
                 views = views.intersection(msk.view_coord)
             self.view_coord = list(views)
-            tr_list, val_list = [], []  # list view_coords, can be from slices
-            tr_image, val_image = set(), set()  # set whole images
-            for vc in self.view_coord:
-                if vc.image_name in tr_image:
-                    tr_list.append(vc)
-                    tr_image.add(vc.image_name)
-                elif vc.image_name in val_image:
-                    val_list.append(vc)
-                    val_image.add(vc.image_name)
-                else:
-                    if (len(val_list) + 0.05) / (len(tr_list) + 0.05) > self.cfg.train_vali_split:
-                        tr_list.append(vc)
-                        tr_image.add(vc.image_name)
-                    else:
-                        val_list.append(vc)
-                        val_image.add(vc.image_name)
-            print("From %d split into train: %d views %d images; validation %d views %d images" %
-                  (len(self.view_coord), len(tr_list), len(tr_image), len(val_list), len(val_image)))
-            print("Training Images:"); print(tr_image)
-            print("Validation Images:"); print(val_image)
+            tr_list,val_list=self.cfg.train_vali_split(self.view_coord)
             yield(ImageMaskGenerator(self,self.cfg.train_aug,tgt_list,tr_list),ImageMaskGenerator(self,0,tgt_list,val_list),
-                  self.dir_in_ex(self.origin) if self.is_reverse else self.dir_out_ex(self.join_targets(tgt_list)))
+                  self.dir_in_ex(self.origin) if self.is_reverse else self.dir_out_ex(self.cfg.join_targets(tgt_list)))
             i=o
 
-    def predict_generator(self):
-        # yield (ImageGenerator(self, False, self.targets, self.view_coord),self.join_targets(self.targets), self.targets)
+    def predict_generator_note(self):
         i = 0; nt = len(self.targets)
         ps = self.cfg.predict_size
         while i < nt:
             o = min(i + ps, nt)
             tgt_list=self.targets[i:o]
-            yield (self.join_targets(tgt_list), tgt_list)
+            yield (self.cfg.join_targets(tgt_list), tgt_list)
             i = o
 
     def predict_generator_partial(self,subset,view):
-        return ImageMaskGenerator(self,0,subset,view),self.join_targets(subset)
-
-    @staticmethod
-    def join_targets(tgt_list) :
-        # return ','.join(tgt_list)
-        # return ','.join(tgt_list[:max(1, int(24 / len(tgt_list)))]) #shorter but >= 1 char, may have error if categories share same leading chars
-        maxchar=max(1, int(28 / len(tgt_list))) # clip to fewer leading chars
-        # maxchar=9999 # include all
-        return ','.join(tgt[:maxchar] for tgt in tgt_list)
+        return ImageMaskGenerator(self,0,subset,view),self.cfg.join_targets(subset)
 
     def dir_in_ex(self,txt=None):
         ext=ImageSet.ext_folder(self.cfg, True)
