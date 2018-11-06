@@ -230,7 +230,7 @@ class ImageMaskPair:
                 self.msk_set.append(msk)
                 views = views.intersection(msk.view_coord)
             self.view_coord = list(views)
-            tr_list,val_list=self.cfg.train_vali_split(self.view_coord)
+            tr_list,val_list=self.cfg.split_train_vali(self.view_coord)
             yield(ImageMaskGenerator(self,self.cfg.train_aug,tgt_list,tr_list),ImageMaskGenerator(self,0,tgt_list,val_list),
                   self.dir_in_ex(self.origin) if self.is_reverse else self.dir_out_ex(self.cfg.join_targets(tgt_list)))
             i=o

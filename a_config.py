@@ -50,7 +50,7 @@ class Config:
         self.train_shuffle=train_shuffle if train_shuffle is not None else True  # only to training set, not validation or prediction mode
         self.train_continue=train_continue if train_continue is not None else True  # continue training by loading previous weights
 
-    def train_vali_split(self,view_coords):
+    def split_train_vali(self,view_coords):
         tr_list,val_list=[],[]  # list view_coords, can be from slices
         tr_image,val_image=set(),set()  # set whole images
         for vc in view_coords:

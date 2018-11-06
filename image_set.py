@@ -251,6 +251,7 @@ class NoiseSet(FolderSet):
             return { x:self.view_coord[x:x + n] for x in range(0, len(self.view_coord), n)}  # break into sub-lists
 
     def size_folder_update(self):
+        print("checking %s"%self.sub_folder)
         self.find_file_recursive_rel()
         # if self.cfg.separate:
         #     new_dir="%s_%s" % (self.sub_folder, self.ext_folder(self.cfg, self.is_image))

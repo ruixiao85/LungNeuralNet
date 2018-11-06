@@ -39,11 +39,11 @@ def rn131r(in_layer, name, repeat, filters, act, batch_norm=False,initial_stride
     return x
 
 def resnet(input_image, repeats, filters, act='relu', batch_norm=False):
-    c1=x=c7m3d4(input_image,'resnet_s1',0,filters[0],act,batch_norm) # downsample twice
-    c2=x=rn131r(x,'resnet_s2',repeats[1],filters[1],act,batch_norm,initial_stride=1) # override stride 2->1, same dim as prev maxpool
-    c3=x=rn131r(x,'resnet_s3',repeats[2],filters[2],act,batch_norm) # downconv once initially
-    c4=x=rn131r(x,'resnet_s4',repeats[3],filters[3],act,batch_norm) # downconv once initially
-    c5=rn131r(x,'resnet_s5',repeats[4],filters[4],act,batch_norm) # downconv once initially
+    c1=x=c7m3d4(input_image,'res1',0,filters[0],act,batch_norm) # downsample twice
+    c2=x=rn131r(x,'res2',repeats[1],filters[1],act,batch_norm,initial_stride=1) # override stride 2->1, same dim as prev maxpool
+    c3=x=rn131r(x,'res3',repeats[2],filters[2],act,batch_norm) # downconv once initially
+    c4=x=rn131r(x,'res4',repeats[3],filters[3],act,batch_norm) # downconv once initially
+    c5=rn131r(x,'res5',repeats[4],filters[4],act,batch_norm) # downconv once initially
     return [c1, c2, c3, c4, c5]
 def resnet_50(input_image):
     return resnet(input_image, repeats=[1,3,4,6,3], filters=[64,64,128,256,512])

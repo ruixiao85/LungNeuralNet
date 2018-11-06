@@ -23,21 +23,20 @@ from preprocess import augment_image_pair,prep_scale
 
 class BaseNetM(Config):
     def __init__(self,is_train=None,num_classes=None,mini_mask_shape=None,out_mask_shape=None,
-                 backbone=None,batch_norm=None,backbone_stride=None,pyramid_size=None,
+                 convolution_backbone=None,batch_norm=None,backbone_stride=None,pyramid_size=None,
                  fc_layers_size=None,rpn_anchor_scales=None,rpn_train_anchors_per_image=None,
                  rpn_anchor_ratio=None,rpn_anchor_stride=None,rpn_nms_threshold=None,rpn_bbox_stdev=None,
                  pre_nms_limit=None,post_mns_train=None,post_nms_predict=None,pool_size=None,mask_pool_size=None,
                  train_rois_per_image=None,train_roi_positive_ratio=None,max_gt_instance=None,
                  detection_max_instances=None,detection_min_confidence=None,detection_nms_threshold=None,
-                 detection_mask_threshold=None,optimizer=None,loss_weight=None,gpu_count=None,image_per_gpu=None,
-                 # feed=None, act=None, out=None, loss=None, metrics=None, optimizer=None, indicator=None,
+                 detection_mask_threshold=None,optimizer=None,loss_weight=None,indicator=None,trainable=None,gpu_count=None,image_per_gpu=None,
                  filename=None,**kwargs):
         super(BaseNetM,self).__init__(**kwargs)
-        self.is_train=is_train if is_train is not None else False
+        self.is_train=is_train if is_train is not None else False # default to simple prediction
         self.num_classes=num_classes or 1 # if one at a time
         self.meta_shape=[1+3+3+4+1+self.num_classes] # last number is NUM_CLASS
         from backbone import resnet_50, resnet_101, resnet_152
-        self.convolution_backbone=backbone or resnet_50 # "resnet101"
+        self.convolution_backbone=convolution_backbone or resnet_50 # "resnet101"
         self.batch_norm=batch_norm if batch_norm is not None else False # default to false since batch size is often small
         self.backbone_strides=backbone_stride or [4,8,16,32,64] # strides of the FPN Pyramid (default for Resnet101)
         self.pyramid_size=pyramid_size or 256 # Size of the top-down layers used to build the feature pyramid
@@ -66,11 +65,15 @@ class BaseNetM(Config):
         self.optimizer=optimizer or SGD(lr=1e-3, momentum=0.9, clipnorm=5.0)
         self.loss_weight=loss_weight or { "rpn_class_loss":1., "rpn_bbox_loss":1., "mrcnn_class_loss":1.,
                                         "mrcnn_bbox_loss":1., "mrcnn_mask_loss":1.} # Loss weights for more precise optimization.
+        self.indicator=indicator or 'val_loss'
+        self.trainable=trainable or 'all'
         self.gpu_count=gpu_count or 1
         self.images_per_gpu=image_per_gpu or 1
         self.filename=filename
+        self.net=None
 
-
+    def build_net(self, is_train):
+        self.is_train=is_train
         input_image=KL.Input(shape=[None,None,self.dep_in],name="input_image")
         input_image_meta=KL.Input(shape=self.meta_shape,name="input_image_meta")
         if self.is_train:
@@ -80,19 +83,20 @@ class BaseNetM(Config):
             input_gt_boxes=KL.Input(shape=[None,4],name="input_gt_boxes",dtype=tf.float32)  # GT Boxes in pixels (zero padded)  (y1, x1, y2, x2)
             gt_boxes=KL.Lambda(lambda x:norm_boxes_graph(x,K.shape(input_image)[1:3]))(input_gt_boxes)  # Normalize coordinates
             input_gt_masks=KL.Input(shape=self.mini_mask_shape,name="input_gt_masks",dtype=bool)  # GT Masks
-            mrcnn_feature_maps,rpn_feature_maps=self.cnn_fpn_feature_maps(input_image) # same train/predict
+            mrcnn_feature_maps,rpn_feature_maps=self.cnn_fpn_feature_maps(input_image)  # same train/predict
             anchors=self.get_anchors()
             anchors=np.broadcast_to(anchors,(self.batch_size,)+anchors.shape)
             anchors=KL.Lambda(lambda x:tf.Variable(anchors),name="anchors")(input_image)
-            rpn_bbox,rpn_class,rpn_class_logits,rpn_rois=self.rpn_outputs(anchors,rpn_feature_maps) # same train/predict
-            active_class_ids=KL.Lambda(lambda x:parse_image_meta_graph(x)["active_class_ids"])(input_image_meta) # Class ID mask to mark available class IDs
+            rpn_bbox,rpn_class,rpn_class_logits,rpn_rois=self.rpn_outputs(anchors,rpn_feature_maps)  # same train/predict
+            active_class_ids=KL.Lambda(lambda x:parse_image_meta_graph(x)["active_class_ids"])(input_image_meta)  # Class ID mask to mark available class IDs
             # Generate detection targets Subsamples proposals and generates target outputs for training
             # Note that proposal class IDs, gt_boxes, and gt_masks are zero padded. Equally, returned rois and targets are zero padded.
             rois,target_class_ids,target_bbox,target_mask=DetectionTargetLayer(self.images_per_gpu,self.train_rois_per_image,self.train_roi_positive_ratio,
-                           self.mini_mask_shape,self.rpn_bbox_stdev,name="proposal_targets")([rpn_rois,input_gt_class_ids,gt_boxes,input_gt_masks])
+                                                                               self.mini_mask_shape,self.rpn_bbox_stdev,name="proposal_targets")(
+                [rpn_rois,input_gt_class_ids,gt_boxes,input_gt_masks])
             # Network Heads
             mrcnn_class_logits,mrcnn_class,mrcnn_bbox=fpn_classifier_graph(rois,mrcnn_feature_maps,input_image_meta,self.pool_size,self.num_classes,
-                                     train_bn=self.batch_norm,fc_layers_size=self.fc_layers_size)
+                                                                           train_bn=self.batch_norm,fc_layers_size=self.fc_layers_size)
             mrcnn_mask=build_fpn_mask_graph(rois,mrcnn_feature_maps,input_image_meta,self.mask_pool_size,self.num_classes,train_bn=self.batch_norm)
             output_rois=KL.Lambda(lambda x:x*1,name="output_rois")(rois)
             # Losses
@@ -108,19 +112,20 @@ class BaseNetM(Config):
         else:
             input_anchors=KL.Input(shape=[None,4],name="input_anchors")  # Anchors in normalized coordinates
             anchors=input_anchors
-            mrcnn_feature_maps,rpn_feature_maps=self.cnn_fpn_feature_maps(input_image) # same train/predict
-            rpn_bbox,rpn_class,rpn_class_logits,rpn_rois=self.rpn_outputs(anchors,rpn_feature_maps) # same train/predict
+            mrcnn_feature_maps,rpn_feature_maps=self.cnn_fpn_feature_maps(input_image)  # same train/predict
+            rpn_bbox,rpn_class,rpn_class_logits,rpn_rois=self.rpn_outputs(anchors,rpn_feature_maps)  # same train/predict
             # Network Heads Proposal classifier and BBox regressor heads
             mrcnn_class_logits,mrcnn_class,mrcnn_bbox=fpn_classifier_graph(rpn_rois,mrcnn_feature_maps,input_image_meta,self.pool_size,self.num_classes,
-                                     train_bn=self.batch_norm,fc_layers_size=self.fc_layers_size)
+                                                                           train_bn=self.batch_norm,fc_layers_size=self.fc_layers_size)
             # Detections [batch, num_detections, (y1, x1, y2, x2, class_id, score)] in normalized coordinates
             detections=DetectionLayer(self.rpn_bbox_stdev,self.detection_min_confidence,self.detection_max_instances,self.
-                  detection_nms_threshold,self.gpu_count,self.images_per_gpu,name="mrcnn_detection")([rpn_rois,mrcnn_class,mrcnn_bbox,input_image_meta])
+                                      detection_nms_threshold,self.gpu_count,self.images_per_gpu,name="mrcnn_detection")(
+                [rpn_rois,mrcnn_class,mrcnn_bbox,input_image_meta])
             # Create masks for detections
             detection_boxes=KL.Lambda(lambda x:x[...,:4])(detections)
             mrcnn_mask=build_fpn_mask_graph(detection_boxes,mrcnn_feature_maps,input_image_meta,self.mask_pool_size,self.num_classes,train_bn=self.batch_norm)
             model=KM.Model([input_image,input_image_meta,input_anchors],
-                           [detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox], name='mask_rcnn')
+                           [detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox],name='mask_rcnn')
         self.net=model
 
     def get_anchors(self):
@@ -131,7 +136,7 @@ class BaseNetM(Config):
             self._anchor_cache={}
         if not tuple(image_shape) in self._anchor_cache:
             anchors=generate_pyramid_anchors(self.rpn_anchor_scales, self.rpn_anchor_ratios, backbone_shapes,
-                                        self.backbone_strides, self.rpn_anchor_scales)
+                                        self.backbone_strides, self.rpn_anchor_stride)
             self._anchor_cache[tuple(image_shape)]=utils.norm_boxes(anchors,image_shape[:2])
         return self._anchor_cache[tuple(image_shape)]
 
@@ -157,13 +162,12 @@ class BaseNetM(Config):
         feature_map=KL.Input(shape=[None,None,self.pyramid_size],name="input_rpn_feature_map")  # region proposal network model
         shared=KL.Conv2D(512,(3,3),padding='same',activation='relu',strides=self.rpn_anchor_stride,name='rpn_conv_shared')(feature_map)
         # Anchor Score. [batch, height, width, anchors per location * 2].
-        x=KL.Conv2D(2*self.rpn_anchor_ratios,(1,1),padding='valid',activation='linear',name='rpn_class_raw')(shared)
+        x=KL.Conv2D(2*len(self.rpn_anchor_ratios),(1,1),padding='valid',activation='linear',name='rpn_class_raw')(shared)
         # Reshape to [batch, anchors, 2]
         rpn_class_logits=KL.Lambda(lambda t:tf.reshape(t,[tf.shape(t)[0],-1,2]))(x)
         # Softmax on last dimension of BG/FG.
         rpn_probs=KL.Activation("softmax",name="rpn_class_xxx")(rpn_class_logits)
-        # Bounding box refinement. [batch, H, W, anchors per location * depth]
-        # where depth is [x, y, log(w), log(h)]
+        # Bounding box refinement. [batch, H, W, anchors per location * depth] where depth is [x, y, log(w), log(h)]
         x=KL.Conv2D(len(self.rpn_anchor_ratios)*4,(1,1),padding="valid",activation='linear',name='rpn_bbox_pred')(shared)
         # Reshape to [batch, anchors, 4]
         rpn_bbox=KL.Lambda(lambda t:tf.reshape(t,[tf.shape(t)[0],-1,4]))(x)
@@ -189,9 +193,26 @@ class BaseNetM(Config):
         json_net=(self.filename if self.filename is not None else str(self)) + ".json"
         with open(json_net, "w") as json_file:
             json_file.write(self.net.to_json())
-
+    def set_trainable(self):
+        pass
     def compile_net(self,save_net=False,print_summary=True):
-        self.net.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
+        self.net._losses=[]
+        self.net._per_input_losses={}
+        for loss in self.loss_weight.keys():
+            layer=self.net.get_layer(loss)
+            if layer.output not in self.net.losses: # loss
+                loss_fun=(tf.reduce_mean(layer.output,keepdims=True)*self.loss_weight.get(loss,1.))
+                self.net.add_loss(loss_fun)
+        reg_losses=[keras.regularizers.l2(0.001)(w)/tf.cast(tf.size(w),tf.float32) for w in self.net.trainable_weights
+            if 'gamma' not in w.name and 'beta' not in w.name] # L2 Regularization but skip gamma and beta weights of batch normalization layers.
+        self.net.add_loss(tf.add_n(reg_losses))
+        self.net.compile(optimizer=self.optimizer, loss=[None]*len(self.net.outputs))
+        for loss in self.loss_weight.keys():
+            layer=self.net.get_layer(loss)
+            if loss not in self.net.metrics_names: # metrics
+                self.net.metrics_names.append(loss)
+                loss_fun=(tf.reduce_mean(layer.output,keepdims=True)*self.loss_weight.get(loss,1.))
+                self.net.metrics_tensors.append(loss_fun)
         print("Model compiled")
         if save_net:
             self.save_net()
@@ -210,6 +231,9 @@ class BaseNetM(Config):
         return ''.join(test_list)
 
     def train(self,pair):
+        self.build_net(is_train=True)
+        # self.set_trainable()
+        self.compile_net()
         for tr,val,dir_out in pair.train_generator():
             export_name=dir_out+'_'+str(self)
             weight_file=export_name+".h5"
@@ -217,7 +241,7 @@ class BaseNetM(Config):
                 # print("Continue from previous weights")
                 # self.net.load_weights(weight_file)
                 print("Continue from previous model with weights & optimizer")
-                self.net=load_model(weight_file,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
+                self.net=load_model(weight_file)  # does not work well with custom act, loss func
             print('Fitting neural net...')
             for r in range(self.train_rep):
                 print("Training %d/%d for %s"%(r+1,self.train_rep,export_name))
@@ -229,9 +253,9 @@ class BaseNetM(Config):
                    validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
                    epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,
                    callbacks=[
-                       ModelCheckpoint(weight_file,monitor=self.indicator,mode='max',save_weights_only=False,save_best_only=True),
-                       # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
-                       EarlyStopping(monitor=self.indicator,mode='max',patience=1,verbose=1),
+                       ModelCheckpoint(weight_file,monitor=self.indicator,mode='min',save_weights_only=False,save_best_only=True),
+                       # ReduceLROnPlateau(monitor=self.indicator, mode='min', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
+                       EarlyStopping(monitor=self.indicator,mode='min',patience=1,verbose=1),
                        # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                    ]).history
                 if not os.path.exists(export_name+".txt"):
@@ -243,6 +267,9 @@ class BaseNetM(Config):
                 df.to_csv(export_name+".csv",mode="a",header=(not os.path.exists(export_name+".csv")))
 
     def predict(self,pair,pred_dir):
+        self.build_net(is_train=False)
+        # self.set_trainable()
+        self.compile_net()
         xls_file="Result_%s_%s.xlsx"%(pred_dir,repr(self))
         img_ext=self.image_format[1:]  # *.jpg -> .jpg
         sum_i,sum_g=self.row_out*self.col_out,None
@@ -346,77 +373,74 @@ class ImagePatchSet:
         self.targets=targets if isinstance(targets,list) else [targets]
         # self.dir_out=targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
         self.img_set=ImageSet(cfg,wd,origin,is_train,is_image=True).size_folder_update()
-        self.msk_set=None
+        self.msk_set=[NoiseSet(cfg, wd, tgt, is_train, is_image=True) for tgt in targets]
         self.view_coord=self.img_set.view_coord
         self.is_train=is_train
         self.is_reverse=is_reverse
 
-        premade=mkdir_ifexist(os.path.join(wd, '+'.join([origin]+targets))) # e.g., Original+LYM+MONO+PMN
-        print(premade)
-        for tgt in targets:
-            premade=mkdir_ifexist(os.path.join(wd, tgt+'+')) and premade # force mkdir e.g., MONO+
-        print(premade)
-        if not premade:
-            # super(ImageNoisePair,self).__init__(cfg,wd,origin,targets,is_train) # split original image
-            self.bright_diff=-10  # local brightness should be more than noise patch brightness,
-            self.aj_size=2
-            self.aj_std=0.2
-            self.msk_set=[]
-            tgt_set=[NoiseSet(cfg, wd, tgt, is_train, is_image=True) for tgt in targets]
-            pixels=cfg.row_in*cfg.col_in
-            for vi, vc in enumerate(self.img_set.view_coord):
-                rand_num=[(random.randint(0,len(targets)-1), random.random(), random.uniform(0, 1), random.uniform(0, 1))
-                          for r in range(random.randint(pixels//5000, pixels//2000))]  # index,label/class,row,col
-                img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.sub_folder), self.cfg)
-                lg_row, lg_col, lg_dep=img.shape
-                # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
-                inserted=[0]*len(self.targets) # track # of inserts per category
-                vcfilenoext=vc.file_name_insert(cfg)
-                mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext))
-                mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,'images'))
-                for tgt in targets:
-                    mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,tgt))
-                for lirc in rand_num:
-                    the_tgt=tgt_set[lirc[0]]
-                    prev=img.copy()
-                    idx=int(the_tgt.num_patches*lirc[1])  # index of patch to apply
-                    patch=the_tgt.view_coord[idx]
-                    p_row, p_col, p_ave, p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
-                    lri=int(lg_row*lirc[2])-p_row//2  # large row in/start
-                    lci=int(lg_col*lirc[3])-p_col//2  # large col in/start
-                    lro, lco=lri+p_row, lci+p_col  # large row/col out/end
-                    pri=0 if lri>=0 else -lri; lri=max(0, lri)
-                    pci=0 if lci>=0 else -lci; lci=max(0, lci)
-                    pro=p_row if lro<=lg_row else p_row-lro+lg_row; lro=min(lg_row, lro)
-                    pco=p_col if lco<=lg_col else p_col-lco+lg_col; lco=min(lg_col, lco)
-                    # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
-                    if np.min(img[lri:lro, lci:lco])-p_ave>self.bright_diff and \
-                            int(np.std(img[lri-p_row*self.aj_size:lro+p_row*self.aj_size,
-                                       lci-p_col*self.aj_size:lco+p_col*self.aj_size])>self.aj_std*p_std):  # target area is brighter, then add patch
-                        # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(lg_row,lri,lro,lg_col,lci,lco,p_row,pri,pro,p_col,pci,pco))
-                        # pat=patch.get_image(os.path.join(self.wd, the_tgt.sub_folder),self.cfg)  # TODO 40X-40X resize=1.0
-                        pat=the_tgt.patches[idx]
-                        if random.random()>0.5: pat=np.fliplr(pat)
-                        if random.random()>0.5: pat=np.flipud(pat)
-                        img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco])
-                        # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if lirc[1]>self.cfg.train_vali_split else '^'))),
-                        #             smooth_brighten(prev-img))
-                        cv2.imwrite(os.path.join(self.wd, '+'.join([origin]+targets), vcfilenoext, the_tgt.sub_folder,
-                                                 vc.file_name_insert(cfg,'_'+str(idx))), #+('' if lirc[1]>self.cfg.train_vali_split else '^'))
-                                    smooth_brighten(prev-img))
-                        # lr=(lri+lro)//2
-                        # lc=(lci+lco)//2
-                        # msk[lr:lr+1,lc:lc+1,1]=255
-                        inserted[lirc[0]]+=1
-                print("inserted %s for %s"%(inserted,vc.file_name))
-                cv2.imwrite(os.path.join(self.wd, '+'.join([origin]+targets), vcfilenoext, 'images', vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+        self.bright_diff=-10  # local brightness should be more than noise patch brightness,
+        self.adjacent_size=2
+        self.adjacent_std=0.2
 
-        super(ImagePatchSet,self).__init__(cfg,wd,'+'.join([origin]+targets),[tgt+'+' for tgt in self.targets],is_train)
+        # premade=mkdir_ifexist(os.path.join(wd, '+'.join([origin]+targets))) # e.g., Original+LYM+MONO+PMN
+        # print(premade)
+        # for tgt in targets:
+        #     premade=mkdir_ifexist(os.path.join(wd, tgt+'+')) and premade # force mkdir e.g., MONO+
+        # print(premade)
+        # if not premade:
+        #     # super(ImageNoisePair,self).__init__(cfg,wd,origin,targets,is_train) # split original image
+        #     pixels=cfg.row_in*cfg.col_in
+        #     for vi, vc in enumerate(self.img_set.view_coord):
+        #         rand_num=[(random.randint(0,len(targets)-1), random.random(), random.uniform(0, 1), random.uniform(0, 1))
+        #                   for r in range(random.randint(pixels//5000, pixels//2000))]  # index,label/class,row,col
+        #         img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.sub_folder), self.cfg)
+        #         lg_row, lg_col, lg_dep=img.shape
+        #         # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
+        #         inserted=[0]*len(self.targets) # track # of inserts per category
+        #         vcfilenoext=vc.file_name_insert(cfg)
+        #         mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext))
+        #         mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,'images'))
+        #         for tgt in targets:
+        #             mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,tgt))
+        #         for lirc in rand_num:
+        #             the_tgt=self.msk_set[lirc[0]]
+        #             prev=img.copy()
+        #             idx=int(the_tgt.num_patches*lirc[1])  # index of patch to apply
+        #             patch=the_tgt.view_coord[idx]
+        #             p_row, p_col, p_ave, p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
+        #             lri=int(lg_row*lirc[2])-p_row//2  # large row in/start
+        #             lci=int(lg_col*lirc[3])-p_col//2  # large col in/start
+        #             lro, lco=lri+p_row, lci+p_col  # large row/col out/end
+        #             pri=0 if lri>=0 else -lri; lri=max(0, lri)
+        #             pci=0 if lci>=0 else -lci; lci=max(0, lci)
+        #             pro=p_row if lro<=lg_row else p_row-lro+lg_row; lro=min(lg_row, lro)
+        #             pco=p_col if lco<=lg_col else p_col-lco+lg_col; lco=min(lg_col, lco)
+        #             # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
+        #             if np.min(img[lri:lro, lci:lco])-p_ave>self.bright_diff and \
+        #                     int(np.std(img[lri-p_row*self.adjacent_size:lro+p_row*self.adjacent_size,
+        #                                lci-p_col*self.adjacent_size:lco+p_col*self.adjacent_size])>self.adjacent_std*p_std):  # target area is brighter, then add patch
+        #                 # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(lg_row,lri,lro,lg_col,lci,lco,p_row,pri,pro,p_col,pci,pco))
+        #                 # pat=patch.get_image(os.path.join(self.wd, the_tgt.sub_folder),self.cfg)  # TODO 40X-40X resize=1.0
+        #                 pat=the_tgt.patches[idx]
+        #                 if random.random()>0.5: pat=np.fliplr(pat)
+        #                 if random.random()>0.5: pat=np.flipud(pat)
+        #                 img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco])
+        #                 # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if lirc[1]>self.cfg.train_vali_split else '^'))),
+        #                 #             smooth_brighten(prev-img))
+        #                 cv2.imwrite(os.path.join(self.wd, '+'.join([origin]+targets), vcfilenoext, the_tgt.sub_folder,
+        #                                          vc.file_name_insert(cfg,'_'+str(idx))), #+('' if lirc[1]>self.cfg.train_vali_split else '^'))
+        #                             smooth_brighten(prev-img))
+        #                 # lr=(lri+lro)//2
+        #                 # lc=(lci+lco)//2
+        #                 # msk[lr:lr+1,lc:lc+1,1]=255
+        #                 inserted[lirc[0]]+=1
+        #         print("inserted %s for %s"%(inserted,vc.file_name))
+        #         cv2.imwrite(os.path.join(self.wd, '+'.join([origin]+targets), vcfilenoext, 'images', vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
 
     def train_generator(self):
         self.msk_set = [NoiseSet(self.cfg, self.wd, t, is_train=True, is_image=False).size_folder_update() for t in self.targets]
         self.view_coord = self.img_set.view_coord
-        tr_list,val_list=self.cfg.train_vali_split(self.view_coord)
+        tr_list,val_list=self.cfg.split_train_vali(self.view_coord)
         yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets, tr_list), ImagePatchGenerator(self, 0, self.targets, val_list),
               self.cfg.join_targets(self.targets))
 
@@ -438,12 +462,12 @@ class ImagePatchSet:
 
 
 class ImagePatchGenerator(keras.utils.Sequence):
-    def __init__(self,set:ImagePatchSet,aug_value,tgt_list,view_coord=None):
-        self.set=set
-        self.cfg=set.cfg
+    def __init__(self,pair:ImagePatchSet,aug_value,tgt_list,view_coord=None):
+        self.set=pair
+        self.cfg=pair.cfg
         self.aug_value=aug_value
         self.target_list=tgt_list
-        self.view_coord=set.view_coord if view_coord is None else view_coord
+        self.view_coord=pair.view_coord if view_coord is None else view_coord
         self.indexes = np.arange(len(self.view_coord))
 
     def __len__(self):  # Denotes the number of batches per epoch
@@ -512,8 +536,7 @@ def generate_pyramid_anchors(scales, ratios, feature_shapes, feature_strides, an
     # Anchors [anchor_count, (y1, x1, y2, x2)]
     anchors = []
     for i in range(len(scales)):
-        anchors.append(generate_anchors(scales[i], ratios, feature_shapes[i],
-                                        feature_strides[i], anchor_stride))
+        anchors.append(generate_anchors(scales[i], ratios, feature_shapes[i], feature_strides[i], anchor_stride))
     return np.concatenate(anchors, axis=0)
 
 
@@ -805,7 +828,7 @@ def detection_targets_graph(proposals,gt_class_ids,gt_boxes,gt_masks,train_rois_
         x2 = (x2 - gt_x1) / gt_w
         boxes = tf.concat([y1, x1, y2, x2], 1)
     box_ids = tf.range(0, tf.shape(roi_masks)[0])
-    masks = tf.image.crop_and_resize(tf.cast(roi_masks, tf.float32),boxes,box_ids,mini_mask_shape)
+    masks = tf.image.crop_and_resize(tf.cast(roi_masks, tf.float32),boxes,box_ids,mini_mask_shape[0:2])
     # Remove the extra dimension from masks.
     masks = tf.squeeze(masks, axis=3)
     # Threshold mask pixels at 0.5 to have GT masks be 0 or 1 to use with
@@ -1100,8 +1123,7 @@ def mrcnn_mask_loss_graph(target_masks, target_class_ids, pred_masks):
 
 
 # Data Generator #
-from mrcnn.dataset import Dataset
-def load_image_gt(dataset:Dataset, config, image_id, mini_mask_shape):
+def load_image_gt(dataset, config, image_id, mini_mask_shape):
     image = dataset.load_image(image_id)
     mask, class_ids = dataset.load_mask(image_id)
     original_shape = image.shape
@@ -1357,7 +1379,7 @@ def data_generator(dataset, config, shuffle=True, random_rois=0, batch_size=1, d
     no_augmentation_sources = no_augmentation_sources or []
 
     # Anchors [anchor_count, (y1, x1, y2, x2)]
-    backbone_shapes = np.array([[int(math.ceil(self.row_in/stride)), int(math.ceil(self.col_in/stride))] for stride in config.BACKBONE_STRIDES])
+    backbone_shapes = np.array([[int(math.ceil(config.row_in/stride)), int(math.ceil(config.col_in/stride))] for stride in config.BACKBONE_STRIDES])
     anchors = generate_pyramid_anchors(config.RPN_ANCHOR_SCALES, config.RPN_ANCHOR_RATIOS, backbone_shapes,config.BACKBONE_STRIDES, config.RPN_ANCHOR_STRIDE)
 
     # Keras requires a generator to run indefinitely.
@@ -1370,15 +1392,9 @@ def data_generator(dataset, config, shuffle=True, random_rois=0, batch_size=1, d
         # Get GT bounding boxes and masks for image.
         image_id = image_ids[image_index]
 
-        # If the image source is not to be augmented pass None as augmentation
-        if dataset.image_info[image_id]['source'] in no_augmentation_sources:
-            image, image_meta, gt_class_ids, gt_boxes, gt_masks = load_image_gt(dataset, config, image_id, use_mini_mask=config.USE_MINI_MASK) # with augmentation
-        else:
-            image, image_meta, gt_class_ids, gt_boxes, gt_masks = load_image_gt(dataset, config, image_id, use_mini_mask=config.USE_MINI_MASK) # no augmentation
+        image, image_meta, gt_class_ids, gt_boxes, gt_masks = load_image_gt(dataset,config,image_id) # no augmentation
 
-        # Skip images that have no instances. This can happen in cases
-        # where we train on a subset of classes and the image doesn't
-        # have any of the classes we care about.
+        # Skip images that have no instances. This can happen in cases  where we train on a subset of classes and the image doesn't have any of the classes we care about.
         if not np.any(gt_class_ids > 0):
             continue
 

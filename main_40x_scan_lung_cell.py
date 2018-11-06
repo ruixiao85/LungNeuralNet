@@ -19,7 +19,7 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--ext', dest='ext', action='store',
                         default='*.jpg', help='extension')
     parser.add_argument('-i', '--input', dest='input', type=str,
-                        default='Original_1.0_768x768', help='input: Original')
+                        default='Original', help='input: Original')
     parser.add_argument('-o', '--output', dest='output', type=str,
                         default='LYM,MONO,PMN', help='output: targets separated by comma')
     args = parser.parse_args()
@@ -36,7 +36,6 @@ if __name__ == '__main__':
     origins = args.input.split(',')
     targets = args.output.split(',')
     from c2_resnet import MRCNN_ResNet_50, MRCNN_ResNet_101, MRCNN_ResNet_152
-    from osio import single_brighten
 
     nets = [
         # UNet2m(num_targets=len(targets),dim_in=(768,768,3),dim_out=(768,768,3),filters=[96, 128, 256, 512, 768],out_image=True,
