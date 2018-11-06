@@ -14,7 +14,7 @@ import keras.models as KM
 from keras.engine.saving import model_from_json,load_model
 
 from a_config import Config
-from image_set import NoiseSet,ImageSet
+from image_set import PatchSet,ImageSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten
 from mrcnn import utils
@@ -373,7 +373,7 @@ class ImagePatchSet:
         self.targets=targets if isinstance(targets,list) else [targets]
         # self.dir_out=targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
         self.img_set=ImageSet(cfg,wd,origin,is_train,is_image=True).size_folder_update()
-        self.msk_set=[NoiseSet(cfg, wd, tgt, is_train, is_image=True) for tgt in targets]
+        self.pch_set=[PatchSet(cfg,wd,tgt,is_train,is_image=True) for tgt in targets]
         self.view_coord=self.img_set.view_coord
         self.is_train=is_train
         self.is_reverse=is_reverse
@@ -382,63 +382,64 @@ class ImagePatchSet:
         self.adjacent_size=2
         self.adjacent_std=0.2
 
-        # premade=mkdir_ifexist(os.path.join(wd, '+'.join([origin]+targets))) # e.g., Original+LYM+MONO+PMN
-        # print(premade)
-        # for tgt in targets:
-        #     premade=mkdir_ifexist(os.path.join(wd, tgt+'+')) and premade # force mkdir e.g., MONO+
-        # print(premade)
-        # if not premade:
-        #     # super(ImageNoisePair,self).__init__(cfg,wd,origin,targets,is_train) # split original image
-        #     pixels=cfg.row_in*cfg.col_in
-        #     for vi, vc in enumerate(self.img_set.view_coord):
-        #         rand_num=[(random.randint(0,len(targets)-1), random.random(), random.uniform(0, 1), random.uniform(0, 1))
-        #                   for r in range(random.randint(pixels//5000, pixels//2000))]  # index,label/class,row,col
-        #         img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.sub_folder), self.cfg)
-        #         lg_row, lg_col, lg_dep=img.shape
-        #         # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
-        #         inserted=[0]*len(self.targets) # track # of inserts per category
-        #         vcfilenoext=vc.file_name_insert(cfg)
-        #         mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext))
-        #         mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,'images'))
-        #         for tgt in targets:
-        #             mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,tgt))
-        #         for lirc in rand_num:
-        #             the_tgt=self.msk_set[lirc[0]]
-        #             prev=img.copy()
-        #             idx=int(the_tgt.num_patches*lirc[1])  # index of patch to apply
-        #             patch=the_tgt.view_coord[idx]
-        #             p_row, p_col, p_ave, p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
-        #             lri=int(lg_row*lirc[2])-p_row//2  # large row in/start
-        #             lci=int(lg_col*lirc[3])-p_col//2  # large col in/start
-        #             lro, lco=lri+p_row, lci+p_col  # large row/col out/end
-        #             pri=0 if lri>=0 else -lri; lri=max(0, lri)
-        #             pci=0 if lci>=0 else -lci; lci=max(0, lci)
-        #             pro=p_row if lro<=lg_row else p_row-lro+lg_row; lro=min(lg_row, lro)
-        #             pco=p_col if lco<=lg_col else p_col-lco+lg_col; lco=min(lg_col, lco)
-        #             # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
-        #             if np.min(img[lri:lro, lci:lco])-p_ave>self.bright_diff and \
-        #                     int(np.std(img[lri-p_row*self.adjacent_size:lro+p_row*self.adjacent_size,
-        #                                lci-p_col*self.adjacent_size:lco+p_col*self.adjacent_size])>self.adjacent_std*p_std):  # target area is brighter, then add patch
-        #                 # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(lg_row,lri,lro,lg_col,lci,lco,p_row,pri,pro,p_col,pci,pco))
-        #                 # pat=patch.get_image(os.path.join(self.wd, the_tgt.sub_folder),self.cfg)  # TODO 40X-40X resize=1.0
-        #                 pat=the_tgt.patches[idx]
-        #                 if random.random()>0.5: pat=np.fliplr(pat)
-        #                 if random.random()>0.5: pat=np.flipud(pat)
-        #                 img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco])
-        #                 # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if lirc[1]>self.cfg.train_vali_split else '^'))),
-        #                 #             smooth_brighten(prev-img))
-        #                 cv2.imwrite(os.path.join(self.wd, '+'.join([origin]+targets), vcfilenoext, the_tgt.sub_folder,
-        #                                          vc.file_name_insert(cfg,'_'+str(idx))), #+('' if lirc[1]>self.cfg.train_vali_split else '^'))
-        #                             smooth_brighten(prev-img))
-        #                 # lr=(lri+lro)//2
-        #                 # lc=(lci+lco)//2
-        #                 # msk[lr:lr+1,lc:lc+1,1]=255
-        #                 inserted[lirc[0]]+=1
-        #         print("inserted %s for %s"%(inserted,vc.file_name))
-        #         cv2.imwrite(os.path.join(self.wd, '+'.join([origin]+targets), vcfilenoext, 'images', vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+    def blend_image_patch(self,file_name):
+        premade=mkdir_ifexist(os.path.join(wd, '+'.join([origin]+targets))) # e.g., Original+LYM+MONO+PMN
+        print(premade)
+        for tgt in targets:
+            premade=mkdir_ifexist(os.path.join(wd, tgt+'+')) and premade # force mkdir e.g., MONO+
+        print(premade)
+        if not premade:
+            # super(ImageNoisePair,self).__init__(cfg,wd,origin,targets,is_train) # split original image
+            pixels=cfg.row_in*cfg.col_in
+            for vi, vc in enumerate(self.img_set.view_coord):
+                rand_num=[(random.randint(0,len(targets)-1), random.random(), random.uniform(0, 1), random.uniform(0, 1))
+                          for r in range(random.randint(pixels//5000, pixels//2000))]  # index,label/class,row,col
+                img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.sub_folder), self.cfg)
+                lg_row, lg_col, lg_dep=img.shape
+                # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
+                inserted=[0]*len(self.targets) # track # of inserts per category
+                vcfilenoext=vc.file_name_insert(cfg)
+                mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext))
+                mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,'images'))
+                for tgt in targets:
+                    mkdir_ifexist(os.path.join(self.wd,'+'.join([origin]+targets),vcfilenoext,tgt))
+                for lirc in rand_num:
+                    the_tgt=self.pch_set[lirc[0]]
+                    prev=img.copy()
+                    idx=int(the_tgt.num_patches*lirc[1])  # index of patch to apply
+                    patch=the_tgt.view_coord[idx]
+                    p_row, p_col, p_ave, p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
+                    lri=int(lg_row*lirc[2])-p_row//2  # large row in/start
+                    lci=int(lg_col*lirc[3])-p_col//2  # large col in/start
+                    lro, lco=lri+p_row, lci+p_col  # large row/col out/end
+                    pri=0 if lri>=0 else -lri; lri=max(0, lri)
+                    pci=0 if lci>=0 else -lci; lci=max(0, lci)
+                    pro=p_row if lro<=lg_row else p_row-lro+lg_row; lro=min(lg_row, lro)
+                    pco=p_col if lco<=lg_col else p_col-lco+lg_col; lco=min(lg_col, lco)
+                    # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
+                    if np.min(img[lri:lro, lci:lco])-p_ave>self.bright_diff and \
+                            int(np.std(img[lri-p_row*self.adjacent_size:lro+p_row*self.adjacent_size,
+                                       lci-p_col*self.adjacent_size:lco+p_col*self.adjacent_size])>self.adjacent_std*p_std):  # target area is brighter, then add patch
+                        # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(lg_row,lri,lro,lg_col,lci,lco,p_row,pri,pro,p_col,pci,pco))
+                        # pat=patch.get_image(os.path.join(self.wd, the_tgt.sub_folder),self.cfg)  # TODO 40X-40X resize=1.0
+                        pat=the_tgt.patches[idx]
+                        if random.random()>0.5: pat=np.fliplr(pat)
+                        if random.random()>0.5: pat=np.flipud(pat)
+                        img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco])
+                        # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if lirc[1]>self.cfg.train_vali_split else '^'))),
+                        #             smooth_brighten(prev-img))
+                        cv2.imwrite(os.path.join(self.wd, '+'.join([origin]+targets), vcfilenoext, the_tgt.sub_folder,
+                                                 vc.file_name_insert(cfg,'_'+str(idx))), #+('' if lirc[1]>self.cfg.train_vali_split else '^'))
+                                    smooth_brighten(prev-img))
+                        # lr=(lri+lro)//2
+                        # lc=(lci+lco)//2
+                        # msk[lr:lr+1,lc:lc+1,1]=255
+                        inserted[lirc[0]]+=1
+                print("inserted %s for %s"%(inserted,vc.file_name))
+                cv2.imwrite(os.path.join(self.wd, '+'.join([origin]+targets), vcfilenoext, 'images', vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
 
     def train_generator(self):
-        self.msk_set = [NoiseSet(self.cfg, self.wd, t, is_train=True, is_image=False).size_folder_update() for t in self.targets]
+        self.pch_set = [PatchSet(self.cfg,self.wd,t,is_train=True,is_image=False).size_folder_update() for t in self.targets]
         self.view_coord = self.img_set.view_coord
         tr_list,val_list=self.cfg.split_train_vali(self.view_coord)
         yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets, tr_list), ImagePatchGenerator(self, 0, self.targets, val_list),
@@ -463,7 +464,7 @@ class ImagePatchSet:
 
 class ImagePatchGenerator(keras.utils.Sequence):
     def __init__(self,pair:ImagePatchSet,aug_value,tgt_list,view_coord=None):
-        self.set=pair
+        self.pair=pair
         self.cfg=pair.cfg
         self.aug_value=aug_value
         self.target_list=tgt_list
@@ -476,18 +477,22 @@ class ImagePatchGenerator(keras.utils.Sequence):
     def __getitem__(self, index):  # Generate one batch of data
         indexes = self.indexes[index * self.cfg.batch_size:(index + 1) * self.cfg.batch_size]
         # print(" getting index %d with %d batch size"%(index,self.batch_size))
-        if self.set.is_train:
+        if self.pair.is_train:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.set.wd,self.set.dir_in_ex()),self.cfg)
+                try:
+                    this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex()),self.cfg)
+                except:
+                    this_img=self.pair.blend_image_patch(vc.file_name)
+                _img[vi, ...] =
                 if self.cfg.out_image:
                     # for ti,tgt in enumerate(self.target_list):
                     #     _tgt[vi, ...,ti] =np.average( vc.get_image(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg), axis=-1) # average RGB to gray
-                    _tgt[vi, ...] =vc.get_image(os.path.join(self.set.wd,self.set.dir_out_ex()),self.cfg)
+                    _tgt[vi, ...] =vc.get_image(os.path.join(self.pair.wd,self.pair.dir_out_ex()),self.cfg)
                 else:
                     for ti,tgt in enumerate(self.target_list):
-                        _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.set.wd,self.set.dir_out_ex()),self.cfg)
+                        _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd,self.pair.dir_out_ex()),self.cfg)
             if self.aug_value > 0:
                 aug_value=random.randint(0, self.cfg.train_aug) # random number between zero and pre-set value
                 # print("  aug: %.2f"%aug_value,end='')
@@ -498,13 +503,13 @@ class ImagePatchGenerator(keras.utils.Sequence):
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.set.wd,self.set.dir_in_ex()),self.cfg)
+                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex()),self.cfg)
                 # imwrite("prd_img.jpg",_img[0])
             return prep_scale(_img, self.cfg.feed), None
 
     def on_epoch_end(self):  # Updates indexes after each epoch
         self.indexes = np.arange(len(self.view_coord))
-        if self.set.is_train and self.cfg.train_shuffle:
+        if self.pair.is_train and self.cfg.train_shuffle:
             np.random.shuffle(self.indexes)
 
 # Anchors #

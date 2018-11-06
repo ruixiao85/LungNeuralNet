@@ -214,11 +214,11 @@ class ImageSet(FolderSet):
             return { x:self.view_coord[x:x + n] for x in range(0, len(self.view_coord), n)}  # break into sub-lists
 
 
-class NoiseSet(FolderSet):
+class PatchSet(FolderSet):
     def __init__(self,cfg:Config,wd,sf,is_train,is_image):
 
         self.patches=None
-        super(NoiseSet,self).__init__(cfg,wd,sf,is_train,is_image)
+        super(PatchSet,self).__init__(cfg,wd,sf,is_train,is_image)
         self.size_folder_update()
         self.num_patches=len(self.images)
         # view_coord ori_row=45 ori_col=37 start~end are overrange
