@@ -1,6 +1,6 @@
 import os
 import argparse
-from b2_net_multi import ImagePatchSet
+from b2_net_multi import ImagePatchPair
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='train and predict with biomedical images.')
@@ -51,9 +51,9 @@ if __name__ == '__main__':
         for net in nets:
             print("Network specifications: " + str(net))
             for origin in origins:
-                multi_set=ImagePatchSet(net,os.path.join(os.getcwd(),args.train_dir),origin,targets,is_train=True); net.train(multi_set)
+                multi_set=ImagePatchPair(net, os.path.join(os.getcwd(), args.train_dir), origin, targets, is_train=True); net.train(multi_set)
 
     if mode != 't':
         for net in nets:
             for origin in origins:
-                multi_set=ImagePatchSet(net,os.path.join(os.getcwd(),args.pred_dir),origin,targets,is_train=False); net.predict(multi_set,args.pred_dir)
+                multi_set=ImagePatchPair(net, os.path.join(os.getcwd(), args.pred_dir), origin, targets, is_train=False); net.predict(multi_set, args.pred_dir)
