@@ -190,29 +190,19 @@ def augment_image_pair(_img, _tgt, _tgt_ch=None, _level=1.0):
         return _img, _tgt
     elif 1<=_level<2:  # paired image augmentation 1
         seq_det = seg_both_1.to_deterministic()
-        return seq_det.augment_images(_img), augment_targets(seq_det,_tgt,_tgt_ch)
+        return seq_det.augment_images(_img), seq_det.augment_images(seq_det,_tgt,_tgt_ch)
     elif 2<=_level<3:  # paired image augmentation 2
         seq_det = seg_both_2.to_deterministic()
-        return seq_det.augment_images(_img), augment_targets(seq_det,_tgt,_tgt_ch)
+        return seq_det.augment_images(_img), seq_det.augment_images(seq_det,_tgt,_tgt_ch)
     elif 3<=_level<4:  # paired image augmentation 3
         seq_det = seg_both_3.to_deterministic()
-        return seq_det.augment_images(_img), augment_targets(seq_det,_tgt,_tgt_ch)
+        return seq_det.augment_images(_img), seq_det.augment_images(seq_det,_tgt,_tgt_ch)
     elif 4<=_level<5:  # paired aug + additional aug for original images
         seq_det = seg_both_3.to_deterministic()
-        return seq_img_4.augment_images(seq_det.augment_images(_img)), augment_targets(seq_det,_tgt,_tgt_ch)
+        return seq_img_4.augment_images(seq_det.augment_images(_img)), seq_det.augment_images(seq_det,_tgt,_tgt_ch)
     elif 5<=_level<6:  # paired aug + additional aug for original images
         seq_det = seg_both_3.to_deterministic()
-        return seq_img_5.augment_images(seq_det.augment_images(_img)), augment_targets(seq_det,_tgt,_tgt_ch)
+        return seq_img_5.augment_images(seq_det.augment_images(_img)), seq_det.augment_images(seq_det,_tgt,_tgt_ch)
     elif 6<=_level:  # paired aug + additional aug for original images
         seq_det = seg_both_3.to_deterministic()
-        return seq_img_6.augment_images(seq_det.augment_images(_img)), augment_targets(seq_det,_tgt,_tgt_ch)
-
-def augment_targets(seq_det,_tgt,_tgt_ch):
-    if _tgt_ch is None:
-        return seq_det.augment_images(_tgt)
-    else:
-        h,w,c=_tgt.shape
-        _res=_tgt.copy()
-        for i in range(0,c,_tgt_ch):
-            _res[...,i:i+_tgt_ch]=seq_det.augment_images(_tgt[...,i:i+_tgt_ch])
-        return _res
+        return seq_img_6.augment_images(seq_det.augment_images(_img)), seq_det.augment_images(seq_det,_tgt,_tgt_ch)

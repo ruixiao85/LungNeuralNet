@@ -30,9 +30,11 @@ class BaseNetU(Config):
 
     #     model_out = 'softmax'   model_loss='categorical_crossentropy'
     #     model_out='sigmoid'    model_loss=[loss_bce_dice] 'binary_crossentropy' "bcedice"
-    def __init__(self, loss=None, metrics=None, optimizer=None, indicator=None,
+    def __init__(self,coverage_tr=None,coverage_prd=None,loss=None, metrics=None, optimizer=None, indicator=None,
                  filename=None, **kwargs):
         super(BaseNetU,self).__init__(**kwargs)
+        self.coverage_train=coverage_tr or 2.0
+        self.coverage_predict=coverage_prd or 3.0
         from metrics import jac, dice, dice67, dice33, acc, acc67, acc33, loss_bce_dice, custom_function_keras
         custom_function_keras()  # leakyrelu, swish
         self.loss=loss or (

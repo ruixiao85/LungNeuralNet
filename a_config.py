@@ -13,8 +13,7 @@ def generate_colors(n, shuffle=False):
 class Config:
     def __init__(self, dim_in=None, dim_out=None,
                  num_targets=None,image_format=None,image_resize=None,image_padding=None,mask_color=None,
-                 feed=None, act=None, out=None,
-                 coverage_tr=None,coverage_prd=None,batch_size=None,separate=None,out_image=None,
+                 feed=None, act=None, out=None,batch_size=None,separate=None,out_image=None,
                  call_hardness=None,overlay_color=None,overlay_opacity=None,predict_size=None,predict_proc=None,
                  train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
                  train_vali_split=None,train_aug=None,train_continue=None,train_shuffle=None):
@@ -30,8 +29,6 @@ class Config:
         self.out=out or ('sigmoid' if self.dep_out==1 else 'softmax')
         self.out_image=out_image if out_image is not None else False # output type: True=image False=mask
         self.separate=separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
-        self.coverage_train=coverage_tr or 3.0
-        self.coverage_predict=coverage_prd or 3.0
         self.call_hardness=call_hardness or 1.0  # 0-smooth 1-hard binary call
         self.overlay_color=overlay_color if isinstance(overlay_color, list) else \
             generate_colors(overlay_color) if isinstance(overlay_color, int) else \

@@ -69,14 +69,14 @@ class MetaInfo:
     def get_masks(self, _path, cfg:Config):
         import glob
         files=glob.glob(os.path.join(_path,self.file_name.replace(cfg.image_format[1:],cfg.image_format)))
-        print(files)
+        # print('found %d files matching %s'%(len(files),self.file_name))
         msks,clss=None,[]
         for f in files:
             class_split=f.split('^')
             clss.append(class_split[int(len(class_split)-2)])
             msk=self.get_mask(_path, cfg, f)[...,np.newaxis] # np.uint8 0-255
             msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
-        return msks, np.array(clss)
+        return msks, np.array(clss,dtype=np.uint8) # 0 ~ 255
 
     def __str__(self):
         return self.file_name

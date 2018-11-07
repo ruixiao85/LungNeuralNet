@@ -22,7 +22,7 @@ from preprocess import augment_image_pair,prep_scale
 
 
 class BaseNetM(Config):
-    def __init__(self,is_train=None,num_classes=None,mini_mask_shape=None,out_mask_shape=None,
+    def __init__(self,is_train=None,coverage_tr=None,coverage_prd=None,num_classes=None,mini_mask_shape=None,out_mask_shape=None,
                  convolution_backbone=None,batch_norm=None,backbone_stride=None,pyramid_size=None,
                  fc_layers_size=None,rpn_anchor_scales=None,rpn_train_anchors_per_image=None,
                  rpn_anchor_ratio=None,rpn_anchor_stride=None,rpn_nms_threshold=None,rpn_bbox_stdev=None,
@@ -33,15 +33,16 @@ class BaseNetM(Config):
                  filename=None,**kwargs):
         super(BaseNetM,self).__init__(**kwargs)
         self.is_train=is_train if is_train is not None else False # default to simple prediction
-        self.num_classes=num_classes or 1 # if one at a time
-        self.meta_shape=[1+3+3+4+1+self.num_classes] # last number is NUM_CLASS
+        self.coverage_train=coverage_tr or 1.0
+        self.coverage_predict=coverage_prd or 1.0
+        self.meta_shape=[1+3+3+4+1+self.num_targets] # last number is NUM_CLASS
         from backbone import resnet_50, resnet_101, resnet_152
         self.convolution_backbone=convolution_backbone or resnet_50 # "resnet101"
         self.batch_norm=batch_norm if batch_norm is not None else False # default to false since batch size is often small
         self.backbone_strides=backbone_stride or [4,8,16,32,64] # strides of the FPN Pyramid (default for Resnet101)
         self.pyramid_size=pyramid_size or 256 # Size of the top-down layers used to build the feature pyramid
         self.fc_layers_size=fc_layers_size or 1024 # Size of the fully-connected layers in the classification graph
-        self.rpn_anchor_scales=rpn_anchor_scales or(32,64,128,256,512) # Length of square anchor side in pixels
+        self.rpn_anchor_scales=rpn_anchor_scales or (32,64,128,256,512) # Length of square anchor side in pixels
         self.rpn_train_anchors_per_image=rpn_train_anchors_per_image or 256 # How many anchors per image to use for RPN training
         self.rpn_anchor_ratios=rpn_anchor_ratio or [0.5,1,2] # Ratios of anchors at each cell (width/height) 1=square 0.5=wide
         self.rpn_anchor_stride=rpn_anchor_stride or 1 # 1=no-skip cell 2=skip-one
@@ -52,7 +53,7 @@ class BaseNetM(Config):
         self.post_nms_predict=post_nms_predict or 1000 # ROIs kept after non-maximum suppression for predict
         self.pool_size=pool_size or 7 # Pooled ROIs
         self.mask_pool_size=mask_pool_size or 14 # Pooled ROIs for mask
-        self.mini_mask_shape=mini_mask_shape or [56,56,None] # target shape (downsized) of instance masks to reduce memory load.
+        self.mini_mask_shape=mini_mask_shape or [28,28,None] # target shape (downsized) of instance masks to reduce memory load.
         self.out_mask_shape=out_mask_shape or [28,28]
         self.train_rois_per_image=train_rois_per_image or 200 # Number of ROIs per image to feed to classifier/mask heads (MRCNN paper 512)
         self.train_roi_positive_ratio=train_roi_positive_ratio or 0.33 # Percent of positive ROIs used to train classifier/mask heads
@@ -95,9 +96,9 @@ class BaseNetM(Config):
                                                                                self.mini_mask_shape,self.rpn_bbox_stdev,name="proposal_targets")(
                 [rpn_rois,input_gt_class_ids,gt_boxes,input_gt_masks])
             # Network Heads
-            mrcnn_class_logits,mrcnn_class,mrcnn_bbox=fpn_classifier_graph(rois,mrcnn_feature_maps,input_image_meta,self.pool_size,self.num_classes,
+            mrcnn_class_logits,mrcnn_class,mrcnn_bbox=fpn_classifier_graph(rois,mrcnn_feature_maps,input_image_meta,self.pool_size,self.num_targets,
                                                                            train_bn=self.batch_norm,fc_layers_size=self.fc_layers_size)
-            mrcnn_mask=build_fpn_mask_graph(rois,mrcnn_feature_maps,input_image_meta,self.mask_pool_size,self.num_classes,train_bn=self.batch_norm)
+            mrcnn_mask=build_fpn_mask_graph(rois,mrcnn_feature_maps,input_image_meta,self.mask_pool_size,self.num_targets,train_bn=self.batch_norm)
             output_rois=KL.Lambda(lambda x:x*1,name="output_rois")(rois)
             # Losses
             rpn_class_loss=KL.Lambda(lambda x:rpn_class_loss_graph(*x),name="rpn_class_loss")([input_rpn_match,rpn_class_logits])
@@ -115,7 +116,7 @@ class BaseNetM(Config):
             mrcnn_feature_maps,rpn_feature_maps=self.cnn_fpn_feature_maps(input_image)  # same train/predict
             rpn_bbox,rpn_class,rpn_class_logits,rpn_rois=self.rpn_outputs(anchors,rpn_feature_maps)  # same train/predict
             # Network Heads Proposal classifier and BBox regressor heads
-            mrcnn_class_logits,mrcnn_class,mrcnn_bbox=fpn_classifier_graph(rpn_rois,mrcnn_feature_maps,input_image_meta,self.pool_size,self.num_classes,
+            mrcnn_class_logits,mrcnn_class,mrcnn_bbox=fpn_classifier_graph(rpn_rois,mrcnn_feature_maps,input_image_meta,self.pool_size,self.num_targets,
                                                                            train_bn=self.batch_norm,fc_layers_size=self.fc_layers_size)
             # Detections [batch, num_detections, (y1, x1, y2, x2, class_id, score)] in normalized coordinates
             detections=DetectionLayer(self.rpn_bbox_stdev,self.detection_min_confidence,self.detection_max_instances,self.
@@ -123,7 +124,7 @@ class BaseNetM(Config):
                 [rpn_rois,mrcnn_class,mrcnn_bbox,input_image_meta])
             # Create masks for detections
             detection_boxes=KL.Lambda(lambda x:x[...,:4])(detections)
-            mrcnn_mask=build_fpn_mask_graph(detection_boxes,mrcnn_feature_maps,input_image_meta,self.mask_pool_size,self.num_classes,train_bn=self.batch_norm)
+            mrcnn_mask=build_fpn_mask_graph(detection_boxes,mrcnn_feature_maps,input_image_meta,self.mask_pool_size,self.num_targets,train_bn=self.batch_norm)
             model=KM.Model([input_image,input_image_meta,input_anchors],
                            [detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox],name='mask_rcnn')
         self.net=model
@@ -221,7 +222,10 @@ class BaseNetM(Config):
             self.net.summary()
 
     def __str__(self):
-        return str(self.net)
+        return '_'.join([
+            type(self).__name__,
+            self.cap_lim_join(4, self.feed, self.act, self.out)
+            +str(self.dep_out)])
     def __repr__(self):
         return str(self.net)+self.predict_proc.__name__[0:1].upper()
 
@@ -234,6 +238,7 @@ class BaseNetM(Config):
         self.build_net(is_train=True)
         # self.set_trainable()
         self.compile_net()
+        self.net.load_weights(get_imagenet_weights(),by_name=True)
         for tr,val,dir_out in pair.train_generator():
             export_name=dir_out+'_'+str(self)
             weight_file=export_name+".h5"
@@ -366,11 +371,12 @@ class BaseNetM(Config):
                 to_excel_sheet(df,xls_file,pair.origin+note+"_sum")
 
 class ImagePatchPair:
-    def __init__(self,cfg:Config,wd,origin,targets,is_train,is_reverse=False):
+    def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train,is_reverse=False):
         self.cfg=cfg
         self.wd=wd
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
+        self.ntargets=len(self.targets)
         # self.dir_out=targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
         self.img_set=ImageSet(cfg,wd,origin,is_train,is_image=True).size_folder_update()
         self.pch_set=[PatchSet(cfg,wd,tgt,is_train,is_image=True) for tgt in targets]
@@ -378,43 +384,54 @@ class ImagePatchPair:
         self.is_train=is_train
         self.is_reverse=is_reverse
 
-        self.bright_diff=-10  # local brightness should be more than noise patch brightness,
-        self.adjacent_size=2
-        self.adjacent_std=0.2
+        self.tr_list,self.val_list=self.cfg.split_train_vali(self.view_coord)
 
-    def blend_image_patch(self,file_name):
+        self.blend_image_patch(
+            patch_per_pixel=[3000,6000], # patch per pixel, range to randomly select from, larger number: smaller density of
+            bright_diff=-10,  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
+            adjacent_size=3,  # sample times of size adjacent to the patch
+            # adjacent_std=0.2  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
+            adjacent_std=0.0  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
+        )
+
+    def blend_image_patch(self,patch_per_pixel,bright_diff,adjacent_size,adjacent_std):
+        # count_per_pixel.sort() # usaually not need
         img_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_in_ex()))
         pch_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_out_ex()))
         print('image folder exist? %r'%img_exist) # e.g., Original+LYM+MONO+PMN
         print('patch mask folder exist? %r' %pch_exist) # e.g., Original_LYM_MONO_PMN
-        if img_exist and pch_exist: return # skip if both exist
+        if img_exist and pch_exist:
+            print("skip making image/patch folders since both exist"); return
+        else:
+            print("create new folders and blend images and patches")
         pixels=self.cfg.row_in*self.cfg.col_in
+        print('processing %d categories on val #%d vs tr #%d'%(self.ntargets,len(self.val_list),len(self.tr_list)))
         for vi, vc in enumerate(self.img_set.view_coord):
-            rand_num=[(random.randint(0,len(self.targets)-1), random.random(), random.uniform(0, 1), random.uniform(0, 1))
-                      for r in range(random.randint(pixels//5000, pixels//2000))]  # index,label/class,row,col
+            is_validation=vc in self.val_list # fewer in val_list, faster to check
+            rand_num=[(random.randint(0,self.ntargets-1), random.random(), random.uniform(0, 1), random.uniform(0, 1))
+                      for r in range(random.randint(pixels//patch_per_pixel[1], pixels//patch_per_pixel[0]))]  # label/class,index,row,col
             img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.sub_folder), self.cfg)
-            lg_row, lg_col, lg_dep=img.shape
             # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
-            inserted=[0]*len(self.targets) # track # of inserts per category
+            inserted=[0]*self.ntargets # track # of inserts per category
             for lirc in rand_num:
                 the_tgt=self.pch_set[lirc[0]]
-                # vcfilenoext=vc.file_name_insert(self.cfg,'^'+str(lirc[0])+'^')
                 prev=img.copy()
-                idx=int(the_tgt.num_patches*lirc[1])  # index of patch to apply
+                idx=the_tgt.num_patches-1-int(lirc[1]*(self.cfg.train_vali_split*the_tgt.num_patches)) if is_validation else\
+                    int(lirc[1]*((1.0-self.cfg.train_vali_split)*the_tgt.num_patches)) # index of patch to apply
                 patch=the_tgt.view_coord[idx]
                 p_row, p_col, p_ave, p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
-                lri=int(lg_row*lirc[2])-p_row//2  # large row in/start
-                lci=int(lg_col*lirc[3])-p_col//2  # large col in/start
+                lri=int(self.cfg.row_in*lirc[2])-p_row//2  # large row in/start
+                lci=int(self.cfg.col_in*lirc[3])-p_col//2  # large col in/start
                 lro, lco=lri+p_row, lci+p_col  # large row/col out/end
                 pri=0 if lri>=0 else -lri; lri=max(0, lri)
                 pci=0 if lci>=0 else -lci; lci=max(0, lci)
-                pro=p_row if lro<=lg_row else p_row-lro+lg_row; lro=min(lg_row, lro)
-                pco=p_col if lco<=lg_col else p_col-lco+lg_col; lco=min(lg_col, lco)
+                pro=p_row if lro<=self.cfg.row_in else p_row-lro+self.cfg.row_in; lro=min(self.cfg.row_in, lro)
+                pco=p_col if lco<=self.cfg.col_in else p_col-lco+self.cfg.col_in; lco=min(self.cfg.col_in, lco)
                 # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
-                if np.min(img[lri:lro, lci:lco])-p_ave>self.bright_diff and \
-                        int(np.std(img[lri-p_row*self.adjacent_size:lro+p_row*self.adjacent_size,
-                                   lci-p_col*self.adjacent_size:lco+p_col*self.adjacent_size])>self.adjacent_std*p_std):  # target area is brighter, then add patch
-                    # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(lg_row,lri,lro,lg_col,lci,lco,p_row,pri,pro,p_col,pci,pco))
+                if np.min(img[lri:lro, lci:lco])-p_ave>bright_diff and \
+                        int(np.std(img[lri-p_row*adjacent_size:lro+p_row*adjacent_size,
+                                   lci-p_col*adjacent_size:lco+p_col*adjacent_size])>adjacent_std*p_std):  # target area is brighter, then add patch
+                    # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(self.cfg.row_in,lri,lro,self.cfg.col_in,lci,lco,p_row,pri,pro,p_col,pci,pco))
                     # pat=patch.get_image(os.path.join(self.wd, the_tgt.sub_folder),self.cfg)  # TODO 40X-40X resize=1.0
                     pat=the_tgt.patches[idx]
                     if random.random()>0.5: pat=np.fliplr(pat)
@@ -422,7 +439,7 @@ class ImagePatchPair:
                     img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco])
                     # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if lirc[1]>self.cfg.train_vali_split else '^'))),
                     #             smooth_brighten(prev-img))
-                    cv2.imwrite(os.path.join(self.wd, self.dir_out_ex(),vc.file_name_insert(self.cfg,'_%d_^%d^'%(idx,lirc[0]))), #+('' if lirc[1]>self.cfg.train_vali_split else '^'))
+                    cv2.imwrite(os.path.join(self.wd, self.dir_out_ex(),vc.file_name_insert(self.cfg,'_%d^%d^'%(idx,lirc[0]))), #+('' if lirc[1]>self.cfg.train_vali_split else '^'))
                                 smooth_brighten(prev-img))
                     # lr=(lri+lro)//2
                     # lc=(lci+lco)//2
@@ -432,10 +449,7 @@ class ImagePatchPair:
             cv2.imwrite(os.path.join(self.wd, self.dir_in_ex(), vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
 
     def train_generator(self):
-        self.pch_set = [PatchSet(self.cfg,self.wd,t,is_train=True,is_image=False).size_folder_update() for t in self.targets]
-        self.view_coord = self.img_set.view_coord
-        tr_list,val_list=self.cfg.split_train_vali(self.view_coord)
-        yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets, tr_list), ImagePatchGenerator(self, 0, self.targets, val_list),
+        yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets, self.tr_list), ImagePatchGenerator(self, 0, self.targets, self.val_list),
               self.cfg.join_targets(self.targets))
 
     def predict_generator_note(self):
@@ -446,12 +460,12 @@ class ImagePatchPair:
 
     def dir_in_ex(self,txt=None):
         ext=ImageSet.ext_folder(self.cfg, True)
-        txt=txt or '+'.join([self.origin,self.targets])
+        txt=txt or '+'.join([self.origin]+self.targets)
         return txt+'_'+ext if self.cfg.separate else txt
 
     def dir_out_ex(self,txt=None):
         ext=ImageSet.ext_folder(self.cfg, False)
-        txt=txt or '-'.join([self.origin,self.targets])
+        txt=txt or '-'.join([self.origin]+self.targets)
         return txt+'_'+ext if self.cfg.separate else txt
 
 
@@ -470,28 +484,45 @@ class ImagePatchGenerator(keras.utils.Sequence):
     def __getitem__(self, index):  # Generate one batch of data
         indexes = self.indexes[index * self.cfg.batch_size:(index + 1) * self.cfg.batch_size]
         # print(" getting index %d with %d batch size"%(index,self.batch_size))
+        image_shape=(self.cfg.row_in,self.cfg.col_in,self.cfg.dep_in)
+        _active_class_ids=np.ones([self.pair.ntargets],dtype=np.int32)
+
+        anchors=utils.generate_pyramid_anchors(self.cfg.rpn_anchor_scales,self.cfg.rpn_anchor_ratios,
+                np.array([[int(math.ceil(image_shape[0]/st)),int(math.ceil(image_shape[1]/st))] for st in self.cfg.backbone_strides]), # backbone shape
+               self.cfg.backbone_strides,self.cfg.rpn_anchor_stride)
         if self.pair.is_train:
-            _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
-            _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
+            _img,_msk,_cls,_bbox = None,None,None,None
+            _img_meta, _rpn_match, _rpn_bbox=None,None,None
+            # _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                try:
-                    this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex()),self.cfg)
-                except:
-                    this_img=self.pair.blend_image_patch(vc.file_name)
-                if self.cfg.out_image:
-                    # for ti,tgt in enumerate(self.target_list):
-                    #     _tgt[vi, ...,ti] =np.average( vc.get_image(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg), axis=-1) # average RGB to gray
-                    _tgt[vi, ...] =vc.get_image(os.path.join(self.pair.wd,self.pair.dir_out_ex()),self.cfg)
-                else:
-                    for ti,tgt in enumerate(self.target_list):
-                        _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd,self.pair.dir_out_ex()),self.cfg)
-            if self.aug_value > 0:
-                aug_value=random.randint(0, self.cfg.train_aug) # random number between zero and pre-set value
-                # print("  aug: %.2f"%aug_value,end='')
-                _img, _tgt = augment_image_pair(_img, _tgt, _tgt_ch=1, _level=aug_value)  # integer N: a <= N <= b.
-                # imwrite("tr_img.jpg",_img[0])
-                # imwrite("tr_tgt.jpg",_tgt[0])
-            return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
+                this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex()),self.cfg)
+                this_msk, this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.dir_out_ex()),self.cfg)
+                # if self.aug_value > 0: # TODO add augmentation
+                #     aug_value=random.randint(0, self.cfg.train_aug) # random number between zero and pre-set value
+                #     this_img, this_msk = augment_image_pair(this_img, this_msk, _tgt_ch=1, _level=aug_value)  # integer N: a <= N <= b.
+                this_bbox=utils.extract_bboxes(this_msk)
+                if self.cfg.mini_mask_shape is not None:
+                    this_msk=utils.minimize_mask(this_bbox,this_msk,tuple(self.cfg.mini_mask_shape[0:2]))
+                if this_bbox.shape[0]>self.cfg.max_gt_instance:
+                    ids=np.random.choice(np.arange(this_bbox.shape[0]),self.cfg.max_gt_instance,replace=False)
+                    this_cls,this_bbox,this_msk=this_cls[ids],this_bbox[ids],this_msk[:,:,ids]
+                this_img_meta=compose_image_meta(indexes[vi],image_shape,image_shape,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,_active_class_ids)
+                this_rpn_match,this_rpn_bbox=build_rpn_targets(image_shape,anchors,this_cls,this_bbox,self.cfg.rpn_train_anchors_per_image,self.cfg.rpn_bbox_stdev)
+                this_img, this_msk=this_img[np.newaxis,...], this_msk[np.newaxis,...]
+                this_cls, this_bbox=this_cls[np.newaxis,...], this_bbox[np.newaxis,...]
+                this_img_meta=this_img_meta[np.newaxis,...]
+                this_rpn_match, this_rpn_bbox=this_rpn_match[np.newaxis,...,np.newaxis], this_rpn_bbox[np.newaxis,...]
+                _img=this_img if _img is None else np.concatenate((_img,this_img),axis=0)
+                _msk=this_msk if _msk is None else np.concatenate((_msk,this_msk),axis=0)
+                _cls=this_cls if _cls is None else np.concatenate((_cls,this_cls),axis=0)
+                _bbox=this_bbox if _bbox is None else np.concatenate((_bbox,this_bbox),axis=0)
+                _img_meta=this_img_meta if _img_meta is None else np.concatenate((_img_meta,this_img_meta),axis=0)
+                _rpn_match=this_rpn_match if _rpn_match is None else np.concatenate((_rpn_match,this_rpn_match),axis=0)
+                _rpn_bbox=this_rpn_bbox if _rpn_bbox is None else np.concatenate((_rpn_bbox,this_rpn_bbox),axis=0)
+                _img=prep_scale(_img,self.cfg.feed)
+            inputs=[_img,_img_meta,_rpn_match,_rpn_bbox, _cls, _bbox, _msk]
+            outputs=[]
+            return inputs,outputs
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
@@ -504,6 +535,17 @@ class ImagePatchGenerator(keras.utils.Sequence):
         if self.pair.is_train and self.cfg.train_shuffle:
             np.random.shuffle(self.indexes)
 
+# Pre-trained #
+def get_imagenet_weights():
+    from keras.utils.data_utils import get_file
+    TF_WEIGHTS_PATH_NO_TOP='https://github.com/fchollet/deep-learning-models/'\
+                           'releases/download/v0.2/'\
+                           'resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5'
+    weights_path=get_file('resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5',
+                          TF_WEIGHTS_PATH_NO_TOP,
+                          cache_subdir='models',
+                          md5_hash='a268eb855778b3df3c7506639542a6af')
+    return weights_path
 # Anchors #
 def generate_anchors(scales, ratios, shape, feature_stride, anchor_stride):
     scales, ratios = np.meshgrid(np.array(scales), np.array(ratios))
@@ -1118,33 +1160,6 @@ def mrcnn_mask_loss_graph(target_masks, target_class_ids, pred_masks):
     loss = K.mean(K.switch(tf.size(y_true) > 0, K.binary_crossentropy(target=y_true, output=y_pred), tf.constant(0.0)))
     return loss
 
-
-# Data Generator #
-def load_image_gt(dataset, config, image_id, mini_mask_shape):
-    image = dataset.load_image(image_id)
-    mask, class_ids = dataset.load_mask(image_id)
-    original_shape = image.shape
-    image, window, scale, padding, crop = utils.resize_image(
-        image,
-        min_dim=config.IMAGE_MIN_DIM,
-        min_scale=config.IMAGE_MIN_SCALE,
-        max_dim=config.IMAGE_MAX_DIM,
-        mode=config.IMAGE_RESIZE_MODE)
-    mask = utils.resize_mask(mask, scale, padding, crop)
-    # TODO Add augmentation here
-    # Remove mask and box if crop apply to rare object cases
-    bbox = utils.extract_bboxes(mask) # bbox: [num_instances, (y1, x1, y2, x2)]
-    # Active classes supported in the dataset of this image.
-    active_class_ids = np.zeros([dataset.num_classes], dtype=np.int32)
-    source_class_ids = dataset.source_class_ids[dataset.image_info[image_id]["source"]]
-    active_class_ids[source_class_ids] = 1
-    if mini_mask_shape:
-        mask = utils.minimize_mask(bbox, mask, config.MINI_MASK_SHAPE)
-    # Image meta data
-    image_meta = compose_image_meta(image_id, original_shape, image.shape, window, scale, active_class_ids)
-    return image, image_meta, class_ids, bbox, mask
-
-
 def build_detection_targets(rpn_rois, gt_class_ids, gt_boxes, gt_masks, config):
     assert rpn_rois.shape[0] > 0
     assert gt_class_ids.dtype == np.int32, "Expected int but got {}".format(gt_class_ids.dtype)
@@ -1244,11 +1259,11 @@ def build_detection_targets(rpn_rois, gt_class_ids, gt_boxes, gt_masks, config):
     return rois, roi_gt_class_ids, bboxes, masks
 
 
-def build_rpn_targets(image_shape, anchors, gt_class_ids, gt_boxes, config):
+def build_rpn_targets(image_shape, anchors, gt_class_ids, gt_boxes, rpn_train_anchors_per_image, rpn_bbox_stdev):
     # RPN Match: 1 = positive anchor, -1 = negative anchor, 0 = neutral
     rpn_match = np.zeros([anchors.shape[0]], dtype=np.int32)
     # RPN bounding boxes: [max anchors per image, (dy, dx, log(dh), log(dw))]
-    rpn_bbox = np.zeros((config.RPN_TRAIN_ANCHORS_PER_IMAGE, 4))
+    rpn_bbox = np.zeros((rpn_train_anchors_per_image, 4))
     # Handle COCO crowds
     # A crowd box in COCO is a bounding box around several instances. Exclude from training. A crowd box is given a negative class ID.
     crowd_ix = np.where(gt_class_ids < 0)[0]
@@ -1292,14 +1307,14 @@ def build_rpn_targets(image_shape, anchors, gt_class_ids, gt_boxes, config):
     # Subsample to balance positive and negative anchors
     # Don't let positives be more than half the anchors
     ids = np.where(rpn_match == 1)[0]
-    extra = len(ids) - (config.RPN_TRAIN_ANCHORS_PER_IMAGE // 2)
+    extra = len(ids) - (rpn_train_anchors_per_image // 2)
     if extra > 0:
         # Reset the extra ones to neutral
         ids = np.random.choice(ids, extra, replace=False)
         rpn_match[ids] = 0
     # Same for negative proposals
     ids = np.where(rpn_match == -1)[0]
-    extra = len(ids) - (config.RPN_TRAIN_ANCHORS_PER_IMAGE -
+    extra = len(ids) - (rpn_train_anchors_per_image -
                         np.sum(rpn_match == 1))
     if extra > 0:
         # Rest the extra ones to neutral
@@ -1325,146 +1340,9 @@ def build_rpn_targets(image_shape, anchors, gt_class_ids, gt_boxes, config):
             np.log(gt_h / a_h),
             np.log(gt_w / a_w),
         ]
-        rpn_bbox[ix] /= config.RPN_BBOX_STD_DEV
+        rpn_bbox[ix] /= rpn_bbox_stdev
         ix += 1
     return rpn_match, rpn_bbox
-
-def generate_random_rois(image_shape, count, gt_class_ids, gt_boxes):
-    rois = np.zeros((count, 4), dtype=np.int32)
-    rois_per_box = int(0.9 * count / gt_boxes.shape[0])
-    for i in range(gt_boxes.shape[0]):
-        gt_y1, gt_x1, gt_y2, gt_x2 = gt_boxes[i]
-        h = gt_y2 - gt_y1
-        w = gt_x2 - gt_x1
-        r_y1 = max(gt_y1 - h, 0)
-        r_y2 = min(gt_y2 + h, image_shape[0])
-        r_x1 = max(gt_x1 - w, 0)
-        r_x2 = min(gt_x2 + w, image_shape[1])
-        while True: # To avoid generating boxes with zero area, we generate double and filter down. Loop to retry
-            y1y2 = np.random.randint(r_y1, r_y2, (rois_per_box * 2, 2))
-            x1x2 = np.random.randint(r_x1, r_x2, (rois_per_box * 2, 2))
-            threshold = 1 # Filter out zero area boxes
-            y1y2 = y1y2[np.abs(y1y2[:, 0] - y1y2[:, 1]) >= threshold][:rois_per_box]
-            x1x2 = x1x2[np.abs(x1x2[:, 0] - x1x2[:, 1]) >= threshold][:rois_per_box]
-            if y1y2.shape[0] == rois_per_box and x1x2.shape[0] == rois_per_box:
-                break
-        # Sort on axis 1 to ensure x1 <= x2 and y1 <= y2 and then reshape to x1, y1, x2, y2 order
-        x1, x2 = np.split(np.sort(x1x2, axis=1), 2, axis=1)
-        y1, y2 = np.split(np.sort(y1y2, axis=1), 2, axis=1)
-        box_rois = np.hstack([y1, x1, y2, x2])
-        rois[rois_per_box * i:rois_per_box * (i + 1)] = box_rois
-    remaining_count = count - (rois_per_box * gt_boxes.shape[0])
-    while True:
-        y1y2 = np.random.randint(0, image_shape[0], (remaining_count * 2, 2))
-        x1x2 = np.random.randint(0, image_shape[1], (remaining_count * 2, 2))
-        threshold = 1
-        y1y2 = y1y2[np.abs(y1y2[:, 0] - y1y2[:, 1]) >= threshold][:remaining_count]
-        x1x2 = x1x2[np.abs(x1x2[:, 0] - x1x2[:, 1]) >= threshold][:remaining_count]
-        if y1y2.shape[0] == remaining_count and x1x2.shape[0] == remaining_count:
-            break
-    x1, x2 = np.split(np.sort(x1x2, axis=1), 2, axis=1)
-    y1, y2 = np.split(np.sort(y1y2, axis=1), 2, axis=1)
-    global_rois = np.hstack([y1, x1, y2, x2])
-    rois[-remaining_count:] = global_rois
-    return rois
-
-def data_generator(dataset, config, shuffle=True, random_rois=0, batch_size=1, detection_targets=False, no_augmentation_sources=None):
-    b = 0  # batch item index
-    image_index = -1
-    image_ids = np.copy(dataset.image_ids)
-    error_count = 0
-    no_augmentation_sources = no_augmentation_sources or []
-
-    # Anchors [anchor_count, (y1, x1, y2, x2)]
-    backbone_shapes = np.array([[int(math.ceil(config.row_in/stride)), int(math.ceil(config.col_in/stride))] for stride in config.BACKBONE_STRIDES])
-    anchors = generate_pyramid_anchors(config.RPN_ANCHOR_SCALES, config.RPN_ANCHOR_RATIOS, backbone_shapes,config.BACKBONE_STRIDES, config.RPN_ANCHOR_STRIDE)
-
-    # Keras requires a generator to run indefinitely.
-    while True:
-        # Increment index to pick next image. Shuffle if at the start of an epoch.
-        image_index = (image_index + 1) % len(image_ids)
-        if shuffle and image_index == 0:
-            np.random.shuffle(image_ids)
-
-        # Get GT bounding boxes and masks for image.
-        image_id = image_ids[image_index]
-
-        image, image_meta, gt_class_ids, gt_boxes, gt_masks = load_image_gt(dataset,config,image_id) # no augmentation
-
-        # Skip images that have no instances. This can happen in cases  where we train on a subset of classes and the image doesn't have any of the classes we care about.
-        if not np.any(gt_class_ids > 0):
-            continue
-
-        # RPN Targets
-        rpn_match, rpn_bbox = build_rpn_targets(image.shape, anchors, gt_class_ids, gt_boxes, config)
-
-        # Mask R-CNN Targets
-        if random_rois:
-            rpn_rois = generate_random_rois(image.shape, random_rois, gt_class_ids, gt_boxes)
-            if detection_targets:
-                rois, mrcnn_class_ids, mrcnn_bbox, mrcnn_mask = build_detection_targets(rpn_rois, gt_class_ids, gt_boxes, gt_masks, config)
-
-        # Init batch arrays
-        if b == 0:
-            batch_image_meta = np.zeros((batch_size,) + image_meta.shape, dtype=image_meta.dtype)
-            batch_rpn_match = np.zeros([batch_size, anchors.shape[0], 1], dtype=rpn_match.dtype)
-            batch_rpn_bbox = np.zeros([batch_size, config.RPN_TRAIN_ANCHORS_PER_IMAGE, 4], dtype=rpn_bbox.dtype)
-            batch_images = np.zeros((batch_size,) + image.shape, dtype=np.float32)
-            batch_gt_class_ids = np.zeros((batch_size, config.MAX_GT_INSTANCES), dtype=np.int32)
-            batch_gt_boxes = np.zeros((batch_size, config.MAX_GT_INSTANCES, 4), dtype=np.int32)
-            batch_gt_masks = np.zeros((batch_size, gt_masks.shape[0], gt_masks.shape[1], config.MAX_GT_INSTANCES), dtype=gt_masks.dtype)
-            if random_rois:
-                batch_rpn_rois = np.zeros((batch_size, rpn_rois.shape[0], 4), dtype=rpn_rois.dtype)
-                if detection_targets:
-                    batch_rois = np.zeros((batch_size,) + rois.shape, dtype=rois.dtype)
-                    batch_mrcnn_class_ids = np.zeros((batch_size,) + mrcnn_class_ids.shape, dtype=mrcnn_class_ids.dtype)
-                    batch_mrcnn_bbox = np.zeros((batch_size,) + mrcnn_bbox.shape, dtype=mrcnn_bbox.dtype)
-                    batch_mrcnn_mask = np.zeros((batch_size,) + mrcnn_mask.shape, dtype=mrcnn_mask.dtype)
-
-        # If more instances than fits in the array, sub-sample from them.
-        if gt_boxes.shape[0] > config.MAX_GT_INSTANCES:
-            ids = np.random.choice(
-                np.arange(gt_boxes.shape[0]), config.MAX_GT_INSTANCES, replace=False)
-            gt_class_ids = gt_class_ids[ids]
-            gt_boxes = gt_boxes[ids]
-            gt_masks = gt_masks[:, :, ids]
-
-        # Add to batch
-        batch_image_meta[b] = image_meta
-        batch_rpn_match[b] = rpn_match[:, np.newaxis]
-        batch_rpn_bbox[b] = rpn_bbox
-        batch_images[b] = mold_image(image.astype(np.float32), config)
-        batch_gt_class_ids[b, :gt_class_ids.shape[0]] = gt_class_ids
-        batch_gt_boxes[b, :gt_boxes.shape[0]] = gt_boxes
-        batch_gt_masks[b, :, :, :gt_masks.shape[-1]] = gt_masks
-        if random_rois:
-            batch_rpn_rois[b] = rpn_rois
-            if detection_targets:
-                batch_rois[b] = rois
-                batch_mrcnn_class_ids[b] = mrcnn_class_ids
-                batch_mrcnn_bbox[b] = mrcnn_bbox
-                batch_mrcnn_mask[b] = mrcnn_mask
-        b += 1
-
-        # Batch full?
-        if b >= batch_size:
-            inputs = [batch_images, batch_image_meta, batch_rpn_match, batch_rpn_bbox,
-                      batch_gt_class_ids, batch_gt_boxes, batch_gt_masks]
-            outputs = []
-            if random_rois:
-                inputs.extend([batch_rpn_rois])
-                if detection_targets:
-                    inputs.extend([batch_rois])
-                    # Keras requires that output and targets have the same number of dimensions
-                    batch_mrcnn_class_ids = np.expand_dims(
-                        batch_mrcnn_class_ids, -1)
-                    outputs.extend(
-                        [batch_mrcnn_class_ids, batch_mrcnn_bbox, batch_mrcnn_mask])
-
-            yield inputs, outputs
-            # start a new batch
-            b = 0
-
 
 # Data Formatting #
 def compose_image_meta(image_id, original_image_shape, image_shape,window, scale, active_class_ids):
