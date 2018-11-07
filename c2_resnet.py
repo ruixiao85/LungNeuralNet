@@ -19,17 +19,12 @@ from image_set import PatchSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten
 from mrcnn import utils
-from backbone import resnet_50, resnet_101, resnet_152
+from backbone import resnet_50, resnet_101
 
 class MRCNN_ResNet_50(BaseNetM):
     def __init__(self,**kwargs):
-        super(MRCNN_ResNet_50,self).__init__(convolution_backbone=resnet_50,**kwargs)
+        super(MRCNN_ResNet_50,self).__init__(backbone='resnet50',**kwargs)
 
 class MRCNN_ResNet_101(BaseNetM):
     def __init__(self,**kwargs):
-        super(MRCNN_ResNet_101,self).__init__(convolution_backbone=resnet_101,**kwargs)
-
-class MRCNN_ResNet_152(BaseNetM):
-    def __init__(self,**kwargs):
-        super(MRCNN_ResNet_152,self).__init__(convolution_backbone=resnet_152,**kwargs)
-
+        super(MRCNN_ResNet_101,self).__init__(backbone='resnet101',**kwargs)

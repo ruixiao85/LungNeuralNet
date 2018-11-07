@@ -1,5 +1,7 @@
 import math
 import os
+import re
+
 import cv2
 import datetime
 import random
@@ -15,6 +17,7 @@ from keras.engine.saving import model_from_json,load_model
 
 from a_config import Config
 from image_set import PatchSet,ImageSet
+from model import resnet_graph
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten
 from mrcnn import utils
@@ -22,22 +25,21 @@ from preprocess import augment_image_pair,prep_scale
 
 
 class BaseNetM(Config):
-    def __init__(self,is_train=None,coverage_tr=None,coverage_prd=None,num_classes=None,mini_mask_shape=None,out_mask_shape=None,
-                 convolution_backbone=None,batch_norm=None,backbone_stride=None,pyramid_size=None,
+    def __init__(self,is_train=None,coverage_tr=None,coverage_prd=None,mini_mask_shape=None,out_mask_shape=None,
+                 backbone=None,batch_norm=None,backbone_stride=None,pyramid_size=None,
                  fc_layers_size=None,rpn_anchor_scales=None,rpn_train_anchors_per_image=None,
                  rpn_anchor_ratio=None,rpn_anchor_stride=None,rpn_nms_threshold=None,rpn_bbox_stdev=None,
                  pre_nms_limit=None,post_mns_train=None,post_nms_predict=None,pool_size=None,mask_pool_size=None,
                  train_rois_per_image=None,train_roi_positive_ratio=None,max_gt_instance=None,
                  detection_max_instances=None,detection_min_confidence=None,detection_nms_threshold=None,
-                 detection_mask_threshold=None,optimizer=None,loss_weight=None,indicator=None,trainable=None,gpu_count=None,image_per_gpu=None,
+                 detection_mask_threshold=None,optimizer=None,loss_weight=None,indicator=None,trainable_layer_regex=None,gpu_count=None,image_per_gpu=None,
                  filename=None,**kwargs):
         super(BaseNetM,self).__init__(**kwargs)
         self.is_train=is_train if is_train is not None else False # default to simple prediction
         self.coverage_train=coverage_tr or 1.0
         self.coverage_predict=coverage_prd or 1.0
         self.meta_shape=[1+3+3+4+1+self.num_targets] # last number is NUM_CLASS
-        from backbone import resnet_50, resnet_101, resnet_152
-        self.convolution_backbone=convolution_backbone or resnet_50 # "resnet101"
+        self.backbone=backbone or "resnet50" # "resnet101"
         self.batch_norm=batch_norm if batch_norm is not None else False # default to false since batch size is often small
         self.backbone_strides=backbone_stride or [4,8,16,32,64] # strides of the FPN Pyramid (default for Resnet101)
         self.pyramid_size=pyramid_size or 256 # Size of the top-down layers used to build the feature pyramid
@@ -67,11 +69,35 @@ class BaseNetM(Config):
         self.loss_weight=loss_weight or { "rpn_class_loss":1., "rpn_bbox_loss":1., "mrcnn_class_loss":1.,
                                         "mrcnn_bbox_loss":1., "mrcnn_mask_loss":1.} # Loss weights for more precise optimization.
         self.indicator=indicator or 'val_loss'
-        self.trainable=trainable or 'all'
+        self.trainable_layer_regex=trainable_layer_regex or \
+            r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)"  # head
+            # ".*" # all
+            # r"# (res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 3+
+            # r"# (res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 4+
+            # r"# (res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 5+
         self.gpu_count=gpu_count or 1
         self.images_per_gpu=image_per_gpu or 1
         self.filename=filename
         self.net=None
+
+    def set_trainable(self,node,indent=0):
+        if node is None:
+            print("Selecting layers to train")
+        # In multi-GPU training, we wrap the model. Get layers of the inner model because they have the weights.
+        layers=node.inner_model.layers if hasattr(node,"inner_model") else node.layers
+        for layer in layers:
+            if layer.__class__.__name__=='Model':
+                print("In model: ",layer.name)
+                self.set_trainable(layer,indent=indent+4)
+                continue
+            if not layer.weights:
+                continue
+            trainable=bool(re.fullmatch(self.trainable_layer_regex,layer.name))
+            if layer.__class__.__name__=='TimeDistributed': # set trainable deeper if TimeDistributed
+                layer.layer.trainable=trainable
+            else:
+                layer.trainable=trainable
+            print(" "*indent+'%s - %s - trainable %r'%(layer.name,layer.__class__.__name__,trainable))
 
     def build_net(self, is_train):
         self.is_train=is_train
@@ -142,7 +168,7 @@ class BaseNetM(Config):
         return self._anchor_cache[tuple(image_shape)]
 
     def cnn_fpn_feature_maps(self,input_image):
-        C1,C2,C3,C4,C5=self.convolution_backbone(input_image)  # Bottom-up Layers (convolutional neural network backbone)
+        C1,C2,C3,C4,C5=resnet_graph(input_image,self.backbone,stage5=True,train_bn=False) # Bottom-up Layers (convolutional neural network backbone)
 
         P5=KL.Conv2D(self.pyramid_size,(1,1),name='fpn_c5p5')(C5) # Top-down Layers (feature pyramid network)
         P4=KL.Add(name="fpn_p4add")([KL.UpSampling2D(size=(2,2),name="fpn_p5upsampled")(P5),KL.Conv2D(self.pyramid_size,(1,1),name='fpn_c4p4')(C4)])
@@ -194,8 +220,7 @@ class BaseNetM(Config):
         json_net=(self.filename if self.filename is not None else str(self)) + ".json"
         with open(json_net, "w") as json_file:
             json_file.write(self.net.to_json())
-    def set_trainable(self):
-        pass
+
     def compile_net(self,save_net=False,print_summary=True):
         self.net._losses=[]
         self.net._per_input_losses={}
@@ -236,9 +261,9 @@ class BaseNetM(Config):
 
     def train(self,pair):
         self.build_net(is_train=True)
-        # self.set_trainable()
+        self.set_trainable(self.net)
         self.compile_net()
-        self.net.load_weights(get_imagenet_weights(),by_name=True)
+        self.net.load_weights(get_imagenet_weights(),by_name=True) # load pre-train imagenet
         for tr,val,dir_out in pair.train_generator():
             export_name=dir_out+'_'+str(self)
             weight_file=export_name+".h5"
@@ -258,7 +283,7 @@ class BaseNetM(Config):
                    validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
                    epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,
                    callbacks=[
-                       ModelCheckpoint(weight_file,monitor=self.indicator,mode='min',save_weights_only=False,save_best_only=True),
+                       ModelCheckpoint(weight_file,monitor=self.indicator,mode='min',save_weights_only=True,save_best_only=True),
                        # ReduceLROnPlateau(monitor=self.indicator, mode='min', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
                        EarlyStopping(monitor=self.indicator,mode='min',patience=1,verbose=1),
                        # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
@@ -273,7 +298,6 @@ class BaseNetM(Config):
 
     def predict(self,pair,pred_dir):
         self.build_net(is_train=False)
-        # self.set_trainable()
         self.compile_net()
         xls_file="Result_%s_%s.xlsx"%(pred_dir,repr(self))
         img_ext=self.image_format[1:]  # *.jpg -> .jpg
@@ -536,6 +560,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
             np.random.shuffle(self.indexes)
 
 # Pre-trained #
+
 def get_imagenet_weights():
     from keras.utils.data_utils import get_file
     TF_WEIGHTS_PATH_NO_TOP='https://github.com/fchollet/deep-learning-models/'\
@@ -546,7 +571,10 @@ def get_imagenet_weights():
                           cache_subdir='models',
                           md5_hash='a268eb855778b3df3c7506639542a6af')
     return weights_path
+
+
 # Anchors #
+
 def generate_anchors(scales, ratios, shape, feature_stride, anchor_stride):
     scales, ratios = np.meshgrid(np.array(scales), np.array(ratios))
     scales = scales.flatten()
@@ -569,7 +597,6 @@ def generate_anchors(scales, ratios, shape, feature_stride, anchor_stride):
     boxes = np.concatenate([box_centers - 0.5 * box_sizes,
                             box_centers + 0.5 * box_sizes], axis=1)
     return boxes
-
 
 def generate_pyramid_anchors(scales, ratios, feature_shapes, feature_strides, anchor_stride):
     # Anchors [anchor_count, (y1, x1, y2, x2)]

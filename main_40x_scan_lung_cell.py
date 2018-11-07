@@ -35,7 +35,7 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from c2_resnet import MRCNN_ResNet_50, MRCNN_ResNet_101, MRCNN_ResNet_152
+    from c2_resnet import MRCNN_ResNet_50, MRCNN_ResNet_101
 
     nets = [
         # UNet2m(num_targets=len(targets),dim_in=(768,768,3),dim_out=(768,768,3),filters=[96, 128, 256, 512, 768],out_image=True,
