@@ -70,6 +70,8 @@ class Config:
               (len(view_coords),len(tr_list),len(tr_image),len(val_list),len(val_image)))
         print("Training Images:"); print(tr_image)
         print("Validation Images:"); print(val_image)
+        # tr_list.sort(key=lambda x: str(x), reverse=False)
+        # val_list.sort(key=lambda x: str(x), reverse=False)
         return tr_list,val_list
 
     @staticmethod

@@ -67,9 +67,14 @@ class BaseNetU(Config):
             self.net.summary()
 
     def __str__(self):
-        return str(self.net)
+        return '_'.join([
+            type(self).__name__,
+            self.cap_lim_join(4, self.feed, self.act, self.out,
+                              (self.loss if isinstance(self.loss, str) else self.loss.__name__).
+                              replace('_', '').replace('loss', ''))
+            + str(self.dep_out)])
     def __repr__(self):
-        return str(self.net)+self.predict_proc.__name__[0:1].upper()
+        return str(self)+self.predict_proc.__name__[0:1].upper()
 
     @staticmethod
     def cap_lim_join(lim,*text):
@@ -157,9 +162,9 @@ class BaseNetU(Config):
                     # if i>=len(multi.view_coord): print("skip %d for overrange"%i); break # last batch may have unused entries
                     ind_name=view[i].file_name
                     ind_file=os.path.join(target_dir,ind_name)
-                    origin=view[i].get_image(os.path.join(pair.wd,pair.dir_in_ex(pair.origin)),self.net)
+                    origin=view[i].get_image(os.path.join(pair.wd,pair.dir_in_ex(pair.origin)),self)
                     print(ind_name); text_list=[ind_name]
-                    blend,r_i=self.predict_proc(self.net,origin,msk,ind_file.replace(img_ext,''))
+                    blend,r_i=self.predict_proc(self,origin,msk,file=None) # ind_file.replace(img_ext,'')
                     for d in range(len(tgt_list)):
                         text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_i[d][1],r_i[d][0],sum_i,100.*r_i[d][0]/sum_i)
                         print(text); text_list.append(text)
@@ -188,11 +193,11 @@ class BaseNetU(Config):
                     print(grp); text_list=[grp]
                     merge_name=view[0].image_name
                     merge_file=os.path.join(merge_dir,merge_name)
-                    blend,r_g=self.predict_proc(self.net,mrg_in,mrg_out,merge_file.replace(img_ext,''))
+                    blend,r_g=self.predict_proc(self,mrg_in,mrg_out,file=None) # merge_file.replace(img_ext,'')
                     for d in range(len(tgt_list)):
                         text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_g[d][1],r_g[d][0],sum_g,100.*r_g[d][0]/sum_g)
                         print(text); text_list.append(text)
-                    blendtext=draw_text(self.net,blend,text_list,ra)  # RGB: 3x8-bit dark text
+                    blendtext=draw_text(self,blend,text_list,ra)  # RGB: 3x8-bit dark text
                     cv2.imwrite(merge_file,blendtext)  # [...,np.newaxis]
                     res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
             res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
