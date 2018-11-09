@@ -21,7 +21,7 @@ from image_set import PatchSet,ImageSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten,draw_detection
 from mrcnn import utils
-from preprocess import augment_image_pair,prep_scale
+from preprocess import prep_scale,augment_image_set
 
 
 class BaseNetM(Config):
@@ -34,7 +34,7 @@ class BaseNetM(Config):
                  detection_max_instances=None,detection_min_confidence=None,detection_nms_threshold=None,
                  detection_mask_threshold=None,optimizer=None,loss_weight=None,indicator=None,trainable_layer_regex=None,gpu_count=None,image_per_gpu=None,
                  filename=None,**kwargs):
-        super(BaseNetM,self).__init__(dim_in=(512,512,3),dim_out=(512,512,3),**kwargs)
+        super(BaseNetM,self).__init__(dim_in=(768,768,3),dim_out=(768,768,3),image_resize=2.0,**kwargs)
         self.is_train=None # will set later
         self.coverage_train=coverage_tr or 1.0
         self.coverage_predict=coverage_prd or 1.0
@@ -334,12 +334,12 @@ class BaseNetM(Config):
                     # self.net.load_weights(weight_file)  # weights only
                     self.net.load_weights(weight_file,by_name=True)  # weights only
                     # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
-                    detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=\
-                        self.net.predict(prd[0],verbose=1)
                     # detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=\
-                    #     self.net.predict_generator(prd,max_queue_size=1,workers=0,use_multiprocessing=False,verbose=1)
-                    for i in range(self.batch_size):
-                        final_rois,final_class_ids,final_scores,final_masks=parse_detections(detections[i],mrcnn_mask[i],self.dim_in)
+                    #     self.net.predict(prd[0],verbose=1)
+                    detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=\
+                        self.net.predict_generator(prd,max_queue_size=1,workers=0,use_multiprocessing=False,verbose=1)
+                    for i,(det,msk) in enumerate(zip(detections,mrcnn_mask)):
+                        final_rois,final_class_ids,final_scores,final_masks=parse_detections(det,msk,self.dim_in)
                         results.append({
                             "rois":final_rois,
                             "class_ids":final_class_ids,
@@ -347,8 +347,9 @@ class BaseNetM(Config):
                             "masks":final_masks,
                         })
                         origin=view[i].get_image(os.path.join(pair.wd,pair.dir_in_ex(pair.origin)),self)
+                        # cv2.imwrite(os.path.join(target_dir,view[i].file_name),origin)
                         blend=draw_detection(self,origin,final_rois,final_masks,final_class_ids,pair.targets,final_scores)
-                        cv2.imwrite(os.path.join(target_dir,view[i].file_name),blend)
+                        cv2.imwrite(os.path.join(view[i].file_name),blend)
 
                     # msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
                     i=o
@@ -541,9 +542,9 @@ class ImagePatchGenerator(keras.utils.Sequence):
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
                 this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex('+'.join([self.pair.origin]+self.pair.targets))),self.cfg)
                 this_msk, this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.dir_out_ex('-'.join([self.pair.origin]+self.pair.targets))),self.cfg)
-                # if self.aug_value > 0: # TODO add augmentation
-                #     aug_value=random.randint(0, self.cfg.train_aug) # random number between zero and pre-set value
-                #     this_img, this_msk = augment_image_pair(this_img, this_msk, _tgt_ch=1, _level=aug_value)  # integer N: a <= N <= b.
+                if self.aug_value > 0: # augmentation
+                    aug_value=random.randint(0, self.cfg.train_aug) # random number between zero and pre-set value
+                    this_img, this_msk = augment_image_set(this_img, this_msk, _level=aug_value, _tgt_ch=1)  # integer N: a <= N <= b.
                 this_bbox=utils.extract_bboxes(this_msk)
                 if self.cfg.mini_mask_shape is not None:
                     this_msk=utils.minimize_mask(this_bbox,this_msk,tuple(self.cfg.mini_mask_shape[0:2]))

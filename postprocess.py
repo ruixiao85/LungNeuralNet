@@ -11,9 +11,9 @@ def smooth_brighten(img):
     # return cv2.morphologyEx(bin, cv2.MORPH_OPEN, (5,5))
     return morph_operation(bin)
 
-def gaussian_smooth(_img,size=11):
+def gaussian_smooth(_img,size=5):
     # return cv2.blur(_img,(size,size))
-    return cv2.GaussianBlur(_img,(size,size),0)
+    return cv2.GaussianBlur(_img,(size,size),1)
 
 def morph_operation(_bin,erode=3,dilate=5):
     erode_kernel=np.ones((erode,erode),np.uint8)

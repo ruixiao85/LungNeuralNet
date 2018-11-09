@@ -58,7 +58,7 @@ def reverse_tanh(_array):
 
 
 def read_resize_padding(_file, _resize, _padding):
-    if _resize < 1.0:
+    if _resize != 1.0:
         img = cv2.resize(cv2.imread(_file), (0, 0), fx=_resize, fy=_resize, interpolation=cv2.INTER_AREA)
         # print(" Resize [%.1f] applied "%_resize,end='')
     else:
@@ -185,7 +185,7 @@ seq_img_6 = iaa.Sequential([  # only apply to original images not the mask
     ),
 ])
 
-def augment_image_pair(_img, _tgt, _level=1.0):
+def augment_image_pair(_img, _tgt, _level):
     if _level<1:
         return _img, _tgt
     elif 1<=_level<2:  # paired image augmentation 1
@@ -206,3 +206,12 @@ def augment_image_pair(_img, _tgt, _level=1.0):
     elif 6<=_level:  # paired aug + additional aug for original images
         seq_det = seg_both_3.to_deterministic()
         return seq_img_6.augment_images(seq_det.augment_images(_img)), seq_det.augment_images(_tgt)
+
+def augment_image_set(_img, _msk, _level, _tgt_ch=1):
+    if _level<1:
+        return _img, _msk
+    seq_det = seg_both_1.to_deterministic() # if 1<=_level<2 else seg_both_2.to_deterministic()
+    _img=seq_det.augment_image(_img)
+    for i in range(_msk.shape[-1]):
+        _msk[...,i]=seq_det.augment_image(_msk[...,i])
+    return _img, _msk
