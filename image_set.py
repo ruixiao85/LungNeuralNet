@@ -270,7 +270,7 @@ class PatchSet(FolderSet):
         self.patches=[]
         for image_name in self.images:
             _img = read_resize_padding(os.path.join(self.work_directory, self.sub_folder, image_name),
-                                       _resize=1.0,_padding=1.0) # TODO 40X-40X resize=1.0
+                                       _resize=self.cfg.image_resize,_padding=self.cfg.image_padding)
             self.patches.append(_img)
             entry=MetaInfo.from_single(image_name)
             if entry.row_start is None:
