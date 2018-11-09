@@ -142,7 +142,7 @@ class BaseNetU(Config):
                     print(weight_file)
                     self.net.load_weights(weight_file)  # weights only
                     # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
-                    msk=self.net.predict_generator_note(prd,max_queue_size=1,workers=0,use_multiprocessing=False,verbose=1)
+                    msk=self.net.predict_generator(prd,max_queue_size=1,workers=0,use_multiprocessing=False,verbose=1)
                     msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
                     i=o
                 print('Saving predicted results [%s] to folder [%s]...'%(grp,export_name))
@@ -262,7 +262,7 @@ class ImageMaskPair:
         return txt+'_'+ext if self.cfg.separate else txt
 
 class ImageMaskGenerator(keras.utils.Sequence):
-    def __init__(self,pair:ImageMaskPair,aug_value,tgt_list,view_coord=None):
+    def __init__(self,pair:ImageMaskPair,aug_value,tgt_list,view_coord):
         self.pair=pair
         self.cfg=pair.cfg
         self.aug_value=aug_value

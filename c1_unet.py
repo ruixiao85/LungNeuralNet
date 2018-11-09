@@ -3,7 +3,7 @@ from __future__ import print_function
 from keras.models import Model
 from keras.layers import Input
 from b1_net_pair import BaseNetU
-from module import cvac, ca3, ca33, cb3, cba3, dmp, uu, ct, sk, rn131r, rn131nr
+from module import cvac, ca3, ca33, cb3, cba3, dmp, uu, ct, sk
 
 class UNet(BaseNetU):
     # also base class for U-shaped networks
