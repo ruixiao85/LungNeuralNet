@@ -15,8 +15,10 @@ def gaussian_smooth(_img,size=11):
     # return cv2.blur(_img,(size,size))
     return cv2.GaussianBlur(_img,(size,size),0)
 
-def morph_operation(_bin,erode=5,dilate=9):
-    return cv2.morphologyEx(cv2.morphologyEx(_bin,cv2.MORPH_ERODE,(erode,erode)),cv2.MORPH_DILATE,(dilate,dilate))
+def morph_operation(_bin,erode=3,dilate=5):
+    erode_kernel=np.ones((erode,erode),np.uint8)
+    dilate_kernel=np.ones((dilate,dilate),np.uint8)
+    return cv2.morphologyEx(cv2.morphologyEx(_bin,cv2.MORPH_ERODE,erode_kernel),cv2.MORPH_DILATE,dilate_kernel)
 
 def g_kern(size, sigma):
     from scipy.signal.windows import gaussian
@@ -112,4 +114,37 @@ def draw_text(cfg,img,text_list,width):
         txtcrs=' \n'*(i+1)+' X'
         draw.text((0,0),txtcrs,(225,225,225),ImageFont.truetype(font,size))
         draw.text((5,3),txtcrs,cfg.overlay_color[i],ImageFont.truetype(font,size))
+    return np.array(origin)
+
+
+def draw_detection(cfg,image,boxes,masks,class_ids,class_names,scores):
+    # , title="", figsize=(16, 16), ax=None, show_mask=True, show_bbox=True, colors=None, captions=None
+    N=boxes.shape[0]
+    if not N:
+        print("\n*** No instances to display *** \n")
+    else:
+        assert boxes.shape[0]==masks.shape[-1]==class_ids.shape[0]
+    font="arial.ttf"  #times.ttf
+    size=12 # fontsize
+    masks=masks.astype(np.uint8) # 0,1
+    outline_kernel=np.ones((2,2),np.uint8)
+    for i in range(N):
+        d=class_ids[i]-1
+        for c in range(3):  # mask per channel
+            # image[:,:,c]=np.where(masks[:,:,i]>0,image[:,:,c]*(1-cfg.overlay_opacity[d])+cfg.overlay_color[d][c]*cfg.overlay_opacity[d],image[:,:,c])  # transparent mask
+            image[:,:,c]=np.where(cv2.morphologyEx(masks[:,:,i],cv2.MORPH_GRADIENT,outline_kernel)>0, cfg.overlay_color[d][c], image[:,:,c]) # opaque mask outline
+    origin=Image.fromarray(image.astype(np.uint8),'RGB')  # L RGB
+    draw=ImageDraw.Draw(origin)
+    for i in range(N):
+        d=class_ids[i]-1
+        y1,x1,y2,x2=boxes[i]
+        # draw.rectangle((x1,y1,x2,y2),fill=None,outline=cfg.overlay_color[d]) # bbox
+        draw.text((x1,y1),'%s %.1f'%(class_names[d],scores[i]),cfg.overlay_color[d],ImageFont.truetype(font,size)) # class score
+    # txtblk='\n'.join(text_list)
+    # draw.text((0,0),txtblk,(225,225,225),ImageFont.truetype(font,size))
+    # draw.text((4,4),txtblk,(30,30,30),ImageFont.truetype(font,size))
+    # for i in range(len(text_list)-1):
+    #     txtcrs=' \n'*(i+1)+' X'
+    # draw.text((0,0),txtcrs,(225,225,225),ImageFont.truetype(font,size))
+    # draw.text((5,3),txtcrs,cfg.overlay_color[i],ImageFont.truetype(font,size))
     return np.array(origin)

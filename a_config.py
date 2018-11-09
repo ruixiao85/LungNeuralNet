@@ -17,8 +17,10 @@ class Config:
                  call_hardness=None,overlay_color=None,overlay_opacity=None,predict_size=None,predict_proc=None,
                  train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
                  train_vali_split=None,train_aug=None,train_continue=None,train_shuffle=None):
-        self.row_in, self.col_in, self.dep_in=dim_in or (512,512,3)
-        self.row_out, self.col_out, self.dep_out=dim_out or (512,512,1)
+        self.dim_in=dim_in or (512,512,3)
+        self.row_in, self.col_in, self.dep_in=self.dim_in
+        self.dim_out=dim_out or (512,512,1)
+        self.row_out, self.col_out, self.dep_out=self.dim_out
         self.num_targets=num_targets or 10  # lead to default overlay_color predict_group
         self.image_format=image_format or "*.jpg"
         self.image_resize=image_resize or 1.0  # default 1.0, reduce size <=1.0

@@ -16,16 +16,16 @@ import keras.models as KM
 from keras.engine.saving import model_from_json,load_model
 
 from a_config import Config
+from backbone import resnet_graph
 from image_set import PatchSet,ImageSet
-from model import resnet_graph
 from osio import mkdir_ifexist,to_excel_sheet
-from postprocess import g_kern_rect,draw_text,smooth_brighten
+from postprocess import g_kern_rect,draw_text,smooth_brighten,draw_detection
 from mrcnn import utils
 from preprocess import augment_image_pair,prep_scale
 
 
 class BaseNetM(Config):
-    def __init__(self,is_train=None,coverage_tr=None,coverage_prd=None,mini_mask_shape=None,out_mask_shape=None,
+    def __init__(self,coverage_tr=None,coverage_prd=None,mini_mask_shape=None,
                  backbone=None,batch_norm=None,backbone_stride=None,pyramid_size=None,
                  fc_layers_size=None,rpn_anchor_scales=None,rpn_train_anchors_per_image=None,
                  rpn_anchor_ratio=None,rpn_anchor_stride=None,rpn_nms_threshold=None,rpn_bbox_stdev=None,
@@ -34,11 +34,12 @@ class BaseNetM(Config):
                  detection_max_instances=None,detection_min_confidence=None,detection_nms_threshold=None,
                  detection_mask_threshold=None,optimizer=None,loss_weight=None,indicator=None,trainable_layer_regex=None,gpu_count=None,image_per_gpu=None,
                  filename=None,**kwargs):
-        super(BaseNetM,self).__init__(**kwargs)
-        self.is_train=is_train if is_train is not None else False # default to simple prediction
+        super(BaseNetM,self).__init__(dim_in=(512,512,3),dim_out=(512,512,3),**kwargs)
+        self.is_train=None # will set later
         self.coverage_train=coverage_tr or 1.0
         self.coverage_predict=coverage_prd or 1.0
-        self.meta_shape=[1+3+3+4+1+self.num_targets] # last number is NUM_CLASS
+        self.num_class=1+self.num_targets # plus background
+        self.meta_shape=[1+3+3+4+1+self.num_class] # last number is NUM_CLASS
         self.backbone=backbone or "resnet50" # "resnet101"
         self.batch_norm=batch_norm if batch_norm is not None else False # default to false since batch size is often small
         self.backbone_strides=backbone_stride or [4,8,16,32,64] # strides of the FPN Pyramid (default for Resnet101)
@@ -56,7 +57,6 @@ class BaseNetM(Config):
         self.pool_size=pool_size or 7 # Pooled ROIs
         self.mask_pool_size=mask_pool_size or 14 # Pooled ROIs for mask
         self.mini_mask_shape=mini_mask_shape or [28,28,None] # target shape (downsized) of instance masks to reduce memory load.
-        self.out_mask_shape=out_mask_shape or [28,28]
         self.train_rois_per_image=train_rois_per_image or 200 # Number of ROIs per image to feed to classifier/mask heads (MRCNN paper 512)
         self.train_roi_positive_ratio=train_roi_positive_ratio or 0.33 # Percent of positive ROIs used to train classifier/mask heads
         self.max_gt_instance=max_gt_instance or 100 # Maximum number of ground truth instances to use in one image
@@ -70,8 +70,8 @@ class BaseNetM(Config):
                                         "mrcnn_bbox_loss":1., "mrcnn_mask_loss":1.} # Loss weights for more precise optimization.
         self.indicator=indicator or 'val_loss'
         self.trainable_layer_regex=trainable_layer_regex or \
-            r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)"  # head
-            # ".*" # all
+            ".*" # all
+            # r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)"  # head
             # r"# (res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 3+
             # r"# (res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 4+
             # r"# (res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 5+
@@ -81,13 +81,12 @@ class BaseNetM(Config):
         self.net=None
 
     def set_trainable(self,node,indent=0):
-        if node is None:
-            print("Selecting layers to train")
         # In multi-GPU training, we wrap the model. Get layers of the inner model because they have the weights.
         layers=node.inner_model.layers if hasattr(node,"inner_model") else node.layers
         for layer in layers:
             if layer.__class__.__name__=='Model':
                 print("In model: ",layer.name)
+                print(self.trainable_layer_regex)
                 self.set_trainable(layer,indent=indent+4)
                 continue
             if not layer.weights:
@@ -97,7 +96,8 @@ class BaseNetM(Config):
                 layer.layer.trainable=trainable
             else:
                 layer.trainable=trainable
-            print(" "*indent+'%s - %s - trainable %r'%(layer.name,layer.__class__.__name__,trainable))
+            # print(" "*indent+'%s - %s - trainable %r'%(layer.name,layer.__class__.__name__,trainable)) # verbose
+            print('+' if trainable else '-', end='')
 
     def build_net(self, is_train):
         self.is_train=is_train
@@ -111,7 +111,7 @@ class BaseNetM(Config):
             gt_boxes=KL.Lambda(lambda x:norm_boxes_graph(x,K.shape(input_image)[1:3]))(input_gt_boxes)  # Normalize coordinates
             input_gt_masks=KL.Input(shape=self.mini_mask_shape,name="input_gt_masks",dtype=bool)  # GT Masks
             mrcnn_feature_maps,rpn_feature_maps=self.cnn_fpn_feature_maps(input_image)  # same train/predict
-            anchors=self.get_anchors()
+            anchors=self.get_anchors_norm()[1]
             anchors=np.broadcast_to(anchors,(self.batch_size,)+anchors.shape)
             anchors=KL.Lambda(lambda x:tf.Variable(anchors),name="anchors")(input_image)
             rpn_bbox,rpn_class,rpn_class_logits,rpn_rois=self.rpn_outputs(anchors,rpn_feature_maps)  # same train/predict
@@ -122,9 +122,9 @@ class BaseNetM(Config):
                                                                                self.mini_mask_shape,self.rpn_bbox_stdev,name="proposal_targets")(
                 [rpn_rois,input_gt_class_ids,gt_boxes,input_gt_masks])
             # Network Heads
-            mrcnn_class_logits,mrcnn_class,mrcnn_bbox=fpn_classifier_graph(rois,mrcnn_feature_maps,input_image_meta,self.pool_size,self.num_targets,
+            mrcnn_class_logits,mrcnn_class,mrcnn_bbox=fpn_classifier_graph(rois,mrcnn_feature_maps,input_image_meta,self.pool_size,self.num_class,
                                                                            train_bn=self.batch_norm,fc_layers_size=self.fc_layers_size)
-            mrcnn_mask=build_fpn_mask_graph(rois,mrcnn_feature_maps,input_image_meta,self.mask_pool_size,self.num_targets,train_bn=self.batch_norm)
+            mrcnn_mask=build_fpn_mask_graph(rois,mrcnn_feature_maps,input_image_meta,self.mask_pool_size,self.num_class,train_bn=self.batch_norm)
             output_rois=KL.Lambda(lambda x:x*1,name="output_rois")(rois)
             # Losses
             rpn_class_loss=KL.Lambda(lambda x:rpn_class_loss_graph(*x),name="rpn_class_loss")([input_rpn_match,rpn_class_logits])
@@ -142,7 +142,7 @@ class BaseNetM(Config):
             mrcnn_feature_maps,rpn_feature_maps=self.cnn_fpn_feature_maps(input_image)  # same train/predict
             rpn_bbox,rpn_class,rpn_class_logits,rpn_rois=self.rpn_outputs(anchors,rpn_feature_maps)  # same train/predict
             # Network Heads Proposal classifier and BBox regressor heads
-            mrcnn_class_logits,mrcnn_class,mrcnn_bbox=fpn_classifier_graph(rpn_rois,mrcnn_feature_maps,input_image_meta,self.pool_size,self.num_targets,
+            mrcnn_class_logits,mrcnn_class,mrcnn_bbox=fpn_classifier_graph(rpn_rois,mrcnn_feature_maps,input_image_meta,self.pool_size,self.num_class,
                                                                            train_bn=self.batch_norm,fc_layers_size=self.fc_layers_size)
             # Detections [batch, num_detections, (y1, x1, y2, x2, class_id, score)] in normalized coordinates
             detections=DetectionLayer(self.rpn_bbox_stdev,self.detection_min_confidence,self.detection_max_instances,self.
@@ -150,22 +150,22 @@ class BaseNetM(Config):
                 [rpn_rois,mrcnn_class,mrcnn_bbox,input_image_meta])
             # Create masks for detections
             detection_boxes=KL.Lambda(lambda x:x[...,:4])(detections)
-            mrcnn_mask=build_fpn_mask_graph(detection_boxes,mrcnn_feature_maps,input_image_meta,self.mask_pool_size,self.num_targets,train_bn=self.batch_norm)
+            mrcnn_mask=build_fpn_mask_graph(detection_boxes,mrcnn_feature_maps,input_image_meta,self.mask_pool_size,self.num_class,train_bn=self.batch_norm)
             model=KM.Model([input_image,input_image_meta,input_anchors],
                            [detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox],name='mask_rcnn')
         self.net=model
 
-    def get_anchors(self):
-        image_shape=tuple([self.row_in,self.col_in,self.dep_in])
+    def get_anchors_norm(self):
         backbone_shapes=np.array([[int(math.ceil(self.row_in/stride)),int(math.ceil(self.col_in/stride))] for stride in self.backbone_strides])
         # Cache anchors and reuse if image shape is the same
         if not hasattr(self,"_anchor_cache"):
             self._anchor_cache={}
-        if not tuple(image_shape) in self._anchor_cache:
+        if not self.dim_in in self._anchor_cache:
             anchors=generate_pyramid_anchors(self.rpn_anchor_scales, self.rpn_anchor_ratios, backbone_shapes,
                                         self.backbone_strides, self.rpn_anchor_stride)
-            self._anchor_cache[tuple(image_shape)]=utils.norm_boxes(anchors,image_shape[:2])
-        return self._anchor_cache[tuple(image_shape)]
+            self._anchor_cache[self.dim_in]=[anchors,utils.norm_boxes(anchors.copy(),self.dim_in[:2])]
+        return self._anchor_cache[self.dim_in]
+
 
     def cnn_fpn_feature_maps(self,input_image):
         C1,C2,C3,C4,C5=resnet_graph(input_image,self.backbone,stage5=True,train_bn=False) # Bottom-up Layers (convolutional neural network backbone)
@@ -222,6 +222,7 @@ class BaseNetM(Config):
             json_file.write(self.net.to_json())
 
     def compile_net(self,save_net=False,print_summary=True):
+        assert self.is_train, 'only applicable to training mode'
         self.net._losses=[]
         self.net._per_input_losses={}
         for loss in self.loss_weight.keys():
@@ -250,7 +251,7 @@ class BaseNetM(Config):
         return '_'.join([
             type(self).__name__,
             self.cap_lim_join(4, self.feed, self.act, self.out)
-            +str(self.dep_out)])
+            +str(self.num_targets)])
     def __repr__(self):
         return str(self.net)+self.predict_proc.__name__[0:1].upper()
 
@@ -263,15 +264,16 @@ class BaseNetM(Config):
         self.build_net(is_train=True)
         self.set_trainable(self.net)
         self.compile_net()
-        self.net.load_weights(get_imagenet_weights(),by_name=True) # load pre-train imagenet
         for tr,val,dir_out in pair.train_generator():
             export_name=dir_out+'_'+str(self)
             weight_file=export_name+".h5"
             if self.train_continue and os.path.exists(weight_file):
-                # print("Continue from previous weights")
-                # self.net.load_weights(weight_file)
-                print("Continue from previous model with weights & optimizer")
-                self.net=load_model(weight_file)  # does not work well with custom act, loss func
+                print("Continue from previous weights")
+                self.net.load_weights(weight_file,by_name=True)
+                # print("Continue from previous model with weights & optimizer")
+                # self.net=load_model(weight_file)  # does not work well with custom act, loss func
+            else:
+                self.net.load_weights(get_imagenet_weights(),by_name=True)  # load pre-train imagenet
             print('Fitting neural net...')
             for r in range(self.train_rep):
                 print("Training %d/%d for %s"%(r+1,self.train_rep,export_name))
@@ -298,7 +300,6 @@ class BaseNetM(Config):
 
     def predict(self,pair,pred_dir):
         self.build_net(is_train=False)
-        self.compile_net()
         xls_file="Result_%s_%s.xlsx"%(pred_dir,repr(self))
         img_ext=self.image_format[1:]  # *.jpg -> .jpg
         sum_i,sum_g=self.row_out*self.col_out,None
@@ -322,6 +323,7 @@ class BaseNetM(Config):
                 mask_wt=g_kern_rect(self.row_out,self.col_out)
             for grp,view in batch.items():
                 msks=None
+                results=[]
                 i=0; nt=len(tgt_list)
                 while i<nt:
                     o=min(i+self.dep_out,nt)
@@ -329,70 +331,90 @@ class BaseNetM(Config):
                     prd,tgt_name=pair.predict_generator_partial(tgt_sub,view)
                     weight_file=tgt_name+'_'+dir_cfg_append+'.h5'
                     print(weight_file)
-                    self.net.load_weights(weight_file)  # weights only
+                    # self.net.load_weights(weight_file)  # weights only
+                    self.net.load_weights(weight_file,by_name=True)  # weights only
                     # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
-                    msk=self.net.predict_generator(prd,max_queue_size=1,workers=0,use_multiprocessing=False,verbose=1)
-                    msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
-                    i=o
-                print('Saving predicted results [%s] to folder [%s]...'%(grp,export_name))
-                # r_i=np.zeros((len(multi.img_set.images),len(tgt_list)), dtype=np.uint32)
-                if self.separate:
-                    mrg_in=np.zeros((view[0].ori_row,view[0].ori_col,self.dep_in),dtype=np.float32)
-                    mrg_out=np.zeros((view[0].ori_row,view[0].ori_col,len(tgt_list)*self.dep_out),dtype=np.float32)
-                    mrg_out_wt=np.zeros((view[0].ori_row,view[0].ori_col),dtype=np.float32)+np.finfo(np.float32).eps
-                    sum_g=view[0].ori_row*view[0].ori_col
-                    # r_g=np.zeros((1,len(tgt_list)*self.dep_out), dtype=np.uint32)
-                for i,msk in enumerate(msks):
-                    # if i>=len(multi.view_coord): print("skip %d for overrange"%i); break # last batch may have unused entries
-                    ind_name=view[i].file_name
-                    ind_file=os.path.join(target_dir,ind_name)
-                    origin=view[i].get_image(os.path.join(pair.wd,pair.dir_in_ex()),self.net)
-                    print(ind_name); text_list=[ind_name]
-                    blend,r_i=self.predict_proc(self.net,origin,msk,ind_file.replace(img_ext,''))
-                    for d in range(len(tgt_list)):
-                        text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_i[d][1],r_i[d][0],sum_i,100.*r_i[d][0]/sum_i)
-                        print(text); text_list.append(text)
-                    if save_ind_image or not self.separate:  # skip saving individual images
-                        blendtext=draw_text(self.net,blend,text_list,self.row_out)  # RGB:3x8-bit dark text
-                        cv2.imwrite(ind_file,blendtext)
-                    res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i,r_i[np.newaxis,...]))
+                    detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=\
+                        self.net.predict(prd[0],verbose=1)
+                    # detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=\
+                    #     self.net.predict_generator(prd,max_queue_size=1,workers=0,use_multiprocessing=False,verbose=1)
+                    for i in range(self.batch_size):
+                        final_rois,final_class_ids,final_scores,final_masks=parse_detections(detections[i],mrcnn_mask[i],self.dim_in)
+                        results.append({
+                            "rois":final_rois,
+                            "class_ids":final_class_ids,
+                            "scores":final_scores,
+                            "masks":final_masks,
+                        })
+                        origin=view[i].get_image(os.path.join(pair.wd,pair.dir_in_ex(pair.origin)),self)
+                        blend=draw_detection(self,origin,final_rois,final_masks,final_class_ids,pair.targets,final_scores)
+                        cv2.imwrite(os.path.join(target_dir,view[i].file_name),blend)
 
-                    if self.separate:
-                        ri,ro=view[i].row_start,view[i].row_end
-                        ci,co=view[i].col_start,view[i].col_end
-                        ra,ca=view[i].ori_row,view[i].ori_col
-                        tri,tro=0,self.row_out
-                        tci,tco=0,self.col_out
-                        if ri<0: tri=-ri; ri=0
-                        if ci<0: tci=-ci; ci=0
-                        if ro>ra: tro=tro-(ro-ra); ro=ra
-                        if co>ca: tco=tco-(co-ca); co=ca
-                        mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
-                        for d in range(len(tgt_list)*self.dep_out):
-                            mrg_out[ri:ro,ci:co,d]+=(msk[...,d]*mask_wt)[tri:tro,tci:tco]
-                        mrg_out_wt[ri:ro,ci:co]+=mask_wt[tri:tro,tci:tco]
-                if self.separate:
-                    for d in range(len(tgt_list)*self.dep_out):
-                        mrg_out[...,d]/=mrg_out_wt
-                    print(grp); text_list=[grp]
-                    merge_name=view[0].image_name
-                    merge_file=os.path.join(merge_dir,merge_name)
-                    blend,r_g=self.predict_proc(self.net,mrg_in,mrg_out,merge_file.replace(img_ext,''))
-                    for d in range(len(tgt_list)):
-                        text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_g[d][1],r_g[d][0],sum_g,100.*r_g[d][0]/sum_g)
-                        print(text); text_list.append(text)
-                    blendtext=draw_text(self.net,blend,text_list,ra)  # RGB: 3x8-bit dark text
-                    cv2.imwrite(merge_file,blendtext)  # [...,np.newaxis]
-                    res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
-            res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
-            res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
-        for i,note in [(0,'_area'),(1,'_count')]:
-            df=pd.DataFrame(res_ind[...,i],index=pair.img_set.images,columns=pair.targets*pair.cfg.dep_out)
-            to_excel_sheet(df,xls_file,pair.origin+note)  # per slice
-        if self.separate:
-            for i,note in [(0,'_area'),(1,'_count')]:
-                df=pd.DataFrame(res_grp[...,i],index=batch.keys(),columns=pair.targets*pair.cfg.dep_out)
-                to_excel_sheet(df,xls_file,pair.origin+note+"_sum")
+                    # msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
+                    i=o
+        #         print('Saving predicted results [%s] to folder [%s]...'%(grp,export_name))
+        #         # r_i=np.zeros((len(multi.img_set.images),len(tgt_list)), dtype=np.uint32)
+        #         if self.separate:
+        #             mrg_in=np.zeros((view[0].ori_row,view[0].ori_col,self.dep_in),dtype=np.float32)
+        #             mrg_out=np.zeros((view[0].ori_row,view[0].ori_col,len(tgt_list)*self.dep_out),dtype=np.float32)
+        #             mrg_out_wt=np.zeros((view[0].ori_row,view[0].ori_col),dtype=np.float32)+np.finfo(np.float32).eps
+        #             sum_g=view[0].ori_row*view[0].ori_col
+        #             # r_g=np.zeros((1,len(tgt_list)*self.dep_out), dtype=np.uint32)
+        #         for i,msk in enumerate(msks):
+        #             # if i>=len(multi.view_coord): print("skip %d for overrange"%i); break # last batch may have unused entries
+        #             ind_name=view[i].file_name
+        #             ind_file=os.path.join(target_dir,ind_name)
+        #             origin=view[i].get_image(os.path.join(pair.wd,pair.dir_in_ex(pair.origin)),self.net)
+        #             print(ind_name); text_list=[ind_name]
+        #
+        #             # draw_detection(image,boxes,masks,class_ids,class_names,scores)
+        #             #
+        #
+        #             blend,r_i=self.predict_proc(self.net,origin,msk,ind_file.replace(img_ext,''))
+        #             for d in range(len(tgt_list)):
+        #                 text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_i[d][1],r_i[d][0],sum_i,100.*r_i[d][0]/sum_i)
+        #                 print(text); text_list.append(text)
+        #             if save_ind_image or not self.separate:  # skip saving individual images
+        #                 blendtext=draw_text(self.net,blend,text_list,self.row_out)  # RGB:3x8-bit dark text
+        #                 cv2.imwrite(ind_file,blendtext)
+        #             res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i,r_i[np.newaxis,...]))
+        #
+        #             if self.separate:
+        #                 ri,ro=view[i].row_start,view[i].row_end
+        #                 ci,co=view[i].col_start,view[i].col_end
+        #                 ra,ca=view[i].ori_row,view[i].ori_col
+        #                 tri,tro=0,self.row_out
+        #                 tci,tco=0,self.col_out
+        #                 if ri<0: tri=-ri; ri=0
+        #                 if ci<0: tci=-ci; ci=0
+        #                 if ro>ra: tro=tro-(ro-ra); ro=ra
+        #                 if co>ca: tco=tco-(co-ca); co=ca
+        #                 mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
+        #                 for d in range(len(tgt_list)*self.dep_out):
+        #                     mrg_out[ri:ro,ci:co,d]+=(msk[...,d]*mask_wt)[tri:tro,tci:tco]
+        #                 mrg_out_wt[ri:ro,ci:co]+=mask_wt[tri:tro,tci:tco]
+        #         if self.separate:
+        #             for d in range(len(tgt_list)*self.dep_out):
+        #                 mrg_out[...,d]/=mrg_out_wt
+        #             print(grp); text_list=[grp]
+        #             merge_name=view[0].image_name
+        #             merge_file=os.path.join(merge_dir,merge_name)
+        #             blend,r_g=self.predict_proc(self.net,mrg_in,mrg_out,merge_file.replace(img_ext,''))
+        #             for d in range(len(tgt_list)):
+        #                 text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_g[d][1],r_g[d][0],sum_g,100.*r_g[d][0]/sum_g)
+        #                 print(text); text_list.append(text)
+        #             blendtext=draw_text(self.net,blend,text_list,ra)  # RGB: 3x8-bit dark text
+        #             cv2.imwrite(merge_file,blendtext)  # [...,np.newaxis]
+        #             res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
+        #     res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
+        #     res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
+        # for i,note in [(0,'_area'),(1,'_count')]:
+        #     df=pd.DataFrame(res_ind[...,i],index=pair.img_set.images,columns=pair.targets*pair.cfg.dep_out)
+        #     to_excel_sheet(df,xls_file,pair.origin+note)  # per slice
+        # if self.separate:
+        #     for i,note in [(0,'_area'),(1,'_count')]:
+        #         df=pd.DataFrame(res_grp[...,i],index=batch.keys(),columns=pair.targets*pair.cfg.dep_out)
+        #         to_excel_sheet(df,xls_file,pair.origin+note+"_sum")
 
 class ImagePatchPair:
     def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train,is_reverse=False):
@@ -400,28 +422,28 @@ class ImagePatchPair:
         self.wd=wd
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
-        self.ntargets=len(self.targets)
         # self.dir_out=targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
         self.img_set=ImageSet(cfg,wd,origin,is_train,is_image=True).size_folder_update()
-        self.pch_set=[PatchSet(cfg,wd,tgt,is_train,is_image=True) for tgt in targets]
+        self.pch_set=None
         self.view_coord=self.img_set.view_coord
         self.is_train=is_train
         self.is_reverse=is_reverse
 
-        self.tr_list,self.val_list=self.cfg.split_train_vali(self.view_coord)
-
-        self.blend_image_patch(
-            patch_per_pixel=[3000,6000], # patch per pixel, range to randomly select from, larger number: smaller density of
-            bright_diff=-10,  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
-            adjacent_size=3,  # sample times of size adjacent to the patch
-            # adjacent_std=0.2  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
-            adjacent_std=0.0  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
-        )
+        if self.is_train:
+            self.pch_set=[PatchSet(cfg,wd,tgt,self.is_train,is_image=True) for tgt in targets] if self.is_train else None
+            self.tr_list,self.val_list=self.cfg.split_train_vali(self.view_coord)
+            self.blend_image_patch(
+                patch_per_pixel=[3000,6000], # patch per pixel, range to randomly select from, larger number: smaller density of
+                bright_diff=-10,  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
+                adjacent_size=3,  # sample times of size adjacent to the patch
+                # adjacent_std=0.2  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
+                adjacent_std=0.0  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
+            )
 
     def blend_image_patch(self,patch_per_pixel,bright_diff,adjacent_size,adjacent_std):
         # count_per_pixel.sort() # usaually not need
-        img_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_in_ex()))
-        pch_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_out_ex()))
+        img_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_in_ex('+'.join([self.origin]+self.targets))))
+        pch_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_out_ex('-'.join([self.origin]+self.targets))))
         print('image folder exist? %r'%img_exist) # e.g., Original+LYM+MONO+PMN
         print('patch mask folder exist? %r' %pch_exist) # e.g., Original_LYM_MONO_PMN
         if img_exist and pch_exist:
@@ -429,14 +451,14 @@ class ImagePatchPair:
         else:
             print("create new folders and blend images and patches")
         pixels=self.cfg.row_in*self.cfg.col_in
-        print('processing %d categories on val #%d vs tr #%d'%(self.ntargets,len(self.val_list),len(self.tr_list)))
+        print('processing %d categories on val #%d vs tr #%d'%(self.cfg.num_targets,len(self.val_list),len(self.tr_list)))
         for vi, vc in enumerate(self.img_set.view_coord):
             is_validation=vc in self.val_list # fewer in val_list, faster to check
-            rand_num=[(random.randint(0,self.ntargets-1), random.random(), random.uniform(0, 1), random.uniform(0, 1))
+            rand_num=[(random.randint(0,self.cfg.num_targets-1), random.random(), random.uniform(0, 1), random.uniform(0, 1))
                       for r in range(random.randint(pixels//patch_per_pixel[1], pixels//patch_per_pixel[0]))]  # label/class,index,row,col
             img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.sub_folder), self.cfg)
             # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
-            inserted=[0]*self.ntargets # track # of inserts per category
+            inserted=[0]*self.cfg.num_targets # track # of inserts per category
             for lirc in rand_num:
                 the_tgt=self.pch_set[lirc[0]]
                 prev=img.copy()
@@ -463,18 +485,18 @@ class ImagePatchPair:
                     img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco])
                     # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if lirc[1]>self.cfg.train_vali_split else '^'))),
                     #             smooth_brighten(prev-img))
-                    cv2.imwrite(os.path.join(self.wd, self.dir_out_ex(),vc.file_name_insert(self.cfg,'_%d^%d^'%(idx,lirc[0]))), #+('' if lirc[1]>self.cfg.train_vali_split else '^'))
+                    cv2.imwrite(os.path.join(self.wd, self.dir_out_ex('-'.join([self.origin]+self.targets)),vc.file_name_insert(self.cfg,'_%d^%d^'%(idx,lirc[0]+1))), #+('' if lirc[1]>self.cfg.train_vali_split else '^'))
                                 smooth_brighten(prev-img))
                     # lr=(lri+lro)//2
                     # lc=(lci+lco)//2
                     # msk[lr:lr+1,lc:lc+1,1]=255
                     inserted[lirc[0]]+=1
             print("inserted %s for %s"%(inserted,vc.file_name))
-            cv2.imwrite(os.path.join(self.wd, self.dir_in_ex(), vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+            cv2.imwrite(os.path.join(self.wd, self.dir_in_ex('+'.join([self.origin]+self.targets)), vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
 
     def train_generator(self):
         yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets, self.tr_list), ImagePatchGenerator(self, 0, self.targets, self.val_list),
-              self.cfg.join_targets(self.targets))
+              self.dir_in_ex(self.origin) if self.is_reverse else self.dir_out_ex(self.cfg.join_targets(self.targets)))
 
     def predict_generator_note(self):
             yield (self.cfg.join_targets(self.targets),self.targets)
@@ -484,12 +506,14 @@ class ImagePatchPair:
 
     def dir_in_ex(self,txt=None):
         ext=ImageSet.ext_folder(self.cfg, True)
-        txt=txt or '+'.join([self.origin]+self.targets)
+        if txt is None:
+            return ext if self.cfg.separate else None
         return txt+'_'+ext if self.cfg.separate else txt
 
     def dir_out_ex(self,txt=None):
         ext=ImageSet.ext_folder(self.cfg, False)
-        txt=txt or '-'.join([self.origin]+self.targets)
+        if txt is None:
+            return ext if self.cfg.separate else None
         return txt+'_'+ext if self.cfg.separate else txt
 
 
@@ -500,7 +524,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
         self.aug_value=aug_value
         self.target_list=tgt_list
         self.view_coord=pair.view_coord if view_coord is None else view_coord
-        self.indexes = np.arange(len(self.view_coord))
+        self.indexes=np.arange(len(self.view_coord))
 
     def __len__(self):  # Denotes the number of batches per epoch
         return int(np.ceil(len(self.view_coord) / self.cfg.batch_size))
@@ -508,19 +532,15 @@ class ImagePatchGenerator(keras.utils.Sequence):
     def __getitem__(self, index):  # Generate one batch of data
         indexes = self.indexes[index * self.cfg.batch_size:(index + 1) * self.cfg.batch_size]
         # print(" getting index %d with %d batch size"%(index,self.batch_size))
-        image_shape=(self.cfg.row_in,self.cfg.col_in,self.cfg.dep_in)
-        _active_class_ids=np.ones([self.pair.ntargets],dtype=np.int32)
-
-        anchors=utils.generate_pyramid_anchors(self.cfg.rpn_anchor_scales,self.cfg.rpn_anchor_ratios,
-                np.array([[int(math.ceil(image_shape[0]/st)),int(math.ceil(image_shape[1]/st))] for st in self.cfg.backbone_strides]), # backbone shape
-               self.cfg.backbone_strides,self.cfg.rpn_anchor_stride)
         if self.pair.is_train:
+            _active_class_ids=np.ones([self.cfg.num_class],dtype=np.int32)
+            anchors=self.cfg.get_anchors_norm()[0]
             _img,_msk,_cls,_bbox = None,None,None,None
             _img_meta, _rpn_match, _rpn_bbox=None,None,None
             # _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex()),self.cfg)
-                this_msk, this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.dir_out_ex()),self.cfg)
+                this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex('+'.join([self.pair.origin]+self.pair.targets))),self.cfg)
+                this_msk, this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.dir_out_ex('-'.join([self.pair.origin]+self.pair.targets))),self.cfg)
                 # if self.aug_value > 0: # TODO add augmentation
                 #     aug_value=random.randint(0, self.cfg.train_aug) # random number between zero and pre-set value
                 #     this_img, this_msk = augment_image_pair(this_img, this_msk, _tgt_ch=1, _level=aug_value)  # integer N: a <= N <= b.
@@ -530,8 +550,8 @@ class ImagePatchGenerator(keras.utils.Sequence):
                 if this_bbox.shape[0]>self.cfg.max_gt_instance:
                     ids=np.random.choice(np.arange(this_bbox.shape[0]),self.cfg.max_gt_instance,replace=False)
                     this_cls,this_bbox,this_msk=this_cls[ids],this_bbox[ids],this_msk[:,:,ids]
-                this_img_meta=compose_image_meta(indexes[vi],image_shape,image_shape,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,_active_class_ids)
-                this_rpn_match,this_rpn_bbox=build_rpn_targets(image_shape,anchors,this_cls,this_bbox,self.cfg.rpn_train_anchors_per_image,self.cfg.rpn_bbox_stdev)
+                this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,_active_class_ids)
+                this_rpn_match,this_rpn_bbox=build_rpn_targets(self.cfg.dim_in,anchors,this_cls,this_bbox,self.cfg.rpn_train_anchors_per_image,self.cfg.rpn_bbox_stdev)
                 this_img, this_msk=this_img[np.newaxis,...], this_msk[np.newaxis,...]
                 this_cls, this_bbox=this_cls[np.newaxis,...], this_bbox[np.newaxis,...]
                 this_img_meta=this_img_meta[np.newaxis,...]
@@ -544,15 +564,23 @@ class ImagePatchGenerator(keras.utils.Sequence):
                 _rpn_match=this_rpn_match if _rpn_match is None else np.concatenate((_rpn_match,this_rpn_match),axis=0)
                 _rpn_bbox=this_rpn_bbox if _rpn_bbox is None else np.concatenate((_rpn_bbox,this_rpn_bbox),axis=0)
                 _img=prep_scale(_img,self.cfg.feed)
-            inputs=[_img,_img_meta,_rpn_match,_rpn_bbox, _cls, _bbox, _msk]
-            outputs=[]
-            return inputs,outputs
+            return [_img,_img_meta,_rpn_match,_rpn_bbox, _cls, _bbox, _msk], []
         else:
-            _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
-            for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex()),self.cfg)
-                # imwrite("prd_img.jpg",_img[0])
-            return prep_scale(_img, self.cfg.feed), None
+            _active_class_ids=np.zeros([self.cfg.num_class],dtype=np.int32)
+            anchors=self.cfg.get_anchors_norm()[1]
+            _img, _img_meta, _anchors=None,None,None
+            # _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
+            for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
+                this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex(self.pair.origin)),self.cfg)
+                this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,_active_class_ids)
+                this_img=this_img[np.newaxis,...]
+                this_img_meta=this_img_meta[np.newaxis,...]
+                this_anchors=anchors[np.newaxis,...]
+                _img=this_img if _img is None else np.concatenate((_img,this_img),axis=0)
+                _img_meta=this_img_meta if _img_meta is None else np.concatenate((_img_meta,this_img_meta),axis=0)
+                _anchors=this_anchors if _anchors is None else np.concatenate((_anchors,this_anchors),axis=0)
+                _img=prep_scale(_img,self.cfg.feed)
+            return [_img,_img_meta,_anchors]
 
     def on_epoch_end(self):  # Updates indexes after each epoch
         self.indexes = np.arange(len(self.view_coord))
@@ -604,6 +632,49 @@ def generate_pyramid_anchors(scales, ratios, feature_shapes, feature_strides, an
     for i in range(len(scales)):
         anchors.append(generate_anchors(scales[i], ratios, feature_shapes[i], feature_strides[i], anchor_stride))
     return np.concatenate(anchors, axis=0)
+
+# Parse Detection #
+def parse_detections(detections,mrcnn_mask,original_image_shape,image_shape=None,window=None):
+    image_shape=image_shape or original_image_shape
+    window=window or (0,0,image_shape[0],image_shape[1])
+    zero_ix=np.where(detections[:,4]==0)[0]
+    N=zero_ix[0] if zero_ix.shape[0]>0 else detections.shape[0]
+    # Extract boxes, class_ids, scores, and class-specific masks
+    boxes=detections[:N,:4]
+    class_ids=detections[:N,4].astype(np.int32)
+    scores=detections[:N,5]
+    masks=mrcnn_mask[np.arange(N),:,:,class_ids]
+
+    # Translate normalized coordinates in the resized image to pixel coordinates in the original image before resizing
+    window=utils.norm_boxes(window,image_shape[:2])
+    wy1,wx1,wy2,wx2=window
+    shift=np.array([wy1,wx1,wy1,wx1])
+    wh=wy2-wy1  # window height
+    ww=wx2-wx1  # window width
+    scale=np.array([wh,ww,wh,ww])
+    # Convert boxes to normalized coordinates on the window
+    boxes=np.divide(boxes-shift,scale)
+    # Convert boxes to pixel coordinates on the original image
+    boxes=utils.denorm_boxes(boxes,original_image_shape[:2])
+    # Filter out detections with zero area. Happens in early training when network weights are still random
+    exclude_ix=np.where((boxes[:,2]-boxes[:,0])*(boxes[:,3]-boxes[:,1])<=0)[0]
+    if exclude_ix.shape[0]>0:
+        boxes=np.delete(boxes,exclude_ix,axis=0)
+        class_ids=np.delete(class_ids,exclude_ix,axis=0)
+        scores=np.delete(scores,exclude_ix,axis=0)
+        masks=np.delete(masks,exclude_ix,axis=0)
+        N=class_ids.shape[0]
+
+    # Resize masks to original image size and set boundary threshold.
+    full_masks=[]
+    for i in range(N):
+        # Convert neural network mask to full size mask
+        full_mask=utils.unmold_mask(masks[i],boxes[i],original_image_shape)
+        full_masks.append(full_mask)
+    full_masks=np.stack(full_masks,axis=-1)\
+        if full_masks else np.empty(original_image_shape[:2]+(0,))
+
+    return boxes,class_ids,scores,full_masks
 
 
 # Proposal Layer #
@@ -1398,11 +1469,6 @@ def parse_image_meta_graph(meta):
         "active_class_ids": active_class_ids,
     }
 
-def mold_image(images, config):
-    return images.astype(np.float32) - config.MEAN_PIXEL
-
-def unmold_image(normalized_images, config):
-    return (normalized_images + config.MEAN_PIXEL).astype(np.uint8)
 
 # Miscellenous Graph Functions #
 

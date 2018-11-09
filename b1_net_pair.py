@@ -157,7 +157,7 @@ class BaseNetU(Config):
                     # if i>=len(multi.view_coord): print("skip %d for overrange"%i); break # last batch may have unused entries
                     ind_name=view[i].file_name
                     ind_file=os.path.join(target_dir,ind_name)
-                    origin=view[i].get_image(os.path.join(pair.wd,pair.dir_in_ex()),self.net)
+                    origin=view[i].get_image(os.path.join(pair.wd,pair.dir_in_ex(pair.origin)),self.net)
                     print(ind_name); text_list=[ind_name]
                     blend,r_i=self.predict_proc(self.net,origin,msk,ind_file.replace(img_ext,''))
                     for d in range(len(tgt_list)):
@@ -251,7 +251,8 @@ class ImageMaskPair:
 
     def dir_in_ex(self,txt=None):
         ext=ImageSet.ext_folder(self.cfg, True)
-        txt=txt or self.origin
+        if txt is None:
+            return ext if self.cfg.separate else None
         return txt+'_'+ext if self.cfg.separate else txt
 
     def dir_out_ex(self,txt=None):
@@ -279,7 +280,7 @@ class ImageMaskGenerator(keras.utils.Sequence):
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex()), self.cfg)
+                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex(self.pair.origin)), self.cfg)
                 if self.cfg.out_image:
                     # for ti,tgt in enumerate(self.target_list):
                     #     _tgt[vi, ...,ti] =np.average( vc.get_image(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg), axis=-1) # average RGB to gray
@@ -297,7 +298,7 @@ class ImageMaskGenerator(keras.utils.Sequence):
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex()), self.cfg)
+                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex(self.pair.origin)), self.cfg)
                 # imwrite("prd_img.jpg",_img[0])
             return prep_scale(_img, self.cfg.feed), None
 
