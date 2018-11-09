@@ -16,7 +16,6 @@ import keras.models as KM
 from keras.engine.saving import model_from_json,load_model
 
 from a_config import Config
-from backbone import resnet_graph
 from image_set import PatchSet,ImageSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten,draw_detection
@@ -34,13 +33,14 @@ class BaseNetM(Config):
                  detection_max_instances=None,detection_min_confidence=None,detection_nms_threshold=None,
                  detection_mask_threshold=None,optimizer=None,loss_weight=None,indicator=None,trainable_layer_regex=None,gpu_count=None,image_per_gpu=None,
                  filename=None,**kwargs):
-        super(BaseNetM,self).__init__(dim_in=(768,768,3),dim_out=(768,768,3),image_resize=2.0,**kwargs)
+        super(BaseNetM,self).__init__(dim_in=(768,768,3),dim_out=(768,768,3),image_resize=4.0,**kwargs)
         self.is_train=None # will set later
         self.coverage_train=coverage_tr or 1.0
         self.coverage_predict=coverage_prd or 1.0
         self.num_class=1+self.num_targets # plus background
         self.meta_shape=[1+3+3+4+1+self.num_class] # last number is NUM_CLASS
-        self.backbone=backbone or "resnet50" # "resnet101"
+        from c2_backbones import resnet_50
+        self.backbone=backbone or resnet_50 # resnet_101
         self.batch_norm=batch_norm if batch_norm is not None else False # default to false since batch size is often small
         self.backbone_strides=backbone_stride or [4,8,16,32,64] # strides of the FPN Pyramid (default for Resnet101)
         self.pyramid_size=pyramid_size or 256 # Size of the top-down layers used to build the feature pyramid
@@ -92,8 +92,11 @@ class BaseNetM(Config):
             if not layer.weights:
                 continue
             trainable=bool(re.fullmatch(self.trainable_layer_regex,layer.name))
-            if layer.__class__.__name__=='TimeDistributed': # set trainable deeper if TimeDistributed
+            class_name=layer.__class__.__name__
+            if class_name=='TimeDistributed': # set trainable deeper if TimeDistributed
                 layer.layer.trainable=trainable
+            elif class_name=='BatchNormalization':
+                layer.trainable=self.batch_norm # set batch normalization
             else:
                 layer.trainable=trainable
             # print(" "*indent+'%s - %s - trainable %r'%(layer.name,layer.__class__.__name__,trainable)) # verbose
@@ -168,7 +171,7 @@ class BaseNetM(Config):
 
 
     def cnn_fpn_feature_maps(self,input_image):
-        C1,C2,C3,C4,C5=resnet_graph(input_image,self.backbone,stage5=True,train_bn=False) # Bottom-up Layers (convolutional neural network backbone)
+        C1,C2,C3,C4,C5=self.backbone(input_image) # Bottom-up Layers (convolutional neural network backbone)
 
         P5=KL.Conv2D(self.pyramid_size,(1,1),name='fpn_c5p5')(C5) # Top-down Layers (feature pyramid network)
         P4=KL.Add(name="fpn_p4add")([KL.UpSampling2D(size=(2,2),name="fpn_p5upsampled")(P5),KL.Conv2D(self.pyramid_size,(1,1),name='fpn_c4p4')(C4)])
