@@ -7,11 +7,11 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--dir', dest='dir', action='store',
                         default='40x_scan_lung_cell', help='work directory, empty->current dir')
     parser.add_argument('-t', '--train', dest='train_dir', action='store',
-                        default='train', help='train sub-directory')
+                        default='train_10xkyle', help='train sub-directory')
     parser.add_argument('-p', '--pred', dest='pred_dir', action='store',
-                        default='pred', help='predict sub-directory')
+                        default='pred_10xkyle', help='predict sub-directory')
     parser.add_argument('-m', '--mode', dest='mode', action='store',
-                        default='both', help='mode: train pred both')
+                        default='tboth', help='mode: train pred both')
     parser.add_argument('-c', '--width', dest='width', type=int,
                         default='512', help='width/columns')
     parser.add_argument('-r', '--height', dest='height', type=int,
@@ -35,7 +35,7 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from c2_resnet import MRCNN_ResNet_50, MRCNN_ResNet_101
+    from c2_backbones import  MRCNN_Vgg16,MRCNN_Vgg19,MRCNN_Res50,MRCNN_Dense121
 
     nets = [
         # UNet2m(num_targets=len(targets),dim_in=(768,768,3),dim_out=(768,768,3),filters=[96, 128, 256, 512, 768],out_image=True,
@@ -43,7 +43,10 @@ if __name__ == '__main__':
         #        predict_proc=compare_call),
         # UNet2m(num_targets=len(targets),dim_in=(768,768,3),dim_out=(768,768,1),filters=[96, 192, 288, 384, 512],poolings=[2, 2, 2, 2, 2]), #
         # UNet2m(num_targets=len(targets),predict_proc=single_brighten,coverage_tr=1.2,coverage_prd=1.2),
-        MRCNN_ResNet_50(num_targets=len(targets))
+        # MRCNN_Vgg16(num_targets=len(targets)),
+        # MRCNN_Vgg19(num_targets=len(targets)),
+        MRCNN_Res50(num_targets=len(targets),image_resize=2.0),
+        MRCNN_Dense121(num_targets=len(targets),image_resize=2.0),
     ]
 
     mode = args.mode[0].lower()

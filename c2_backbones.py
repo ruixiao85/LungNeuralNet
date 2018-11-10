@@ -16,7 +16,7 @@ from keras.engine.saving import model_from_json,load_model
 from a_config import Config
 from b2_net_multi import BaseNetM
 from image_set import PatchSet
-from keras.applications import resnet50, densenet, vgg16, vgg19
+from keras.applications import resnet50, densenet, vgg16, vgg19, inception_v3, inception_resnet_v2, mobilenet, mobilenetv2, nasnet, xception
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten
 from mrcnn import utils
@@ -30,32 +30,32 @@ def keras_vgg_backbone(input_image,architecture):
         'vgg19':([1,2,3,4,5],vgg19.VGG19),
     }
     blocks,creator=allowed_backbones[architecture]
-    model=creator(input_tensor=input_image,include_top=False,pooling=None,)
+    model=creator(input_tensor=input_image,include_top=False,pooling=None)
     return [model.get_layer(name='block{}_pool'.format(idx)).output for idx in blocks]
 
-def vgg_16(input_image):
+def v16(input_image):
     return keras_vgg_backbone(input_image,'vgg16') # 64x2 128x2 256x3 512x3 512x3
-def vgg_19(input_image):
+def v19(input_image):
     return keras_vgg_backbone(input_image,'vgg19') # 64x2 128x2 256x4 512x4 512x4
 
 class MRCNN_Vgg16(BaseNetM):
     def __init__(self,**kwargs):
-        super(MRCNN_Vgg16,self).__init__(backbone=vgg_16,**kwargs)
+        super(MRCNN_Vgg16,self).__init__(backbone=v16,**kwargs)
 
 class MRCNN_Vgg19(BaseNetM):
     def __init__(self,**kwargs):
-        super(MRCNN_Vgg19,self).__init__(backbone=vgg_19,**kwargs)
+        super(MRCNN_Vgg19,self).__init__(backbone=v19,**kwargs)
 
 
 # Resnet Graph #
 
-def resnet_50(input_image):
+def res50(input_image):
     model=resnet50.ResNet50(input_tensor=input_image,include_top=False)
-    return [model.get_layer(name=name).output for name in ['max_pooling2d_1','activation_10','activation_22','activation_40','activation_49']]
+    return [model.get_layer(name=n).output for n in ['max_pooling2d_1','activation_10','activation_22','activation_40','activation_49']]
 
 class MRCNN_Res50(BaseNetM):
     def __init__(self,**kwargs):
-        super(MRCNN_Res50,self).__init__(backbone=resnet_50,**kwargs)
+        super(MRCNN_Res50,self).__init__(backbone=res50,**kwargs)
 
 
 
@@ -72,16 +72,16 @@ def keras_densenet_backbone(input_image,architecture):
     return [model.get_layer(name='pool1')]+\
            [model.get_layer(name='conv{}_block{}_concat'.format(idx+2,block_num)).output for idx,block_num in enumerate(blocks)]
 
-def densenet_121(input_image):
+def densenet121(input_image):
     return keras_densenet_backbone(input_image,'densenet121')
 def densenet_169(input_image):
     return keras_densenet_backbone(input_image,'densenet169')
-def densenet_201(input_image):
+def densenet201(input_image):
     return keras_densenet_backbone(input_image,'densenet201')
 
 class MRCNN_Dense121(BaseNetM):
     def __init__(self,**kwargs):
-        super(MRCNN_Dense121,self).__init__(backbone=densenet_121,**kwargs)
+        super(MRCNN_Dense121,self).__init__(backbone=densenet121,**kwargs)
 
 class MRCNN_Dense169(BaseNetM):
     def __init__(self,**kwargs):

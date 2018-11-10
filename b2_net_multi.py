@@ -24,7 +24,8 @@ from preprocess import prep_scale,augment_image_set
 
 
 class BaseNetM(Config):
-    def __init__(self,coverage_tr=None,coverage_prd=None,mini_mask_shape=None,
+    def __init__(self,dim_in=None,dim_out=None,image_resize=None,
+                 coverage_tr=None,coverage_prd=None,mini_mask_shape=None,
                  backbone=None,batch_norm=None,backbone_stride=None,pyramid_size=None,
                  fc_layers_size=None,rpn_anchor_scales=None,rpn_train_anchors_per_image=None,
                  rpn_anchor_ratio=None,rpn_anchor_stride=None,rpn_nms_threshold=None,rpn_bbox_stdev=None,
@@ -33,14 +34,14 @@ class BaseNetM(Config):
                  detection_max_instances=None,detection_min_confidence=None,detection_nms_threshold=None,
                  detection_mask_threshold=None,optimizer=None,loss_weight=None,indicator=None,trainable_layer_regex=None,gpu_count=None,image_per_gpu=None,
                  filename=None,**kwargs):
-        super(BaseNetM,self).__init__(dim_in=(768,768,3),dim_out=(768,768,3),image_resize=4.0,**kwargs)
+        super(BaseNetM,self).__init__(dim_in=dim_in or (512,512,3),dim_out=dim_out or (512,512,3),image_resize=image_resize or 1.0,**kwargs)
         self.is_train=None # will set later
-        self.coverage_train=coverage_tr or 1.0
-        self.coverage_predict=coverage_prd or 1.0
+        self.coverage_train=coverage_tr or 2.0
+        self.coverage_predict=coverage_prd or 2.0
         self.num_class=1+self.num_targets # plus background
         self.meta_shape=[1+3+3+4+1+self.num_class] # last number is NUM_CLASS
-        from c2_backbones import resnet_50
-        self.backbone=backbone or resnet_50 # resnet_101
+        from c2_backbones import resnet50
+        self.backbone=backbone or resnet50 # resnet_101
         self.batch_norm=batch_norm if batch_norm is not None else False # default to false since batch size is often small
         self.backbone_strides=backbone_stride or [4,8,16,32,64] # strides of the FPN Pyramid (default for Resnet101)
         self.pyramid_size=pyramid_size or 256 # Size of the top-down layers used to build the feature pyramid
@@ -92,15 +93,20 @@ class BaseNetM(Config):
             if not layer.weights:
                 continue
             trainable=bool(re.fullmatch(self.trainable_layer_regex,layer.name))
+            text='+' if trainable else '-'
             class_name=layer.__class__.__name__
+            if class_name=='BatchNormalization':
+                trainable=self.batch_norm # override for BatchNorm
+                text='B' if trainable else 'b'
+            elif class_name=='Conv2D' and layer.kernel_size==(7,7) and layer.strides==(2,2) and layer.filters==64:
+                trainable=False # override for 7x7 Conv2D
+                text='C' if trainable else 'c'
             if class_name=='TimeDistributed': # set trainable deeper if TimeDistributed
                 layer.layer.trainable=trainable
-            elif class_name=='BatchNormalization':
-                layer.trainable=self.batch_norm # set batch normalization
             else:
                 layer.trainable=trainable
             # print(" "*indent+'%s - %s - trainable %r'%(layer.name,layer.__class__.__name__,trainable)) # verbose
-            print('+' if trainable else '-', end='')
+            print(text, end='')
 
     def build_net(self, is_train):
         self.is_train=is_train
@@ -266,31 +272,30 @@ class BaseNetM(Config):
     def train(self,pair):
         self.build_net(is_train=True)
         self.set_trainable(self.net)
-        self.compile_net()
         for tr,val,dir_out in pair.train_generator():
+            self.compile_net() # set optimizers
             export_name=dir_out+'_'+str(self)
             weight_file=export_name+".h5"
-            if self.train_continue and os.path.exists(weight_file):
-                print("Continue from previous weights")
-                self.net.load_weights(weight_file,by_name=True)
-                # print("Continue from previous model with weights & optimizer")
-                # self.net=load_model(weight_file)  # does not work well with custom act, loss func
-            else:
-                self.net.load_weights(get_imagenet_weights(),by_name=True)  # load pre-train imagenet
             print('Fitting neural net...')
             for r in range(self.train_rep):
+                if self.train_continue and os.path.exists(weight_file):
+                    print("Continue from previous weights")
+                    self.net.load_weights(weight_file,by_name=True)
+                    # print("Continue from previous model with weights & optimizer")
+                    # self.net=load_model(weight_file)  # does not work well with custom act, loss func
                 print("Training %d/%d for %s"%(r+1,self.train_rep,export_name))
                 tr.on_epoch_end()
                 val.on_epoch_end()
-                from keras.callbacks import ModelCheckpoint,EarlyStopping
+                from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau
+                from tensorboard_train_val import TensorBoardTrainVal
                 history=self.net.fit_generator(tr,validation_data=val,verbose=1,
                    steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
                    validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
                    epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,
                    callbacks=[
-                       ModelCheckpoint(weight_file,monitor=self.indicator,mode='min',save_weights_only=True,save_best_only=True),
-                       # ReduceLROnPlateau(monitor=self.indicator, mode='min', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
-                       EarlyStopping(monitor=self.indicator,mode='min',patience=1,verbose=1),
+                       ModelCheckpoint(weight_file,monitor=self.indicator,mode='min',save_weights_only=True,save_best_only=True,verbose=1),
+                       ReduceLROnPlateau(monitor=self.indicator, mode='min', factor=0.5, patience=2, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
+                       EarlyStopping(monitor=self.indicator,mode='min',patience=5,verbose=1),
                        # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                    ]).history
                 if not os.path.exists(export_name+".txt"):
@@ -352,7 +357,7 @@ class BaseNetM(Config):
                         origin=view[i].get_image(os.path.join(pair.wd,pair.dir_in_ex(pair.origin)),self)
                         # cv2.imwrite(os.path.join(target_dir,view[i].file_name),origin)
                         blend=draw_detection(self,origin,final_rois,final_masks,final_class_ids,pair.targets,final_scores)
-                        cv2.imwrite(os.path.join(view[i].file_name),blend)
+                        cv2.imwrite(view[i].file_name,blend)
 
                     # msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
                     i=o
