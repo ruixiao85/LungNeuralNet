@@ -57,12 +57,12 @@ class UNet(BaseNetU):
             "%dF%d-%dP%d-%d"%(
             len(self.fs), self.fs[0], self.fs[-1], self.ps[0], self.ps[-1]),
             # "%df%d-%dp%s" % (len(self.fs), self.fs[0], self.fs[-1], ''.join(self.pssize)),
-            self.cap_lim_join(10, self.preproc.__name__, self.downconv.__name__,
-                              self.downjoin.__name__, self.downsamp.__name__,
-                              self.downmerge.__name__, self.downproc.__name__),
-            self.cap_lim_join(10, self.upconv.__name__, self.upjoin.__name__,
-                              self.upsamp.__name__, self.upmerge.__name__, self.upproc.__name__,
-                              self.postproc.__name__),
+            # self.cap_lim_join(10, self.preproc.__name__, self.downconv.__name__,
+            #                   self.downjoin.__name__, self.downsamp.__name__,
+            #                   self.downmerge.__name__, self.downproc.__name__),
+            # self.cap_lim_join(10, self.upconv.__name__, self.upjoin.__name__,
+            #                   self.upsamp.__name__, self.upmerge.__name__, self.upproc.__name__,
+            #                   self.postproc.__name__),
             self.cap_lim_join(4, self.feed, self.act, self.out,
                               (self.loss if isinstance(self.loss, str) else self.loss.__name__).
                               replace('_', '').replace('loss', ''))
