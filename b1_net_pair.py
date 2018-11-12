@@ -30,7 +30,7 @@ class BaseNetU(Config):
 
     #     model_out = 'softmax'   model_loss='categorical_crossentropy'
     #     model_out='sigmoid'    model_loss=[loss_bce_dice] 'binary_crossentropy' "bcedice"
-    def __init__(self,coverage_tr=None,coverage_prd=None,loss=None, metrics=None, optimizer=None, indicator=None,
+    def __init__(self,coverage_tr=None,coverage_prd=None,loss=None, metrics=None, optimizer=None, indicator=None, predict_proc=None,
                  filename=None, **kwargs):
         super(BaseNetU,self).__init__(**kwargs)
         self.coverage_train=coverage_tr or 2.0
@@ -43,6 +43,8 @@ class BaseNetU(Config):
         from keras.optimizers import Adam
         self.optimizer=optimizer or Adam(1e-5)
         self.indicator=indicator if indicator is not None else ('val_dice' if self.dep_out==1 else 'val_acc')  # indicator to maximize
+        from postprocess import single_call
+        self.predict_proc=predict_proc if predict_proc is not None else single_call
         self.net=None # abstract -> instatiate in subclass
         self.filename=filename
 
@@ -116,7 +118,6 @@ class BaseNetU(Config):
 
     def predict(self,pair,pred_dir):
         xls_file="Result_%s_%s.xlsx"%(pred_dir,repr(self))
-        img_ext=self.image_format[1:]  # *.jpg -> .jpg
         sum_i,sum_g=self.row_out*self.col_out,None
         msks,mask_wt,r_i,r_g,ra,ca=None,None,None,None,None,None
         mrg_in,mrg_out,mrg_out_wt,merge_dir=None,None,None,None
@@ -164,7 +165,7 @@ class BaseNetU(Config):
                     ind_file=os.path.join(target_dir,ind_name)
                     origin=view[i].get_image(os.path.join(pair.wd,pair.dir_in_ex(pair.origin)),self)
                     print(ind_name); text_list=[ind_name]
-                    blend,r_i=self.predict_proc(self,origin,msk,file=None) # ind_file.replace(img_ext,'')
+                    blend,r_i=self.predict_proc(self,origin,msk,file=None) # ind_file.replace(self.image_format[1:],'')
                     for d in range(len(tgt_list)):
                         text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_i[d][1],r_i[d][0],sum_i,100.*r_i[d][0]/sum_i)
                         print(text); text_list.append(text)
@@ -174,15 +175,8 @@ class BaseNetU(Config):
                     res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i,r_i[np.newaxis,...]))
 
                     if self.separate:
-                        ri,ro=view[i].row_start,view[i].row_end
-                        ci,co=view[i].col_start,view[i].col_end
-                        ra,ca=view[i].ori_row,view[i].ori_col
-                        tri,tro=0,self.row_out
-                        tci,tco=0,self.col_out
-                        if ri<0: tri=-ri; ri=0
-                        if ci<0: tci=-ci; ci=0
-                        if ro>ra: tro=tro-(ro-ra); ro=ra
-                        if co>ca: tco=tco-(co-ca); co=ca
+                        ri,ro,ci,co,tri,tro,tci,tco=self.get_proper_range(view[i].ori_row,view[i].ori_col,
+                                view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
                         mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
                         for d in range(len(tgt_list)*self.dep_out):
                             mrg_out[ri:ro,ci:co,d]+=(msk[...,d]*mask_wt)[tri:tro,tci:tco]
@@ -193,7 +187,7 @@ class BaseNetU(Config):
                     print(grp); text_list=[grp]
                     merge_name=view[0].image_name
                     merge_file=os.path.join(merge_dir,merge_name)
-                    blend,r_g=self.predict_proc(self,mrg_in,mrg_out,file=None) # merge_file.replace(img_ext,'')
+                    blend,r_g=self.predict_proc(self,mrg_in,mrg_out,file=None) # merge_file.replace(self.image_format[1:],'')
                     for d in range(len(tgt_list)):
                         text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_g[d][1],r_g[d][0],sum_g,100.*r_g[d][0]/sum_g)
                         print(text); text_list.append(text)

@@ -9,6 +9,7 @@ import keras.models as KM
 # rn: ResNet https://arxiv.org/pdf/1512.03385.pdf 224x224
 # first layer f64, k7x7, s2x2 -> maxpool k3x3, s2x2
 # (64,3x3->64,3x3) repeat 2~6 or (64,1x1->64,3x3->256,1x1) repeat 3~8 times, double filters
+from b2_net_multi import BaseNetM
 from module import cv, cvac, cvbn, cvbnac, adac, mp
 def c7m3d4(in_layer, name, idx, filters, act, batch_norm=False): #pre-process conv+maxpool size down 4x
     ca_f=cvbnac if batch_norm else cvac
@@ -39,8 +40,12 @@ def rn131r(in_layer, name, repeat, filters, act, batch_norm=False,initial_stride
     return x
 
 def resnet(input_image, repeats, filters, act='relu', batch_norm=False):
-    c1=x=c7m3d4(input_image,'res1',0,filters[0],act,batch_norm) # downsample twice
-    c2=x=rn131r(x,'res2',repeats[1],filters[1],act,batch_norm,initial_stride=1) # override stride 2->1, same dim as prev maxpool
+    # c1=x=c7m3d4(input_image,'res1',0,filters[0],act,batch_norm) # downsample twice
+    # c2=x=rn131r(x,'res2',repeats[1],filters[1],act,batch_norm,initial_stride=1) # override stride 2->1, same dim as prev maxpool
+
+    c1=x=rn131r(input_image,'res1',repeats[0],filters[0],act,batch_norm) # downsample twice
+    c2=x=rn131r(x,'res2',repeats[1],filters[1],act,batch_norm) # override stride 2->1, same dim as prev maxpool
+
     c3=x=rn131r(x,'res3',repeats[2],filters[2],act,batch_norm) # downconv once initially
     c4=x=rn131r(x,'res4',repeats[3],filters[3],act,batch_norm) # downconv once initially
     c5=rn131r(x,'res5',repeats[4],filters[4],act,batch_norm) # downconv once initially
@@ -51,6 +56,10 @@ def resnet_101(input_image):
     return resnet(input_image, repeats=[1,3,4,23,3], filters=[64,64,128,256,512])
 def resnet_152(input_image):
     return resnet(input_image, repeats=[1,3,8,36,3], filters=[64,64,128,256,512])
+
+class MRCNN_Res_50(BaseNetM):
+    def __init__(self,**kwargs):
+        super(MRCNN_Res_50,self).__init__(backbone=resnet_50,**kwargs)
 
 
 # dn: Dense Net https://arxiv.org/pdf/1608.06993.pdf 224x224

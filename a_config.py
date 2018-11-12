@@ -14,7 +14,7 @@ class Config:
     def __init__(self, dim_in=None, dim_out=None,
                  num_targets=None,image_format=None,image_resize=None,image_padding=None,mask_color=None,
                  feed=None, act=None, out=None,batch_size=None,separate=None,out_image=None,
-                 call_hardness=None,overlay_color=None,overlay_opacity=None,predict_size=None,predict_proc=None,
+                 call_hardness=None,overlay_color=None,overlay_opacity=None,predict_size=None,
                  train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
                  train_vali_split=None,train_aug=None,train_continue=None,train_shuffle=None):
         self.dim_in=dim_in or (512,512,3)
@@ -37,11 +37,9 @@ class Config:
                 generate_colors(self.num_targets)
         self.overlay_opacity=overlay_opacity if isinstance(overlay_color, list) else [0.3]*self.num_targets
         self.predict_size=predict_size or num_targets
-        from postprocess import single_call
-        self.predict_proc=predict_proc if predict_proc is not None else single_call
         self.batch_size=batch_size or 1
-        self.train_rep=train_rep or 8  # times to repeat during training
-        self.train_epoch=train_epoch or 5  # max epoches during training
+        self.train_rep=train_rep or 3  # times to repeat during training
+        self.train_epoch=train_epoch or 12  # max epoches during training
         self.train_step=train_step or 128
         self.train_vali_step=train_vali_step or 64
         self.train_vali_split=train_vali_split or 0.33
@@ -73,6 +71,15 @@ class Config:
         # tr_list.sort(key=lambda x: str(x), reverse=False)
         # val_list.sort(key=lambda x: str(x), reverse=False)
         return tr_list,val_list
+
+    def get_proper_range(self,ra,ca,ri,ro,ci,co,tri,tro,tci,tco): # row/col limit of large image, row/col index on large image, row/col index for small image
+        # print('%d %d %d:%d,%d,%d %d:%d,%d,%d'%(ra,ca,ri,ro,ci,co,tri,tro,tci,tco),end='')
+        if ri<0: tri=-ri; ri=0
+        if ci<0: tci=-ci; ci=0
+        if ro>ra: tro=tro-(ro-ra); ro=ra
+        if co>ca: tco=tco-(co-ca); co=ca
+        # print('-> %d %d %d:%d,%d,%d %d:%d,%d,%d'%(ra,ca,ri,ro,ci,co,tri,tro,tci,tco))
+        return ri,ro,ci,co,tri,tro,tci,tco
 
     @staticmethod
     def join_targets(tgt_list) :
