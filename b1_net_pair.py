@@ -33,7 +33,7 @@ class BaseNetU(Config):
     def __init__(self,coverage_tr=None,coverage_prd=None,loss=None, metrics=None, optimizer=None, indicator=None, predict_proc=None,
                  filename=None, **kwargs):
         super(BaseNetU,self).__init__(**kwargs)
-        self.coverage_train=coverage_tr or 2.0
+        self.coverage_train=coverage_tr or 3.0
         self.coverage_predict=coverage_prd or 3.0
         from metrics import jac, dice, dice67, dice33, acc, acc67, acc33, loss_bce_dice, custom_function_keras
         custom_function_keras()  # leakyrelu, swish
@@ -41,7 +41,7 @@ class BaseNetU(Config):
             loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy')  # 'binary_crossentropy'
         self.metrics=metrics or ([jac, dice, dice67, dice33] if self.dep_out==1 else [acc, acc67, acc33])
         from keras.optimizers import Adam
-        self.optimizer=optimizer or Adam(1e-5)
+        self.optimizer=optimizer or Adam(1e-4)
         self.indicator=indicator if indicator is not None else ('val_dice' if self.dep_out==1 else 'val_acc')  # indicator to maximize
         from postprocess import single_call
         self.predict_proc=predict_proc if predict_proc is not None else single_call
@@ -85,33 +85,35 @@ class BaseNetU(Config):
 
     def train(self,pair):
         for tr,val,dir_out in pair.train_generator():
+            self.compile_net() # recompile to set optimizers,..
             export_name=dir_out+'_'+str(self)
             weight_file=export_name+".h5"
-            if self.train_continue and os.path.exists(weight_file):
-                # print("Continue from previous weights")
-                # self.net.load_weights(weight_file)
-                print("Continue from previous model with weights & optimizer")
-                self.net=load_model(weight_file,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
             print('Fitting neural net...')
             for r in range(self.train_rep):
+                if self.train_continue and os.path.exists(weight_file):
+                    print("Continue from previous weights")
+                    self.net.load_weights(weight_file)
+                    # print("Continue from previous model with weights & optimizer")
+                    # self.net=load_model(weight_file,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
                 print("Training %d/%d for %s"%(r+1,self.train_rep,export_name))
                 tr.on_epoch_end()
                 val.on_epoch_end()
-                from keras.callbacks import ModelCheckpoint,EarlyStopping
+                from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau
+                from tensorboard_train_val import TensorBoardTrainVal
                 history=self.net.fit_generator(tr,validation_data=val,verbose=1,
                    steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
                    validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
                    epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,
                    callbacks=[
-                       ModelCheckpoint(weight_file,monitor=self.indicator,mode='max',save_weights_only=False,save_best_only=True),
-                       # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
-                       EarlyStopping(monitor=self.indicator,mode='max',patience=1,verbose=1),
+                       ModelCheckpoint(weight_file,monitor=self.indicator,mode='max',save_weights_only=False,save_best_only=True,verbose=1),
+                       EarlyStopping(monitor=self.indicator,mode='max',patience=2,verbose=1),
+                       ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
                        # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                    ]).history
                 if not os.path.exists(export_name+".txt"):
                     with open(export_name+".txt","w") as net_summary:
                         self.net.summary(print_fn=lambda x:net_summary.write(x+'\n'))
-                df=pd.DataFrame(history).round(4)
+                df=pd.DataFrame(history)
                 df['time']=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                 df['repeat']=r+1
                 df.to_csv(export_name+".csv",mode="a",header=(not os.path.exists(export_name+".csv")))

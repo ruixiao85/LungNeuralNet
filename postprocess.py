@@ -43,7 +43,7 @@ def connect_component_label(d,file,labels):
     labeled_img=cv2.merge([label_hue,blank_ch,blank_ch])
     labeled_img=cv2.cvtColor(labeled_img,cv2.COLOR_HSV2BGR)  # cvt to BGR for display
     labeled_img[label_hue==0]=0  # set bg label to black
-    cv2.imwrite(file+'_%d.png'%d,labeled_img)
+    cv2.imwrite(file+'_%d.png'%d,labeled_img) # write each channel
 
 def cal_area_count(rc1):
     count,labels=cv2.connectedComponents(rc1,connectivity=8,ltype=cv2.CV_32S)
