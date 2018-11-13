@@ -4,7 +4,7 @@ from keras.models import Model
 from keras.layers import Input
 from b1_net_pair import BaseNetU
 from c0_backbones import xcept, incept3, incepres2, v16, v19, res50, densenet121, densenet169, densenet201, mobile, mobile2, nasmobile, naslarge
-from module import cvac, ca3, ca33, cb3, cba3, dmp, uu, ct, sk, uta2
+from module import cvac, ca3, ca33, cb3, cba3, dmp, uu, ct, sk
 
 
 class NetUBack(BaseNetU):

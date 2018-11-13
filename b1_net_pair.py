@@ -94,6 +94,7 @@ class BaseNetU(Config):
             # weight_file=export_name+".h5"
             weight_file="%s^{%s:.2f}^.h5"%(export_name,self.indicator) # e.g., {epoch:02d}-{val_acc:.2f}
             print('Fitting neural net...')
+            last_best,learning_rate=None,self.learning_rate # store last best model file, init learning rate reduce if continue training
             for r in range(self.train_rep):
                 if self.train_continue:
                     last_saves=self.find_best_models(export_name+'^*^.h5')
@@ -103,19 +104,22 @@ class BaseNetU(Config):
                         # self.net.load_weights(last_best)
                         print("Continue from previous model with weights & optimizer")
                         self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
+                        learning_rate*=0.1
+                        print('Lowered learning rate (%f -> %f) for the continued training'%(self.learning_rate,learning_rate))
                 print("Training %d/%d for %s"%(r+1,self.train_rep,export_name))
                 tr.on_epoch_end()
                 val.on_epoch_end()
                 from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau,LearningRateScheduler
-                from tensorboard_train_val import TensorBoardTrainVal
+                from callbacks import TensorBoardTrainVal,ModelCheckpointCustom
                 history=self.net.fit_generator(tr,validation_data=val,verbose=1,
                    steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
                    validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
                    epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,
                    callbacks=[
-                       ModelCheckpoint(weight_file,monitor=self.indicator,mode=self.indicator_trend,save_weights_only=False,save_best_only=True,verbose=1),
+                       ModelCheckpointCustom(weight_file,monitor=self.indicator,mode=self.indicator_trend,
+                                             best=float(last_best.split('^')[1]),save_weights_only=False,save_best_only=True,verbose=1),
                        EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=3,verbose=1),
-                       LearningRateScheduler(lambda x: self.learning_rate*(0.1**(0.2*x)),verbose=1)
+                       LearningRateScheduler(lambda x: learning_rate*(0.1**(0.2*x)),verbose=1)
                        # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
                        # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                    ]).history
