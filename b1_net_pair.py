@@ -2,6 +2,7 @@ import datetime
 import random
 
 import keras
+import backend as K
 from keras.engine.saving import model_from_json,load_model
 
 from a_config import Config
@@ -14,7 +15,6 @@ import numpy as np
 from osio import mkdir_ifexist,to_excel_sheet
 from preprocess import augment_image_pair,prep_scale
 from postprocess import g_kern_rect,draw_text
-
 
 class BaseNetU(Config):
     # 'relu6'  # min(max(features, 0), 6)
@@ -30,19 +30,19 @@ class BaseNetU(Config):
 
     #     model_out = 'softmax'   model_loss='categorical_crossentropy'
     #     model_out='sigmoid'    model_loss=[loss_bce_dice] 'binary_crossentropy' "bcedice"
-    def __init__(self,coverage_tr=None,coverage_prd=None,loss=None, metrics=None, optimizer=None, indicator=None, predict_proc=None,
+    def __init__(self,loss=None, metrics=None, learning_rate=None, optimizer=None, indicator=None, indicator_trend=None, predict_proc=None,
                  filename=None, **kwargs):
         super(BaseNetU,self).__init__(**kwargs)
-        self.coverage_train=coverage_tr or 3.0
-        self.coverage_predict=coverage_prd or 3.0
         from metrics import jac, dice, dice67, dice33, acc, acc67, acc33, loss_bce_dice, custom_function_keras
         custom_function_keras()  # leakyrelu, swish
         self.loss=loss or (
             loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy')  # 'binary_crossentropy'
         self.metrics=metrics or ([jac, dice, dice67, dice33] if self.dep_out==1 else [acc, acc67, acc33])
+        self.learning_rate=learning_rate or 1e-4
         from keras.optimizers import Adam
-        self.optimizer=optimizer or Adam(1e-4)
-        self.indicator=indicator if indicator is not None else ('val_dice' if self.dep_out==1 else 'val_acc')  # indicator to maximize
+        self.optimizer=optimizer or Adam(self.learning_rate)
+        self.indicator=indicator if indicator is not None else ('val_dice' if self.dep_out==1 else 'val_acc')
+        self.indicator_trend=indicator_trend or 'max'
         from postprocess import single_call
         self.predict_proc=predict_proc if predict_proc is not None else single_call
         self.net=None # abstract -> instatiate in subclass
@@ -58,6 +58,9 @@ class BaseNetU(Config):
         json_net=(self.filename if self.filename is not None else str(self)) + ".json"
         with open(json_net, "w") as json_file:
             json_file.write(self.net.to_json())
+
+    def build_net(self):
+        pass
 
     def compile_net(self,save_net=False,print_summary=True):
         self.net.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
@@ -84,30 +87,36 @@ class BaseNetU(Config):
         return ''.join(test_list)
 
     def train(self,pair):
+        self.build_net()
+        self.compile_net() # recompile to set optimizers,..
         for tr,val,dir_out in pair.train_generator():
-            self.compile_net() # recompile to set optimizers,..
             export_name=dir_out+'_'+str(self)
-            weight_file=export_name+".h5"
+            # weight_file=export_name+".h5"
+            weight_file="%s^{%s:.2f}^.h5"%(export_name,self.indicator) # e.g., {epoch:02d}-{val_acc:.2f}
             print('Fitting neural net...')
             for r in range(self.train_rep):
-                if self.train_continue and os.path.exists(weight_file):
-                    print("Continue from previous weights")
-                    self.net.load_weights(weight_file)
-                    # print("Continue from previous model with weights & optimizer")
-                    # self.net=load_model(weight_file,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
+                if self.train_continue:
+                    last_saves=self.find_best_models(export_name+'^*^.h5')
+                    if isinstance(last_saves,list) and len(last_saves)>1:
+                        last_best=last_saves[0]
+                        # print("Continue from previous weights")
+                        # self.net.load_weights(last_best)
+                        print("Continue from previous model with weights & optimizer")
+                        self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
                 print("Training %d/%d for %s"%(r+1,self.train_rep,export_name))
                 tr.on_epoch_end()
                 val.on_epoch_end()
-                from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau
+                from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau,LearningRateScheduler
                 from tensorboard_train_val import TensorBoardTrainVal
                 history=self.net.fit_generator(tr,validation_data=val,verbose=1,
                    steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
                    validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
                    epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,
                    callbacks=[
-                       ModelCheckpoint(weight_file,monitor=self.indicator,mode='max',save_weights_only=False,save_best_only=True,verbose=1),
-                       EarlyStopping(monitor=self.indicator,mode='max',patience=2,verbose=1),
-                       ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
+                       ModelCheckpoint(weight_file,monitor=self.indicator,mode=self.indicator_trend,save_weights_only=False,save_best_only=True,verbose=1),
+                       EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=3,verbose=1),
+                       LearningRateScheduler(lambda x: self.learning_rate*(0.1**(0.2*x)),verbose=1)
+                       # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
                        # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                    ]).history
                 if not os.path.exists(export_name+".txt"):
@@ -119,6 +128,8 @@ class BaseNetU(Config):
                 df.to_csv(export_name+".csv",mode="a",header=(not os.path.exists(export_name+".csv")))
 
     def predict(self,pair,pred_dir):
+        self.build_net()
+        # if hasattr(self, "_model_cache"): self._model_cache={}
         xls_file="Result_%s_%s.xlsx"%(pred_dir,repr(self))
         sum_i,sum_g=self.row_out*self.col_out,None
         msks,mask_wt,r_i,r_g,ra,ca=None,None,None,None,None,None
@@ -146,7 +157,8 @@ class BaseNetU(Config):
                     o=min(i+self.dep_out,nt)
                     tgt_sub=tgt_list[i:o]
                     prd,tgt_name=pair.predict_generator_partial(tgt_sub,view)
-                    weight_file=tgt_name+'_'+dir_cfg_append+'.h5'
+                    # weight_file=tgt_name+'_'+dir_cfg_append+'.h5'
+                    weight_file=self.find_best_models(tgt_name+'_'+dir_cfg_append+'^*^.h5',allow_cache=True)[0]
                     print(weight_file)
                     self.net.load_weights(weight_file)  # weights only
                     # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
@@ -172,7 +184,7 @@ class BaseNetU(Config):
                         text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_i[d][1],r_i[d][0],sum_i,100.*r_i[d][0]/sum_i)
                         print(text); text_list.append(text)
                     if save_ind_image or not self.separate:  # skip saving individual images
-                        blendtext=draw_text(self.net,blend,text_list,self.row_out)  # RGB:3x8-bit dark text
+                        blendtext=draw_text(self,blend,text_list,sum_i)  # RGB:3x8-bit dark text
                         cv2.imwrite(ind_file,blendtext)
                     res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i,r_i[np.newaxis,...]))
 
@@ -193,7 +205,7 @@ class BaseNetU(Config):
                     for d in range(len(tgt_list)):
                         text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_g[d][1],r_g[d][0],sum_g,100.*r_g[d][0]/sum_g)
                         print(text); text_list.append(text)
-                    blendtext=draw_text(self,blend,text_list,ra)  # RGB: 3x8-bit dark text
+                    blendtext=draw_text(self,blend,text_list,sum_g)  # RGB: 3x8-bit dark text
                     cv2.imwrite(merge_file,blendtext)  # [...,np.newaxis]
                     res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
             res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
@@ -232,7 +244,7 @@ class ImageMaskPair:
                 msk = ImageSet(self.cfg, self.wd, t, is_train=True, is_image=False).size_folder_update()
                 self.msk_set.append(msk)
                 views = views.intersection(msk.view_coord)
-            self.view_coord = list(views)
+            self.view_coord = sorted(views,key=lambda x:x.file_name)
             tr_list,val_list=self.cfg.split_train_vali(self.view_coord)
             yield(ImageMaskGenerator(self,self.cfg.train_aug,tgt_list,tr_list),ImageMaskGenerator(self,0,tgt_list,val_list),
                   self.dir_in_ex(self.origin) if self.is_reverse else self.dir_out_ex(self.cfg.join_targets(tgt_list)))
@@ -291,7 +303,7 @@ class ImageMaskGenerator(keras.utils.Sequence):
                         _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg)
             if self.aug_value > 0:
                 aug_value=random.randint(0, self.cfg.train_aug) # random number between zero and pre-set value
-                # print("  aug: %.2f"%aug_value,end='')
+                # print(" idx: %s aug: %.2f"%(str(indexes),aug_value),end='')
                 _img, _tgt = augment_image_pair(_img, _tgt, aug_value)  # integer N: a <= N <= b.
                 # imwrite("tr_img.jpg",_img[0])
                 # imwrite("tr_tgt.jpg",_tgt[0])

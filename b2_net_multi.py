@@ -24,24 +24,35 @@ from preprocess import prep_scale,augment_image_set
 
 
 class BaseNetM(Config):
-    def __init__(self,dim_in=None,dim_out=None,image_resize=None,
-                 coverage_tr=None,coverage_prd=None,mini_mask_shape=None,
-                 backbone=None,batch_norm=None,backbone_stride=None,pyramid_size=None,
+    def __init__(self,learning_rate=None,optimizer=None,loss_weight=None,indicator=None,indicator_trend=None,predict_proc=None,
+                 trainable_layer_regex=None, mini_mask_shape=None,backbone=None,batch_norm=None,backbone_stride=None,pyramid_size=None,
                  fc_layers_size=None,rpn_anchor_scales=None,rpn_train_anchors_per_image=None,
                  rpn_anchor_ratio=None,rpn_anchor_stride=None,rpn_nms_threshold=None,rpn_bbox_stdev=None,
                  pre_nms_limit=None,post_mns_train=None,post_nms_predict=None,pool_size=None,mask_pool_size=None,
                  train_rois_per_image=None,train_roi_positive_ratio=None,max_gt_instance=None,
-                 detection_max_instances=None,detection_min_confidence=None,detection_nms_threshold=None,
-                 detection_mask_threshold=None,optimizer=None,loss_weight=None,indicator=None,predict_proc=None,
-                 trainable_layer_regex=None,gpu_count=None,image_per_gpu=None,
+                 detection_max_instances=None,detection_min_confidence=None,detection_nms_threshold=None,detection_mask_threshold=None,
+                 gpu_count=None,image_per_gpu=None,
                  filename=None,**kwargs):
-        super(BaseNetM,self).__init__(dim_in=dim_in or (512,512,3),dim_out=dim_out or (512,512,3),image_resize=image_resize or 1.0,**kwargs)
+        super(BaseNetM,self).__init__(**kwargs)
         self.is_train=None # will set later
-        self.coverage_train=coverage_tr or 2.0
-        self.coverage_predict=coverage_prd or 2.0
+        self.learning_rate=learning_rate or 1e-3
+        from keras.optimizers import SGD
+        self.optimizer=optimizer or SGD(lr=self.learning_rate, momentum=0.9, clipnorm=5.0)
+        self.loss_weight=loss_weight or { "rpn_class_loss":1., "rpn_bbox_loss":1., "mrcnn_class_loss":1.,
+                                        "mrcnn_bbox_loss":1., "mrcnn_mask_loss":1.} # Loss weights for more precise optimization.
+        self.indicator=indicator or 'val_loss'
+        self.indicator_trend=indicator_trend or 'min'
+        from postprocess import draw_detection
+        self.predict_proc=predict_proc or draw_detection
+        self.trainable_layer_regex=trainable_layer_regex or \
+            ".*" # all
+            # r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)"  # head
+            # r"# (res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 3+
+            # r"# (res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 4+
+            # r"# (res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 5+
         self.num_class=1+self.num_targets # plus background
         self.meta_shape=[1+3+3+4+1+self.num_class] # last number is NUM_CLASS
-        from c2_backbones import resnet50
+        from c0_backbones import resnet50
         self.backbone=backbone or resnet50 # resnet_101
         self.batch_norm=batch_norm if batch_norm is not None else False # default to false since batch size is often small
         self.backbone_strides=backbone_stride or [4,8,16,32,64] # strides of the FPN Pyramid (default for Resnet101)
@@ -66,19 +77,6 @@ class BaseNetM(Config):
         self.detection_min_confidence=detection_min_confidence or 0.7 # Minimum probability to accept a detected instance, skip ROIs if below this threshold
         self.detection_nms_threshold=detection_nms_threshold or 0.3 # Non-maximum suppression threshold for detection
         self.detection_mask_threshold=detection_mask_threshold or 0.5 # threshold to determine fore/back-ground
-        from keras.optimizers import SGD
-        self.optimizer=optimizer or SGD(lr=1e-3, momentum=0.9, clipnorm=5.0)
-        self.loss_weight=loss_weight or { "rpn_class_loss":1., "rpn_bbox_loss":1., "mrcnn_class_loss":1.,
-                                        "mrcnn_bbox_loss":1., "mrcnn_mask_loss":1.} # Loss weights for more precise optimization.
-        self.indicator=indicator or 'val_loss'
-        from postprocess import draw_detection
-        self.predict_proc=predict_proc or draw_detection
-        self.trainable_layer_regex=trainable_layer_regex or \
-            ".*" # all
-            # r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)"  # head
-            # r"# (res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 3+
-            # r"# (res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 4+
-            # r"# (res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 5+
         self.gpu_count=gpu_count or 1
         self.images_per_gpu=image_per_gpu or 1
         self.filename=filename
@@ -275,30 +273,35 @@ class BaseNetM(Config):
     def train(self,pair):
         self.build_net(is_train=True)
         self.set_trainable(self.net)
+        self.compile_net() # set optimizers
         for tr,val,dir_out in pair.train_generator():
-            self.compile_net() # set optimizers
             export_name=dir_out+'_'+str(self)
-            weight_file=export_name+".h5"
+            # weight_file=export_name+".h5"
+            weight_file="%s^{%s:.2f}^.h5"%(export_name,self.indicator) # e.g., {epoch:02d}-{val_acc:.2f}
             print('Fitting neural net...')
             for r in range(self.train_rep):
-                if self.train_continue and os.path.exists(weight_file):
-                    print("Continue from previous weights")
-                    self.net.load_weights(weight_file,by_name=True)
-                    # print("Continue from previous model with weights & optimizer")
-                    # self.net=load_model(weight_file)  # does not work well with custom act, loss func
+                if self.train_continue:
+                    last_saves=self.find_best_models(export_name+'^*^.h5')
+                    if isinstance(last_saves, list) and len(last_saves)>1:
+                        last_best=last_saves[0]
+                        print("Continue from previous weights")
+                        self.net.load_weights(last_best,by_name=True)
+                        # print("Continue from previous model with weights & optimizer")
+                        # self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
                 print("Training %d/%d for %s"%(r+1,self.train_rep,export_name))
                 tr.on_epoch_end()
                 val.on_epoch_end()
-                from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau
+                from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau,LearningRateScheduler
                 from tensorboard_train_val import TensorBoardTrainVal
                 history=self.net.fit_generator(tr,validation_data=val,verbose=1,
                    steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
                    validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
                    epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,
                    callbacks=[
-                       ModelCheckpoint(weight_file,monitor=self.indicator,mode='min',save_weights_only=True,save_best_only=True,verbose=1),
-                       ReduceLROnPlateau(monitor=self.indicator, mode='min', factor=0.5, patience=2, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
-                       EarlyStopping(monitor=self.indicator,mode='min',patience=5,verbose=1),
+                       ModelCheckpoint(weight_file,monitor=self.indicator,mode=self.indicator_trend,save_weights_only=True,save_best_only=True,verbose=1),
+                       EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=3,verbose=1),
+                       LearningRateScheduler(lambda x: self.learning_rate*(0.1**(0.2*x)), verbose=1)
+                       # ReduceLROnPlateau(monitor=self.indicator, mode='min', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
                        # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                    ]).history
                 if not os.path.exists(export_name+".txt"):
@@ -311,6 +314,7 @@ class BaseNetM(Config):
 
     def predict(self,pair,pred_dir):
         self.build_net(is_train=False)
+        # if hasattr(self, "_model_cache"): self._model_cache={}
         xls_file="Result_%s_%s.xlsx"%(pred_dir,repr(self))
         mrg_in,mrg_out,mrg_out_wt,merge_dir=None,None,None,None
         batch=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
@@ -331,7 +335,8 @@ class BaseNetM(Config):
             for grp,view in batch.items():
                 grp_box,grp_cls,grp_scr,grp_msk=None,None,None,None
                 prd,tgt_name=pair.predict_generator_partial(tgt_list,view)
-                weight_file=tgt_name+'_'+dir_cfg_append+'.h5'
+                # weight_file=tgt_name+'_'+dir_cfg_append+'.h5'
+                weight_file=self.find_best_models(tgt_name+'_'+dir_cfg_append+'^*^.h5',allow_cache=True)[0]
                 print(weight_file)
                 # self.net.load_weights(weight_file)  # weights only
                 self.net.load_weights(weight_file,by_name=True)  # weights only
@@ -383,7 +388,7 @@ class ImagePatchPair:
         # self.dir_out=targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
         self.img_set=ImageSet(cfg,wd,origin,is_train,is_image=True).size_folder_update()
         self.pch_set=None
-        self.view_coord=self.img_set.view_coord
+        self.view_coord=sorted(self.img_set.view_coord, key=lambda x: x.file_name)
         self.is_train=is_train
         self.is_reverse=is_reverse
 

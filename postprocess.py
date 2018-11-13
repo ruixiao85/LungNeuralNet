@@ -2,6 +2,7 @@ import numpy as np
 from PIL import ImageDraw,Image,ImageFont
 import cv2
 from preprocess import prep_scale,rev_scale
+from math import floor,log
 
 
 def smooth_brighten(img):
@@ -107,9 +108,9 @@ def compare_call(cfg,img,msk,file=None):  # compare input and output with same d
             connect_component_label(d,file,labels)
     return rev_scale(msk,cfg.feed), res
 
-def draw_text(cfg,img,text_list,width):
+def draw_text(cfg,img,text_list,total_pixels):
     font="arial.ttf"  #times.ttf
-    size=round(0.33*(26+0.03*width+width/len(max(text_list,key=len))))
+    size=max(12, int(log(total_pixels,2.0))) # fontsize at least 12
     origin=Image.fromarray(img.astype(np.uint8),'RGB')  # L RGB
     draw=ImageDraw.Draw(origin)
     txtblk='\n'.join(text_list)
@@ -131,9 +132,8 @@ def draw_detection(cfg,image,class_names,box,cls,scr,msk,sel=None):
         print("\n*** No instances to display *** \n")
     font="arial.ttf"  #times.ttf
     ori_row,ori_col,_=image.shape
-    from math import floor,log
     total_pixels=ori_row*ori_col
-    size=max(12, int(log(total_pixels,2.5))) # fontsize at least 10
+    size=max(12, int(log(total_pixels,2.0))) # fontsize at least 12
     lwd=max(2, size//12) # line width
     blend=image.copy()
     res=np.zeros(cfg.num_targets*3,dtype=np.float32) # 1count 1area 1pct  2count 2area 2pct

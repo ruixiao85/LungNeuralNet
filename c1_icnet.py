@@ -6,6 +6,7 @@ from keras.layers import Input
 from keras.models import Model
 
 from b1_net_pair import BaseNetU
+from module import cvac
 
 
 class ICNet(BaseNetU):
@@ -31,6 +32,7 @@ class ICNet(BaseNetU):
         self.upproc=upproc or ca33
         self.postproc=postproc or sk
 
+    def build_net(self):
         locals()['in0']=Input((self.row_in, self.col_in, self.dep_in))
         locals()['pre0']=self.preproc(locals()['in0'], 'pre0', 0, self.fs[0], self.act)
         for i in range(len(self.fs)-1):
@@ -57,8 +59,7 @@ class ICNet(BaseNetU):
 
         locals()['post0']=self.postproc(locals()['uproc0'], 'post0', 0, self.fs[0], self.act)
         locals()['out0']=cvac(locals()['post0'], 'out0', 0, self.dep_out, self.out, size=1)
-        self.model=Model(locals()['in0'], locals()['out0'])
-        self.compile_net()
+        self.ned=Model(locals()['in0'], locals()['out0'])
 
     def __str__(self):
         return '_'.join([

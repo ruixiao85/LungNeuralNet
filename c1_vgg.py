@@ -38,6 +38,7 @@ class VggSegNet(BaseNetU):
         self.postproc=postproc or sk
         self.transferlayer=0
 
+    def build_net(self):
         locals()['in0']=Input((self.row_in, self.col_in, self.dep_in))
         locals()['pre0']=self.preproc(locals()['in0'], 'pre0', 0, self.fs[0], self.act)
         vgg16_base=VGG16(input_tensor=locals()['pre0'], include_top=False, weights=None)
@@ -73,7 +74,6 @@ class VggSegNet(BaseNetU):
         locals()['post0']=self.postproc(locals()['uproc0'], 'post0', 0, self.fs[0], self.act)
         locals()['out0']=cvac(locals()['post0'], 'out0', 0, self.dep_out, self.out, size=1)
         self.net=Model(locals()['in0'], locals()['out0'])
-        self.compile_net()
 
     def __str__(self):
         return '_'.join([

@@ -28,8 +28,9 @@ class UNet(BaseNetU):
         self.upproc=upproc or ca33
         self.postproc=postproc or sk
 
+    def build_net(self):
         locals()['in0']=Input((self.row_in, self.col_in, self.dep_in))
-        locals()['pre0']=self.preproc(locals()['in0'],'pre0',0,self.fs[0],self.act)
+        locals()['pre0']=self.preproc(locals()['in0'], 'pre0', 0, self.fs[0], self.act)
         for i in range(len(self.fs)-1):
             prev_layer=locals()['pre%d'%i] if i==0 else locals()['dproc%d'%i]
             locals()['dconv%d'%i]=self.downconv(prev_layer, 'dconv%d'%i, i, self.fs[i], self.act)
@@ -37,19 +38,19 @@ class UNet(BaseNetU):
             locals()['dsamp%d'%(i+1)]=self.downsamp(locals()['djoin%d'%i], self.ps[i], 'dsamp%d'%(i+1), i, self.fs[i], self.act)
             locals()['dmerge%d'%(i+1)]=self.downmerge(locals()['dsamp%d'%(i+1)], prev_layer, 'dmerge%d'%(i+1), i+1, self.fs[i+1], self.act, stride=self.ps[i])
             locals()['dproc%d'%(i+1)]=self.downproc(locals()['dmerge%d'%(i+1)], 'dproc%d'%(i+1), i+1, self.fs[i+1], self.act)
-    
+
         for i in range(len(self.fs)-2, -1, -1):
             prev_layer=locals()['dproc%d'%(i+1)] if i==len(self.fs)-2 else locals()['uproc%d'%(i+1)]
             locals()['uconv%d'%(i+1)]=self.upconv(prev_layer, 'uconv%d'%(i+1), i, self.fs[i+1], self.act)
-            locals()['ujoin%d'%(i+1)]=self.upjoin(locals()['uconv%d'%(i+1)], locals()['dmerge%d'%(i+1)], 'ujoin%d'%(i+1), i, self.fs[i+1], self.act)
+            locals()['ujoin%d'%(i+1)]=self.upjoin(locals()['uconv%d'%(i+1)], locals()['dmerge%d'%(i+1)], 'ujoin%d'%(i+1), i, self.fs[i+1],
+                                                  self.act)
             locals()['usamp%d'%i]=self.upsamp(locals()['ujoin%d'%(i+1)], self.ps[i], 'usamp%d'%i, i, self.fs[i+1], self.act)
             locals()['umerge%d'%i]=self.upmerge(locals()['usamp%d'%i], locals()['djoin%d'%i], 'umerge%d'%i, i, self.fs[i], self.act)
             locals()['uproc%d'%i]=self.upproc(locals()['umerge%d'%i], 'uproc%d'%i, i, self.fs[i], self.act)
-    
-        locals()['post0']=self.postproc(locals()['uproc0'],'post0',0,self.fs[0],self.act)
+
+        locals()['post0']=self.postproc(locals()['uproc0'], 'post0', 0, self.fs[0], self.act)
         locals()['out0']=cvac(locals()['post0'], 'out0', 0, self.dep_out, self.out, size=1)
         self.net=Model(locals()['in0'], locals()['out0'])
-        self.compile_net()
 
     def __str__(self):
         return '_'.join([
@@ -102,7 +103,7 @@ class UNet2M(UNet):
     # default 1296x1296 with 2 skip connections, UPPER case global context. medium memory consumption with 3x3 convolution twice for output
     def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
         super(UNet2M,self).__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
-                         filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
+                         filters=filters or [64, 96, 128, 196, 256, 307, 368, 442, 530], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
                          preproc=ca3, downconv=ca3, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=ca3,
                          upconv=sk, upjoin=ct, upsamp=uu, upmerge=ct, upproc=ca3, postproc=sk, **kwargs)
 class UNet2L(UNet):

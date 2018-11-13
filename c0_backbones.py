@@ -16,11 +16,24 @@ from keras.engine.saving import model_from_json,load_model
 from a_config import Config
 from b2_net_multi import BaseNetM
 from image_set import PatchSet
-from keras.applications import resnet50, densenet, vgg16, vgg19, inception_v3, inception_resnet_v2, mobilenet, mobilenetv2, nasnet, xception
+from keras.applications import xception, vgg16, vgg19, resnet50, densenet, inception_v3, inception_resnet_v2, mobilenet, mobilenetv2, nasnet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten
 from mrcnn import utils
 
+# Xception #
+def xcept(input_image):
+    model=xception.Xception(input_tensor=input_image,include_top=False)
+    return model
+
+# Inception #
+def incept3(input_image):
+    model=inception_v3.InceptionV3(input_tensor=input_image,include_top=False)
+    return model
+
+def incepres2(input_image):
+    model=inception_resnet_v2.InceptionResNetV2(input_tensor=input_image,include_top=False)
+    return model
 
 # VGG # kera-applications
 
@@ -65,4 +78,23 @@ def densenet169(input_image):
     return keras_densenet_backbone(input_image,'densenet169')
 def densenet201(input_image):
     return keras_densenet_backbone(input_image,'densenet201')
+
+# MobileNet #
+def mobile(input_image):
+    model=mobilenet.MobileNet(input_tensor=input_image,include_top=False)
+    return model
+
+def mobile2(input_image):
+    model=mobilenetv2.MobileNetV2(input_tensor=input_image,include_top=False)
+    return model
+
+# NASNet #
+def nasmobile(input_image):
+    model=nasnet.NASNetMobile(input_tensor=input_image,include_top=False)
+    return model
+
+def naslarge(input_image):
+    model=nasnet.NASNetLarge(input_tensor=input_image,include_top=False)
+    return model
+
 

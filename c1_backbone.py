@@ -3,7 +3,7 @@ from __future__ import print_function
 from keras.models import Model
 from keras.layers import Input
 from b1_net_pair import BaseNetU
-from c0_backbones import v16, v19, res50, densenet121, densenet169, densenet201
+from c0_backbones import xcept, incept3, incepres2, v16, v19, res50, densenet121, densenet169, densenet201, mobile, mobile2, nasmobile, naslarge
 from module import cvac, ca3, ca33, cb3, cba3, dmp, uu, ct, sk, uta2
 
 
@@ -22,9 +22,10 @@ class NetUBack(BaseNetU):
         self.upconv=upconv or ca3
         self.upjoin = upjoin or ct
         self.upsamp=upsamp or uu
-        self.upproc=upproc or ca3
+        self.upproc=upproc or sk
         self.postproc=postproc or ca3
 
+    def build_net(self):
         locals()['in0']=Input((self.row_in, self.col_in, self.dep_in))
         # locals()['pre0']=self.preproc(locals()['in0'],'pre0',0,self.fs[0],self.act)
         # for i in range(len(self.fs)-1):
@@ -46,24 +47,33 @@ class NetUBack(BaseNetU):
         locals()['post0']=self.postproc(locals()['uproc0'],'post0',0,self.fs[0],self.act)
         locals()['out0']=cvac(locals()['post0'], 'out0', 0, self.dep_out, self.out, size=1)
         self.net=Model(locals()['in0'], locals()['out0'])
-        self.compile_net()
 
     def __str__(self):
         return '_'.join([
-            type(self).__name__, self.backbone.__name__,
+            type(self).__name__,
             "%dF%d-%dP%d-%d"%(
             len(self.fs), self.fs[0], self.fs[-1], self.ps[0], self.ps[-1]),
             # "%df%d-%dp%s" % (len(self.fs), self.fs[0], self.fs[-1], ''.join(self.pssize)),
-            # self.cap_lim_join(10, self.preproc.__name__, self.downconv.__name__,
-            #                   self.downjoin.__name__, self.downsamp.__name__,
-            #                   self.downmerge.__name__, self.downproc.__name__),
-            # self.cap_lim_join(10, self.upconv.__name__, self.upjoin.__name__,
-            #                   self.upsamp.__name__, self.upmerge.__name__, self.upproc.__name__,
-            #                   self.postproc.__name__),
+            self.cap_lim_join(10, self.upconv.__name__, self.upjoin.__name__,
+                              self.upsamp.__name__, self.upproc.__name__,
+                              self.postproc.__name__),
             self.cap_lim_join(4, self.feed, self.act, self.out,
                               (self.loss if isinstance(self.loss, str) else self.loss.__name__).
                               replace('_', '').replace('loss', ''))
             +str(self.dep_out)])
+
+
+class NetU_Xception(NetUBack):
+    def __init__(self,**kwargs):
+        super(NetU_Xception,self).__init__(backbone=xcept,**kwargs)
+
+class NetU_Incept3(NetUBack):
+    def __init__(self,**kwargs):
+        super(NetU_Incept3,self).__init__(backbone=incept3,**kwargs)
+
+class NetU_IncepRes2(NetUBack):
+    def __init__(self,**kwargs):
+        super(NetU_IncepRes2,self).__init__(backbone=incepres2,**kwargs)
 
 class NetU_Vgg16(NetUBack):
     def __init__(self,**kwargs):
@@ -88,6 +98,22 @@ class NetU_Dense169(NetUBack):
 class NetU_Dense201(NetUBack):
     def __init__(self,**kwargs):
         super(NetU_Dense201,self).__init__(backbone=densenet201,**kwargs)
+
+class NetU_Mobile(NetUBack):
+    def __init__(self,**kwargs):
+        super(NetU_Mobile,self).__init__(backbone=mobile,**kwargs)
+
+class NetU_Mobile2(NetUBack):
+    def __init__(self,**kwargs):
+        super(NetU_Mobile2,self).__init__(backbone=mobile2,**kwargs)
+
+class NetU_NASMobile(NetUBack):
+    def __init__(self,**kwargs):
+        super(NetU_NASMobile,self).__init__(backbone=nasmobile,**kwargs)
+
+class NetU_NASLarge(NetUBack):
+    def __init__(self,**kwargs):
+        super(NetU_NASLarge,self).__init__(backbone=naslarge,**kwargs)
 
 
 
