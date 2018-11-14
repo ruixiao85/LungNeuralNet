@@ -413,12 +413,12 @@ class ImagePatchPair:
         # count_per_pixel.sort() # usaually not need
         img_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_in_ex('+'.join([self.origin]+self.targets))))
         pch_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_out_ex('-'.join([self.origin]+self.targets))))
-        print('image folder exist? %r'%img_exist) # e.g., Original+LYM+MONO+PMN
-        print('patch mask folder exist? %r' %pch_exist) # e.g., Original_LYM_MONO_PMN
+        print('Image folder exist? %r'%img_exist) # e.g., Original+LYM+MONO+PMN
+        print('Patch folder exist? %r' %pch_exist) # e.g., Original_LYM_MONO_PMN
         if img_exist and pch_exist:
-            print("skip making image/patch folders since both exist"); return
+            print("Skip making image/patch folders since both exist"); return
         else:
-            print("create new folders and blend images and patches")
+            print("Create new folders and blend images and patches")
         pixels=self.cfg.row_in*self.cfg.col_in
         print('processing %d categories on val #%d vs tr #%d'%(self.cfg.num_targets,len(self.val_list),len(self.tr_list)))
         for vi, vc in enumerate(self.img_set.view_coord):

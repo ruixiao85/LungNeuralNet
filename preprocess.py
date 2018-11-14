@@ -108,7 +108,7 @@ def skip_image(s_img, mode, if_print=True):
         return print_return(if_skip, "checking tile for contrast (std=%.1f)" % std) if if_print else if_skip
 
 
-# image-mask pair # pad with reflect and black 0
+# image-mask pair # pad black 0
 aug_both_1 = iaa.Sequential([
     iaa.Fliplr(0.5),  # flip left-right 50% chance
     iaa.Flipud(0.5),  # flip up-down 50% chance
@@ -118,7 +118,7 @@ aug_both_2 = iaa.Sequential([
     iaa.Flipud(0.5),  # flip up-down 50% chance
     iaa.Sometimes(0.7, iaa.Affine(
         rotate=(-180, 180),  # rotate
-        mode='reflect',  # use any of scikit-image's warping modes
+        mode='constant',  # use any of scikit-image's warping modes
         cval=0,  # if mode is constant, use a cval between 0 and 255
     )),
 ])
@@ -132,7 +132,7 @@ aug_both_3 = iaa.Sequential([
         rotate=(-180, 180),  # rotate
         shear=(-12, 12),  # shear by -16 to +16 degrees
         order=[0, 1],  # use nearest neighbour or bilinear interpolation (fast)
-        mode='reflect',  # use any of scikit-image's warping modes
+        mode='constant',  # use any of scikit-image's warping modes
         cval=0  # if mode is constant, use a cval between 0 and 255
     )),
 ])
@@ -221,7 +221,7 @@ def augment_per_channel(_aug,_msks):
 
 
 
-# Patch # padding with white 255
+# Patch # padding white 255
 aug_pat_1 = iaa.Sequential([
     iaa.Fliplr(0.5),  # flip left-right 50% chance
     iaa.Flipud(0.5),  # flip up-down 50% chance
