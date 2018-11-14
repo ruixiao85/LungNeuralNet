@@ -97,7 +97,7 @@ class Config:
         else: # search
             files=sorted(glob.glob(pattern), key=lambda t: t.split('^')[1], reverse=self.indicator_trend=='max')
             ntop=2
-            print('found %d previous models, showing top %d (%s):'%(len(files),ntop,self.indicator_trend))
+            print('found %d previous models, keeping the top %d (%s):'%(len(files),ntop,self.indicator_trend))
             for l in range(len(files)):
                 if l<ntop:
                     print('%d. %s kept'%(l+1,files[l]))

@@ -121,9 +121,13 @@ class FolderSet:
     def single_image_coord(self):
         self.view_coord=[]
         ratio=0.5  # if self.predict_mode is True else random.random() # add randomness if not prediction/full
-        for image_name in self.images:
+        total=len(self.images)
+        print('Parsing %d files...'%total)
+        for i,image_name in enumerate(self.images):
             _img=read_resize_padding(os.path.join(self.work_directory,self.sub_folder,image_name),self.cfg.image_resize,self.cfg.image_padding)
-            print(image_name)
+            pct10=10*(i+1)//total
+            if pct10 > 10*i//total:
+                print('%.1f%% %s'%(pct10,image_name))
             entry=MetaInfo.from_single(image_name)
             if entry.row_start is None:
                 lg_row,lg_col,lg_dep=_img.shape

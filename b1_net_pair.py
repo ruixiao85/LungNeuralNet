@@ -94,12 +94,13 @@ class BaseNetU(Config):
             # weight_file=export_name+".h5"
             weight_file="%s^{%s:.2f}^.h5"%(export_name,self.indicator) # e.g., {epoch:02d}-{val_acc:.2f}
             print('Fitting neural net...')
-            last_best,learning_rate=None,self.learning_rate # store last best model file, init learning rate reduce if continue training
             for r in range(self.train_rep):
+                best_val,learning_rate=None,self.learning_rate # store last best, init lr and reduce if continuing
                 if self.train_continue:
                     last_saves=self.find_best_models(export_name+'^*^.h5')
                     if isinstance(last_saves,list) and len(last_saves)>1:
                         last_best=last_saves[0]
+                        best_val=float(last_best.split('^')[1])
                         # print("Continue from previous weights")
                         # self.net.load_weights(last_best)
                         print("Continue from previous model with weights & optimizer")
@@ -117,7 +118,7 @@ class BaseNetU(Config):
                    epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,
                    callbacks=[
                        ModelCheckpointCustom(weight_file,monitor=self.indicator,mode=self.indicator_trend,
-                                             best=float(last_best.split('^')[1]),save_weights_only=False,save_best_only=True,verbose=1),
+                                             best=best_val,save_weights_only=False,save_best_only=True,verbose=1),
                        EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=3,verbose=1),
                        LearningRateScheduler(lambda x: learning_rate*(0.1**(0.2*x)),verbose=1)
                        # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),

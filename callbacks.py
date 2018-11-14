@@ -61,9 +61,7 @@ class ModelCheckpointCustom(Callback):
         self.epochs_since_last_save=0
 
         if mode not in ['auto', 'min', 'max']:
-            warnings.warn('ModelCheckpoint mode %s is unknown, '
-                          'fallback to auto mode.'%(mode),
-                          RuntimeWarning)
+            warnings.warn('ModelCheckpoint mode %s is unknown, fallback to auto mode.'%(mode), RuntimeWarning)
             mode='auto'
 
         if mode=='min':
@@ -80,7 +78,7 @@ class ModelCheckpointCustom(Callback):
                 self.monitor_op=np.less
                 self.best=np.Inf
         if best is not None:
-            self.best=best
+            self.best=best+0.005 # last best value stored in 0.00 format
             print("Starting from previous best value of %s %f"%(self.monitor,best))
 
     def on_epoch_end(self, epoch, logs=None):
@@ -96,7 +94,7 @@ class ModelCheckpointCustom(Callback):
                 else:
                     if self.monitor_op(current, self.best):
                         if self.verbose>0:
-                            print('\nEpoch %05d: %s improved %0.5f -> %0.5f, saving to %s'%(epoch+1,self.monitor,self.best,current,filepath))
+                            print('\nEpoch %05d: %s improved %0.5f -> %0.5f, saving to [%s]'%(epoch+1,self.monitor,self.best,current,filepath))
                         self.best=current
                         if self.save_weights_only:
                             self.model.save_weights(filepath, overwrite=True)
@@ -107,7 +105,7 @@ class ModelCheckpointCustom(Callback):
                             print('\nEpoch %05d: %s did not improve from %0.5f'%(epoch+1, self.monitor, self.best))
             else:
                 if self.verbose>0:
-                    print('\nEpoch %05d: saving model to %s'%(epoch+1, filepath))
+                    print('\nEpoch %05d: saving model to [%s]'%(epoch+1, filepath))
                 if self.save_weights_only:
                     self.model.save_weights(filepath, overwrite=True)
                 else:
