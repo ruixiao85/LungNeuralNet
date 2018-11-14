@@ -4,7 +4,7 @@ import numpy as np
 
 
 def generate_colors(n, shuffle=False):
-    hsv = [(i / n, 1.0, 0.85) for i in range(n)]
+    hsv = [(i / n, 0.9, 0.7) for i in range(n)]
     colors = [tuple((255*np.array(col)).astype(np.uint8)) for col in map(lambda c: colorsys.hsv_to_rgb(*c), hsv)]
     if shuffle:
         random.shuffle(colors)
@@ -96,17 +96,20 @@ class Config:
             return self._model_cache[pattern]
         else: # search
             files=sorted(glob.glob(pattern), key=lambda t: t.split('^')[1], reverse=self.indicator_trend=='max')
-            ntop=2
-            print('found %d previous models, keeping the top %d (%s):'%(len(files),ntop,self.indicator_trend))
-            for l in range(len(files)):
-                if l<ntop:
-                    print('%d. %s kept'%(l+1,files[l]))
-                else:
-                    os.remove(files[l])
-                    print('%d. %s deleted'%(l+1, files[l]))
-            return files
-
-
+            nfiles=len(files)
+            if nfiles>0:
+                ntop=2
+                print('Found %d previous models, keeping the top %d (%s):'%(nfiles,ntop,self.indicator_trend))
+                for l in range(nfiles):
+                    if l<ntop:
+                        print('%d. %s kept'%(l+1,files[l]))
+                    else:
+                        os.remove(files[l])
+                        print('%d. %s deleted'%(l+1, files[l]))
+                return files
+            else:
+                print('No previus model found, starting fresh')
+                return None
 
     @staticmethod
     def join_targets(tgt_list) :
