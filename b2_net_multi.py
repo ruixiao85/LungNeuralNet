@@ -35,7 +35,7 @@ class BaseNetM(Config):
                  filename=None,**kwargs):
         super(BaseNetM,self).__init__(**kwargs)
         self.is_train=None # will set later
-        self.learning_rate=learning_rate or 1e-3
+        self.learning_rate=learning_rate or 1e-2
         from keras.optimizers import SGD
         self.optimizer=optimizer or SGD(lr=self.learning_rate, momentum=0.9, clipnorm=5.0)
         self.loss_weight=loss_weight or { "rpn_class_loss":1., "rpn_bbox_loss":1., "mrcnn_class_loss":1.,

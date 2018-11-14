@@ -127,7 +127,7 @@ class FolderSet:
             _img=read_resize_padding(os.path.join(self.work_directory,self.sub_folder,image_name),self.cfg.image_resize,self.cfg.image_padding)
             pct10=10*(i+1)//total
             if pct10 > 10*i//total:
-                print('%.1f%% %s'%(pct10,image_name))
+                print('%.0f%% ... %s'%(pct10*10,image_name))
             entry=MetaInfo.from_single(image_name)
             if entry.row_start is None:
                 lg_row,lg_col,lg_dep=_img.shape
