@@ -87,7 +87,7 @@ class MetaInfo:
     def __hash__(self):
         return str(self).__hash__()
 
-class FolderSet:
+class ImageSet:
     def __init__(self,cfg:Config,wd,sf,is_train,is_image):
         self.cfg=cfg
         self.work_directory=wd
@@ -187,23 +187,6 @@ class FolderSet:
                     # entry.ri, entry.ro, entry.ci, entry.co = 0, self.row, 0, self.col
                     self.view_coord.append(entry)  # updated to target single exported file
 
-    @staticmethod
-    def file_to_whole_image(text):
-        half=text.split('_#')
-        if len(half)==2:
-            dot_sep=text.split('.')
-            return "%s.%s"%(half[0],dot_sep[len(dot_sep)-1])
-        return text
-
-    @staticmethod
-    def ext_folder(cfg, is_image):
-        return "%.1f_%dx%d" % (cfg.image_resize, cfg.row_in, cfg.col_in)\
-            if is_image else "%.1f_%dx%d" % (cfg.image_resize, cfg.row_out, cfg.col_out)
-
-class ImageSet(FolderSet):
-    def __init__(self,cfg:Config,wd,sf,is_train,is_image):
-        super(ImageSet,self).__init__(cfg,wd,sf,is_train,is_image)
-
     def view_coord_batch(self):
         view_batch={}
         if self.cfg.separate:
@@ -217,8 +200,20 @@ class ImageSet(FolderSet):
             n = self.cfg.train_step
             return { x:self.view_coord[x:x + n] for x in range(0, len(self.view_coord), n)}  # break into sub-lists
 
+    @staticmethod
+    def file_to_whole_image(text):
+        half=text.split('_#')
+        if len(half)==2:
+            dot_sep=text.split('.')
+            return "%s.%s"%(half[0],dot_sep[len(dot_sep)-1])
+        return text
 
-class PatchSet(FolderSet):
+    @staticmethod
+    def ext_folder(cfg, is_image):
+        return "%.1f_%dx%d" % (cfg.image_resize, cfg.row_in, cfg.col_in)\
+            if is_image else "%.1f_%dx%d" % (cfg.image_resize, cfg.row_out, cfg.col_out)
+
+class PatchSet(ImageSet):
     def __init__(self,cfg:Config,wd,sf,is_train,is_image):
 
         self.patches=None
@@ -237,22 +232,6 @@ class PatchSet(FolderSet):
         # self.row=self.cfg.row_in if is_image else self.cfg.row_out
         # self.col=self.cfg.col_in if is_image else self.cfg.col_out
         # self.view_coord=None  # list
-
-    def add_noise(self,img, divider=1, remainder=0):
-        pass
-
-    def view_coord_batch(self):
-        view_batch={}
-        if self.cfg.separate:
-            for view in self.view_coord:
-                key=self.file_to_whole_image(view.file_name)
-                sub_list=view_batch.get(key) or []
-                sub_list.append(view)
-                view_batch[key]=sub_list
-            return view_batch
-        else:
-            n = self.cfg.train_step
-            return { x:self.view_coord[x:x + n] for x in range(0, len(self.view_coord), n)}  # break into sub-lists
 
     def size_folder_update(self):
         print("checking %s"%self.sub_folder)

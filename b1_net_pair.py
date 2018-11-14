@@ -189,7 +189,7 @@ class BaseNetU(Config):
                         text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_i[d][1],r_i[d][0],sum_i,100.*r_i[d][0]/sum_i)
                         print(text); text_list.append(text)
                     if save_ind_image or not self.separate:  # skip saving individual images
-                        blendtext=draw_text(self,blend,text_list,sum_i)  # RGB:3x8-bit dark text
+                        blendtext=draw_text(self,blend,text_list,self.col_out)  # RGB:3x8-bit dark text
                         cv2.imwrite(ind_file,blendtext)
                     res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i,r_i[np.newaxis,...]))
 
@@ -210,7 +210,7 @@ class BaseNetU(Config):
                     for d in range(len(tgt_list)):
                         text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_g[d][1],r_g[d][0],sum_g,100.*r_g[d][0]/sum_g)
                         print(text); text_list.append(text)
-                    blendtext=draw_text(self,blend,text_list,sum_g)  # RGB: 3x8-bit dark text
+                    blendtext=draw_text(self,blend,text_list,view[0].ori_col)  # RGB: 3x8-bit dark text
                     cv2.imwrite(merge_file,blendtext)  # [...,np.newaxis]
                     res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
             res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
@@ -306,12 +306,8 @@ class ImageMaskGenerator(keras.utils.Sequence):
                 else:
                     for ti,tgt in enumerate(self.target_list):
                         _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg)
-            if self.aug_value > 0:
-                aug_value=random.randint(0, self.cfg.train_aug) # random number between zero and pre-set value
-                # print(" idx: %s aug: %.2f"%(str(indexes),aug_value),end='')
-                _img, _tgt = augment_image_pair(_img, _tgt, aug_value)  # integer N: a <= N <= b.
-                # imwrite("tr_img.jpg",_img[0])
-                # imwrite("tr_tgt.jpg",_tgt[0])
+            _img, _tgt = augment_image_pair(_img, _tgt, self.aug_value)  # integer N: a <= N <= b.
+            # cv2.imwrite("tr_img.jpg",_img[0]); cv2.imwrite("tr_tgt.jpg",_tgt[0])
             return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)

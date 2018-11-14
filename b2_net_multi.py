@@ -20,7 +20,7 @@ from image_set import PatchSet,ImageSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten,draw_detection
 from mrcnn import utils
-from preprocess import prep_scale,augment_image_set
+from preprocess import prep_scale,augment_image_set,augment_patch
 
 
 class BaseNetM(Config):
@@ -351,7 +351,7 @@ class BaseNetM(Config):
                     self.net.predict_generator(prd,max_queue_size=1,workers=0,use_multiprocessing=False,verbose=1)
                 mrg_in=np.zeros((view[0].ori_row,view[0].ori_col,self.dep_in),dtype=np.float32) if self.separate else None
                 for i,(det,msk) in enumerate(zip(detections,mrcnn_mask)): # each view
-                    final_rois,final_class_ids,final_scores,final_masks=parse_detections(det,msk,self.dim_in,full_mask=False)
+                    final_rois,final_class_ids,final_scores,final_masks=parse_detections(det,msk,self.dim_in)
                     origin=view[i].get_image(os.path.join(pair.wd,pair.dir_in_ex(pair.origin)),self)
                     blend, r_i=self.predict_proc(self,origin,pair.targets,final_rois,final_class_ids,final_scores,final_masks)
                     res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate([res_i,r_i[np.newaxis,...]],axis=0)
@@ -402,7 +402,7 @@ class ImagePatchPair:
             self.pch_set=[PatchSet(cfg,wd,tgt,self.is_train,is_image=True) for tgt in targets] if self.is_train else None
             self.tr_list,self.val_list=self.cfg.split_train_vali(self.view_coord)
             self.blend_image_patch(
-                patch_per_pixel=[3000,6000], # patch per pixel, range to randomly select from, larger number: smaller density of
+                patch_per_pixel=[1000,6000], # patch per pixel, range to randomly select from, larger number: smaller density of
                 bright_diff=-10,  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
                 adjacent_size=3,  # sample times of size adjacent to the patch
                 # adjacent_std=0.2  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
@@ -449,8 +449,10 @@ class ImagePatchPair:
                     # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(self.cfg.row_in,lri,lro,self.cfg.col_in,lci,lco,p_row,pri,pro,p_col,pci,pco))
                     # pat=patch.get_image(os.path.join(self.wd, the_tgt.sub_folder),self.cfg)  # TODO 40X-40X resize=1.0
                     pat=the_tgt.patches[idx]
-                    if random.random()>0.5: pat=np.fliplr(pat)
-                    if random.random()>0.5: pat=np.flipud(pat)
+                    # cv2.imwrite('pre.jpg',pat)
+                    pat=augment_patch(pat,self.cfg.train_aug)
+                    # cv2.imwrite('post.jpg',pat)
+                    # pat=np.fliplr(pat); pat=np.flipud(pat) # not needed if imgaug is on
                     img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco])
                     # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if lirc[1]>self.cfg.train_vali_split else '^'))),
                     #             smooth_brighten(prev-img))
@@ -510,9 +512,9 @@ class ImagePatchGenerator(keras.utils.Sequence):
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
                 this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex('+'.join([self.pair.origin]+self.pair.targets))),self.cfg)
                 this_msk, this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.dir_out_ex('-'.join([self.pair.origin]+self.pair.targets))),self.cfg)
-                if self.aug_value > 0: # augmentation
-                    aug_value=random.randint(0, self.cfg.train_aug) # random number between zero and pre-set value
-                    this_img, this_msk = augment_image_set(this_img, this_msk, _level=aug_value, _tgt_ch=1)  # integer N: a <= N <= b.
+                # cv2.imwrite("pre1.jpg",this_img); cv2.imwrite("pre2.jpg",this_msk[...,0:3])
+                this_img, this_msk = augment_image_set(this_img, this_msk, _level=self.aug_value)  # integer N: a <= N <= b.
+                # cv2.imwrite("post1.jpg",this_img); cv2.imwrite("post2.jpg",this_msk[...,0:3])
                 this_bbox=utils.extract_bboxes(this_msk)
                 if self.cfg.mini_mask_shape is not None:
                     this_msk=utils.minimize_mask(this_bbox,this_msk,tuple(self.cfg.mini_mask_shape[0:2]))
@@ -589,7 +591,7 @@ def generate_pyramid_anchors(scales, ratios, feature_shapes, feature_strides, an
     return np.concatenate(anchors, axis=0)
 
 # Parse Detection #
-def parse_detections(detections,mrcnn_mask,original_image_shape,image_shape=None,window=None,full_mask=True):
+def parse_detections(detections,mrcnn_mask,original_image_shape,image_shape=None,window=None):
     image_shape=image_shape or original_image_shape
     window=window or (0,0,image_shape[0],image_shape[1])
     zero_ix=np.where(detections[:,4]==0)[0]
@@ -635,17 +637,7 @@ def parse_detections(detections,mrcnn_mask,original_image_shape,image_shape=None
         masks=np.delete(masks,exclude_ix,axis=0)
         N=class_ids.shape[0]
 
-    if full_mask:
-        full_masks=[]
-        for i in range(N):
-            # Convert neural network mask to full size mask
-            full_mask=utils.unmold_mask(masks[i],boxes[i],original_image_shape)
-            full_masks.append(full_mask)
-        full_masks=np.stack(full_masks,axis=-1)\
-            if full_masks else np.empty(original_image_shape[:2]+(0,))
-        return boxes,class_ids,scores,full_masks
-    else:
-        return boxes,class_ids,scores,masks
+    return boxes,class_ids,scores,masks
 
 
 # Proposal Layer #

@@ -83,6 +83,10 @@ class NetU_Vgg19(NetUBack):
     def __init__(self,**kwargs):
         super(NetU_Vgg19,self).__init__(backbone=v19,**kwargs)
 
+class NetU_Res_50(NetUBack):
+    def __init__(self,**kwargs):
+        super(NetU_Res_50,self).__init__(backbone=res_50,**kwargs)
+
 class NetU_Res50(NetUBack):
     def __init__(self,**kwargs):
         super(NetU_Res50,self).__init__(backbone=res50,**kwargs)

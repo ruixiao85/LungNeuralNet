@@ -45,7 +45,7 @@ class Config:
         self.train_step=train_step or 128
         self.train_vali_step=train_vali_step or 64
         self.train_vali_split=train_vali_split or 0.33
-        self.train_aug=train_aug or 2  # only to training set, not validation or prediction mode, 1Flip 2Rotate 3Zoom 4ContrastGray 5BlurSharp 6NoiseDrop
+        self.train_aug=train_aug or 4  # only to training set, not validation or prediction mode, applies to image-mask set and image+patch
         self.train_shuffle=train_shuffle if train_shuffle is not None else True  # only to training set, not validation or prediction mode
         self.train_continue=train_continue if train_continue is not None else True  # continue training by loading previous weights
         self.indicator=indicator or 'val_acc'
@@ -102,10 +102,11 @@ class Config:
                 print('Found %d previous models, keeping the top %d (%s):'%(nfiles,ntop,self.indicator_trend))
                 for l in range(nfiles):
                     if l<ntop:
+                        print(('* 'if l==0 else '  '),end='')
                         print('%d. %s kept'%(l+1,files[l]))
                     else:
                         os.remove(files[l])
-                        print('%d. %s deleted'%(l+1, files[l]))
+                        print('- %d. %s deleted'%(l+1, files[l]))
                 return files
             else:
                 print('No previus model found, starting fresh')
