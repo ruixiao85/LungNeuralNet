@@ -98,7 +98,7 @@ class BaseNetU(Config):
                 best_val,learning_rate=None,self.learning_rate # store last best, init lr and reduce if continuing
                 if self.train_continue:
                     last_saves=self.find_best_models(export_name+'^*^.h5')
-                    if isinstance(last_saves,list) and len(last_saves)>1:
+                    if isinstance(last_saves,list) and len(last_saves)>0:
                         last_best=last_saves[0]
                         best_val=float(last_best.split('^')[1])
                         # print("Continue from previous weights")

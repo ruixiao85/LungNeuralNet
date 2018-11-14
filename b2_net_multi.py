@@ -34,6 +34,7 @@ class BaseNetM(Config):
                  gpu_count=None,image_per_gpu=None,
                  filename=None,**kwargs):
         super(BaseNetM,self).__init__(**kwargs)
+        # self.coverage_train,self.coverage_predict=4,4 # override previous
         self.is_train=None # will set later
         self.learning_rate=learning_rate or 1e-2
         from keras.optimizers import SGD
@@ -283,7 +284,7 @@ class BaseNetM(Config):
             for r in range(self.train_rep):
                 if self.train_continue:
                     last_saves=self.find_best_models(export_name+'^*^.h5')
-                    if isinstance(last_saves, list) and len(last_saves)>1:
+                    if isinstance(last_saves, list) and len(last_saves)>0:
                         last_best=last_saves[0]
                         best_value=float(last_best.split('^')[1])
                         print("Continue from previous weights")
