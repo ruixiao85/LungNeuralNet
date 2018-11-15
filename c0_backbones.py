@@ -21,19 +21,6 @@ from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten
 from mrcnn import utils
 
-# Xception #
-def xcept(input_image):
-    model=xception.Xception(input_tensor=input_image,include_top=False)
-    return model
-
-# Inception #
-def incept3(input_image):
-    model=inception_v3.InceptionV3(input_tensor=input_image,include_top=False)
-    return model
-
-def incepres2(input_image):
-    model=inception_resnet_v2.InceptionResNetV2(input_tensor=input_image,include_top=False)
-    return model
 
 # VGG # kera-applications
 
@@ -55,12 +42,27 @@ def v19(input_image):
 # Resnet Graph #
 
 def res50(input_image):
-    model=resnet50.ResNet50(input_tensor=input_image,include_top=False)
+    model=resnet50.ResNet50(input_tensor=input_image,include_top=False,pooling=None)
+    # print(model.summary())
     return [model.get_layer(name=n).output for n in ['activation_1','activation_10','activation_22','activation_40','activation_49']]
 
+# Inception Xception # 299x299 hard to match dimension #
+def incept3(input_image):
+    model=inception_v3.InceptionV3(input_tensor=input_image,include_top=False)
+    # print(model.summary())
+    return [KL.ZeroPadding2D(p)(model.get_layer(name=n).output) for p,n in [(((1,0),(1,0)),'activation_3'),(((1,0),(1,0)),'activation_5'),(((1,0),(1,0)),
+                                                                               'mixed2'),(((1,1),(1,1)),'mixed7'),(((0,1),(0,1)),'mixed10')]]
+def incepres2(input_image):
+    model=inception_resnet_v2.InceptionResNetV2(input_tensor=input_image,include_top=False)
+    print(model.summary())
+    return model
+
+def xcept(input_image):
+    model=xception.Xception(input_tensor=input_image,include_top=False)
+    print(model.summary())
+    return model
 
 # DenseNet # kera-applications # @Fizyr # https://arxiv.org/pdf/1608.06993v3.pdf
-
 def keras_densenet_backbone(input_image,architecture):
     allowed_backbones={
         'densenet121':([6,12,24,16],densenet.DenseNet121),
@@ -95,6 +97,7 @@ def nasmobile(input_image):
 
 def naslarge(input_image):
     model=nasnet.NASNetLarge(input_tensor=input_image,include_top=False)
+    print(model.summary())
     return model
 
 

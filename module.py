@@ -1,5 +1,6 @@
-from keras.layers import Concatenate, Activation, BatchNormalization, Conv2DTranspose, MaxPooling2D, AveragePooling2D, UpSampling2D, Conv2D, Dropout, Add
 from keras import backend as K
+from keras.layers import Concatenate, Activation, BatchNormalization, Conv2DTranspose, MaxPooling2D, AveragePooling2D, UpSampling2D, Conv2D, Dropout, Add
+
 
 K.set_image_data_format('channels_last')
 # concat_axis = 3
@@ -126,6 +127,10 @@ def ca33(in_layer, name=None, idx=None, fs=None, act=None):
     x=cvac(in_layer, name+'_1', idx, fs, act, size=3)
     x=cvac(x, name, idx, fs, act, size=3)
     return x
+def ca3s3(in_layer, name=None, idx=None, fs=None, act=None):
+    x=cvac(in_layer, name+'_2', idx, fs, act, size=3)
+    x=adac(x,cv(x, name+'_1', idx, fs, act, size=3),name,idx,fs,act)
+    return x
 def cb3(in_layer, name=None, idx=None, fs=None, act=None):
     x=cvbn(in_layer, name, idx, fs, act, size=3)
     return x
@@ -155,3 +160,31 @@ def ca331(in_layer, name=None, idx=None, fs=None, act=None):
     x=cvac(x, name, idx, fs, act, size=1)
     return x
 
+
+
+# DenseNet module #
+def dense_block(x, blocks, name, act):
+    for i in range(blocks):
+        x = conv_block(x, growth_rate=32, name=name + '_block' + str(i + 1), act=act)
+    return x
+def transition_block(x, reduced_filter, name, act):
+    # x = BatchNormalization(epsilon=1.001e-5, name=name + '_bn')(x)
+    x = Activation(act, name=name + '_act')(x)
+    x = Conv2D(reduced_filter, 1, use_bias=False, name=name + '_conv')(x)
+    x = AveragePooling2D(2, strides=2, name=name + '_pool')(x)
+    return x
+def conv_block(x, growth_rate, name, act):
+    # x1 = BatchNormalization(epsilon=1.001e-5,name=name + '_0_bn')(x)
+    x1 = Activation(act, name=name + '_0_act')(x)
+    x1 = Conv2D(4 * growth_rate, 1,use_bias=False,name=name + '_1_conv')(x1)
+    # x1 = BatchNormalization(epsilon=1.001e-5,name=name + '_1_bn')(x1)
+    x1 = Activation(act, name=name + '_1_act')(x1)
+    x1 = Conv2D(growth_rate, 3,padding='same',use_bias=False,name=name + '_2_conv')(x1)
+    x = Concatenate(name=name + '_concat')([x, x1])
+    return x
+def db(in_layer, name=None, idx=None, fs=None, act=None):
+    return dense_block(in_layer, fs, name+'_'+str(idx), act)
+def td(in_layer, rate, name=None, idx=None, fs=None, act=None):
+    return transition_block(in_layer, fs//2, name+'_'+str(idx), act)
+def tu(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
+    return tr(in_layer, name, idx, fs//2, act=act, size=size or step2kern(rate), stride=rate)
