@@ -94,7 +94,7 @@ class ModelCheckpointCustom(Callback):
                 else:
                     if self.monitor_op(current, self.best):
                         if self.verbose>0:
-                            print('\nEpoch %03d: %s improved %0.5f -> %0.5f, saving to [%s]'%(epoch+1,self.monitor,self.best,current,filepath))
+                            print('\nEpoch %05d: %s improved %0.5f -> %0.5f, saving to [%s]'%(epoch+1,self.monitor,self.best,current,filepath))
                         self.best=current
                         if self.save_weights_only:
                             self.model.save_weights(filepath, overwrite=True)
@@ -102,10 +102,10 @@ class ModelCheckpointCustom(Callback):
                             self.model.save(filepath, overwrite=True)
                     else:
                         if self.verbose>0:
-                            print('\nEpoch %03d: %s did not improve from %0.5f'%(epoch+1, self.monitor, self.best))
+                            print('\nEpoch %05d: %s %0.5f is no better than %0.5f'%(epoch+1, self.monitor, current, self.best))
             else:
                 if self.verbose>0:
-                    print('\nEpoch %03d: saving model to [%s]'%(epoch+1, filepath))
+                    print('\nEpoch %05d: saving model to [%s]'%(epoch+1, filepath))
                 if self.save_weights_only:
                     self.model.save_weights(filepath, overwrite=True)
                 else:
