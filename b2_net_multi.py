@@ -404,12 +404,13 @@ class ImagePatchPair:
             self.blend_image_patch(
                 patch_per_pixel=[1000,6000], # patch per pixel, range to randomly select from, larger number: smaller density of
                 bright_diff=-10,  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
+                max_std=40,  # original area should be clean, standard deviation should be low (< max_std)
                 adjacent_size=3,  # sample times of size adjacent to the patch
                 # adjacent_std=0.2  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
                 adjacent_std=0.0  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
             )
 
-    def blend_image_patch(self,patch_per_pixel,bright_diff,adjacent_size,adjacent_std):
+    def blend_image_patch(self,patch_per_pixel,bright_diff,max_std,adjacent_size,adjacent_std):
         # count_per_pixel.sort() # usaually not need
         img_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_in_ex('+'.join([self.origin]+self.targets))))
         pch_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_out_ex('-'.join([self.origin]+self.targets))))
@@ -443,17 +444,18 @@ class ImagePatchPair:
                 pro=p_row if lro<=self.cfg.row_in else p_row-lro+self.cfg.row_in; lro=min(self.cfg.row_in, lro)
                 pco=p_col if lco<=self.cfg.col_in else p_col-lco+self.cfg.col_in; lco=min(self.cfg.col_in, lco)
                 # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
-                if np.min(img[lri:lro, lci:lco])-p_ave>bright_diff and \
-                        int(np.std(img[lri-p_row*adjacent_size:lro+p_row*adjacent_size,
-                                   lci-p_col*adjacent_size:lco+p_col*adjacent_size])>adjacent_std*p_std):  # target area is brighter, then add patch
+                if np.min(img[lri:lro, lci:lco])-p_ave>bright_diff \
+                    and np.std(img[lri:lro, lci:lco])<max_std\
+                    and int(np.std(img[lri-p_row*adjacent_size:lro+p_row*adjacent_size,lci-p_col*adjacent_size:lco+p_col*adjacent_size])>adjacent_std*p_std
+                    ):  # target area is brighter, then add patch
                     # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(self.cfg.row_in,lri,lro,self.cfg.col_in,lci,lco,p_row,pri,pro,p_col,pci,pco))
                     # pat=patch.get_image(os.path.join(self.wd, the_tgt.sub_folder),self.cfg)  # TODO 40X-40X resize=1.0
                     pat=the_tgt.patches[idx]
                     # cv2.imwrite('pre.jpg',pat)
                     pat=augment_patch(pat,self.cfg.train_aug)
                     # cv2.imwrite('post.jpg',pat)
-                    # pat=np.fliplr(pat); pat=np.flipud(pat) # not needed if imgaug is on
-                    img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco])
+                    img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco].astype(np.uint8))
+                    # img[lri:lro, lci:lco]-=pat[pri:pro, pci:pco].astype(np.uint8) # subtract
                     # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if lirc[1]>self.cfg.train_vali_split else '^'))),
                     #             smooth_brighten(prev-img))
                     cv2.imwrite(os.path.join(self.wd, self.dir_out_ex('-'.join([self.origin]+self.targets)),vc.file_name_insert(self.cfg,'_%d^%d^'%(idx,lirc[0]+1))), #+('' if lirc[1]>self.cfg.train_vali_split else '^'))

@@ -110,75 +110,66 @@ def skip_image(s_img, mode, if_print=True):
 
 # image-mask pair # pad black 0
 aug_both_1 = iaa.Sequential([
-    iaa.Fliplr(0.5),  # flip left-right 50% chance
-    iaa.Flipud(0.5),  # flip up-down 50% chance
+    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
 ])
 aug_both_2 = iaa.Sequential([
-    iaa.Fliplr(0.5),  # flip left-right 50% chance
-    iaa.Flipud(0.5),  # flip up-down 50% chance
-    iaa.Sometimes(0.7, iaa.Affine(
-        rotate=(-180, 180),  # rotate
-        mode='constant',  # use any of scikit-image's warping modes
-        cval=0,  # if mode is constant, use a cval between 0 and 255
-    )),
+    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
+    iaa.Sometimes(0.7, iaa.Affine(rotate=(-12, 12), mode='constant', cval=0)),
 ])
 aug_both_3 = iaa.Sequential([
-    iaa.Fliplr(0.5),  # flip left-right 50% chance
-    iaa.Flipud(0.5),  # flip up-down 50% chance
-    # iaa.CropAndPad(percent=0.2, pad_mode='constant', pad_cval=255), # pad with constance white 255
-    iaa.Sometimes(0.7, iaa.Affine(
-        scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},  # scale images to 80-120% of their size, individually per axis
-        # translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},  # translate by -20 to +20 percent (per axis)
-        rotate=(-180, 180),  # rotate
-        shear=(-12, 12),  # shear by -16 to +16 degrees
-        order=[0, 1],  # use nearest neighbour or bilinear interpolation (fast)
-        mode='constant',  # use any of scikit-image's warping modes
-        cval=0  # if mode is constant, use a cval between 0 and 255
+    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
+    iaa.Sometimes(0.5, iaa.Affine(
+        scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
+        rotate=(-20, 20), shear=(-10, 10), order=[0, 1],  mode='constant', cval=0
     )),
 ])
+aug_both_4 = iaa.Sequential([
+    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
+    iaa.Sometimes(0.7, iaa.Affine(
+        scale={"x": (0.85, 1.15), "y": (0.85, 1.15)},
+        rotate=(-45, 45), shear=(-15, 15), order=[0, 1], mode='constant',cval=0
+    )),
+])
+
+
 aug_img_1 = iaa.Sequential([  # only apply to original images not the mask
-    iaa.Sometimes(0.6,
-        iaa.OneOf([
-          iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
-          iaa.Grayscale(alpha=(0.0, 1.0))
-        ]),
-    ),
+    iaa.Sometimes(0.6, iaa.Multiply((0.75,1.25))),
 ])
 aug_img_2 = iaa.Sequential([  # only apply to original images not the mask
-    iaa.Sometimes(0.6,
-        iaa.OneOf([
-            iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
-            iaa.Grayscale(alpha=(0.0, 1.0)),
-            iaa.Multiply((0.8,1.3)),
-        ]),
-    ),
-    iaa.Sometimes(0.6,
-        iaa.OneOf([
-            iaa.GaussianBlur((0, 2.0)),  # blur sigma
-            iaa.AverageBlur(k=(1, 5)),  # blur image using local means with kernel sizes between 2 and 7
-            iaa.Sharpen((0, 1.0), lightness=(0.8, 1.3))  # sharpen
+    iaa.Sometimes(0.6, iaa.OneOf([
+          iaa.ContrastNormalization((0.8, 1.2)),  # improve or worsen the contrast
+          iaa.Grayscale(alpha=(0.0, 0.3)), iaa.AddToHueAndSaturation()
         ]),
     ),
 ])
 aug_img_3 = iaa.Sequential([  # only apply to original images not the mask
-    iaa.Sometimes(0.6,
-        iaa.OneOf([
-          iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
-          iaa.Grayscale(alpha=(0.0, 1.0))
+    iaa.Sometimes(0.6, iaa.OneOf([
+            iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
+            iaa.Grayscale(alpha=(0.0, 0.4)),
         ]),
     ),
-    iaa.Sometimes(0.6,
-        iaa.OneOf([
-            iaa.GaussianBlur((0, 2.0)),  # blur sigma
-            iaa.AverageBlur(k=(1, 5)),  # blur image using local means with kernel sizes between 2 and 7
+    iaa.Sometimes(0.6, iaa.OneOf([
+            iaa.GaussianBlur((0, 1.3)),  # blur sigma
+            iaa.AverageBlur(k=(1, 3)),  # blur image using local means with kernel sizes between 2 and 7
             iaa.Sharpen((0, 1.0), lightness=(0.8, 1.3))  # sharpen
         ]),
     ),
-    iaa.Sometimes(0.6,
-        iaa.OneOf([
+])
+aug_img_4 = iaa.Sequential([  # only apply to original images not the mask
+    iaa.Sometimes(0.5, iaa.OneOf([
+            iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
+            iaa.Grayscale(alpha=(0.0, 0.5))
+        ]),
+    ),
+    iaa.Sometimes(0.5, iaa.OneOf([
+            iaa.GaussianBlur((0, 1.5)),  # blur sigma
+            iaa.AverageBlur(k=(1, 4)),  # blur image using local means with kernel sizes between 2 and 7
+            iaa.Sharpen((0, 1.0), lightness=(0.8, 1.3))  # sharpen
+        ]),
+    ),
+    iaa.Sometimes(0.5, iaa.OneOf([
           iaa.Dropout((0.01, 0.05), per_channel=0.5),  # randomly remove pixels
-          iaa.SaltAndPepper(p=(0.01, 0.05)),  # same white same black
-          iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5),  # add gaussian noise to images
+          iaa.SaltAndPepper(p=(0.01, 0.03)),  # same white same black
         ]),
     ),
 ])
@@ -188,16 +179,16 @@ def augment_image_pair(_img, _tgt, _level):
     else:
         if 1<=_level<2:
             aug_det = aug_both_1.to_deterministic() # paired aug
-            return aug_det.augment_images(_img), aug_det.augment_images(_tgt)
+            return aug_img_1.augment_images(aug_det.augment_images(_img)), aug_det.augment_images(_tgt)
         elif 2<=_level<3:
             aug_det=aug_both_2.to_deterministic()  # paired aug
-            return aug_img_1.augment_images(aug_det.augment_images(_img)), aug_det.augment_images(_tgt)
+            return aug_img_2.augment_images(aug_det.augment_images(_img)), aug_det.augment_images(_tgt)
         elif 3<=_level<4:
             aug_det=aug_both_3.to_deterministic()  # paired aug
-            return aug_img_2.augment_images(aug_det.augment_images(_img)), aug_det.augment_images(_tgt)
-        else:
-            aug_det=aug_both_3.to_deterministic()  # paired aug
             return aug_img_3.augment_images(aug_det.augment_images(_img)), aug_det.augment_images(_tgt)
+        else:
+            aug_det=aug_both_4.to_deterministic()  # paired aug
+            return aug_img_4.augment_images(aug_det.augment_images(_img)), aug_det.augment_images(_tgt)
 
 
 def augment_image_set(_img,_msks,_level):
@@ -206,13 +197,13 @@ def augment_image_set(_img,_msks,_level):
     else:
         aug_det=aug_pat_1.to_deterministic()  # paired aug
         if 1<=_level<2:
-            return aug_det.augment_image(_img),augment_per_channel(aug_det,_msks)
-        elif 2<=_level<3:
             return aug_img_1.augment_image(aug_det.augment_image(_img)),augment_per_channel(aug_det,_msks)
-        elif 3<=_level<4:
+        elif 2<=_level<3:
             return aug_img_2.augment_image(aug_det.augment_image(_img)),augment_per_channel(aug_det,_msks)
-        else:
+        elif 3<=_level<4:
             return aug_img_3.augment_image(aug_det.augment_image(_img)),augment_per_channel(aug_det,_msks)
+        else:
+            return aug_img_4.augment_image(aug_det.augment_image(_img)),augment_per_channel(aug_det,_msks)
 
 def augment_per_channel(_aug,_msks):
     for i in range(_msks.shape[-1]):
@@ -222,33 +213,29 @@ def augment_per_channel(_aug,_msks):
 
 
 # Patch # padding white 255
+
 aug_pat_1 = iaa.Sequential([
-    iaa.Fliplr(0.5),  # flip left-right 50% chance
-    iaa.Flipud(0.5),  # flip up-down 50% chance
+    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
 ])
 aug_pat_2 = iaa.Sequential([
-    iaa.Fliplr(0.5),  # flip left-right 50% chance
-    iaa.Flipud(0.5),  # flip up-down 50% chance
-    iaa.Sometimes(0.7, iaa.Affine(
-        rotate=(-180, 180),  # rotate
-        mode='reflect',  # use any of scikit-image's warping modes
-        cval=255,  # if mode is constant, use a cval between 0 and 255
-    )),
+    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
+    iaa.Sometimes(0.7, iaa.Affine(rotate=(-12, 12), mode='constant', cval=255)),
 ])
 aug_pat_3 = iaa.Sequential([
-    iaa.Fliplr(0.5),  # flip left-right 50% chance
-    iaa.Flipud(0.5),  # flip up-down 50% chance
-    # iaa.CropAndPad(percent=0.2, pad_mode='constant', pad_cval=255), # pad with constance white 255
-    iaa.Sometimes(0.7, iaa.Affine(
-        scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},  # scale images to 80-120% of their size, individually per axis
-        # translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},  # translate by -20 to +20 percent (per axis)
-        rotate=(-180, 180),  # rotate
-        shear=(-12, 12),  # shear by -16 to +16 degrees
-        order=[0, 1],  # use nearest neighbour or bilinear interpolation (fast)
-        cval=255,  # if mode is constant, use a cval between 0 and 255
-        mode='constant'  # use any of scikit-image's warping modes
+    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
+    iaa.Sometimes(0.5, iaa.Affine(
+        scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
+        rotate=(-20, 20), shear=(-10, 10), order=[0, 1],  mode='constant', cval=255
     )),
 ])
+aug_pat_4 = iaa.Sequential([
+    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
+    iaa.Sometimes(0.7, iaa.Affine(
+        scale={"x": (0.85, 1.15), "y": (0.85, 1.15)},
+        rotate=(-45, 45), shear=(-15, 15), order=[0, 1], mode='constant',cval=255
+    )),
+])
+
 def augment_patch(_pat,_level):
     if _level<1:
         return _pat
@@ -257,5 +244,7 @@ def augment_patch(_pat,_level):
             return aug_pat_1.augment_image(_pat)
         elif 2<=_level<3:
             return aug_pat_2.augment_image(_pat)
-        else:
+        elif 3<=_level<4:
             return aug_pat_3.augment_image(_pat)
+        else:
+            return aug_pat_4.augment_image(_pat)

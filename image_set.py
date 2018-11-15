@@ -254,7 +254,7 @@ class PatchSet(ImageSet):
         for image_name in self.images:
             _img = read_resize_padding(os.path.join(self.work_directory, self.sub_folder, image_name),
                                        _resize=self.cfg.image_resize,_padding=self.cfg.image_padding)
-            minVal,maxVal,minLoc,maxLoc=cv2.minMaxLoc(np.average(_img,axis=-1))
+            minVal,maxVal,minLoc,maxLoc=cv2.minMaxLoc(np.max(_img,axis=-1))
             # print(','.join([str(minVal),str(maxVal),str(minLoc),str(maxLoc)]))
             _img=_img+(255-maxVal)
             # cv2.imwrite('this.jpg',_img)
