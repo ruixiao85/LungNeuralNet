@@ -110,16 +110,17 @@ def compare_call(cfg,img,msk,file=None):  # compare input and output with same d
 
 def draw_text(cfg,img,text_list,width):
     font="arial.ttf"  #times.ttf
-    size=max(12,int(sqrt(width)/2.0)) # fontsize at least 12
+    size=max(12,int(width/40)) # fontsize at least 12
+    off=max(1, size//15)  # text offset
     origin=Image.fromarray(img.astype(np.uint8),'RGB')  # L RGB
     draw=ImageDraw.Draw(origin)
     txtblk='\n'.join(text_list)
-    draw.text((0,0),txtblk,(225,225,225),ImageFont.truetype(font,size))
-    draw.text((4,4),txtblk,(30,30,30),ImageFont.truetype(font,size))
+    draw.text((0,0),txtblk,(210,210,210),ImageFont.truetype(font,size))
+    draw.text((off,off),txtblk,(30,30,30),ImageFont.truetype(font,size))
     for i in range(len(text_list)-1):
         txtcrs=' \n'*(i+1)+' X'
-        draw.text((0,0),txtcrs,(225,225,225),ImageFont.truetype(font,size))
-        draw.text((5,3),txtcrs,cfg.overlay_color[i],ImageFont.truetype(font,size))
+        draw.text((0,0),txtcrs,(210,210,210),ImageFont.truetype(font,size))
+        draw.text((off,off),txtcrs,cfg.overlay_color[i],ImageFont.truetype(font,size))
     return np.array(origin)
 
 
@@ -133,8 +134,8 @@ def draw_detection(cfg,image,class_names,box,cls,scr,msk,sel=None):
     font="arial.ttf"  #times.ttf
     ori_row,ori_col,_=image.shape
     total_pixels=ori_row*ori_col
-    size=max(12, int(sqrt(ori_col)/2.0)) # fontsize at least 12
-    lwd=max(2, size//12) # line width
+    size=max(12, int(ori_col/40)) # fontsize at least 12
+    lwd=max(2, size//15) # line width
     blend=image.copy()
     res=np.zeros(cfg.num_targets*3,dtype=np.float32) # 1count 1area 1pct  2count 2area 2pct
     for i in sel:
@@ -159,14 +160,14 @@ def draw_detection(cfg,image,class_names,box,cls,scr,msk,sel=None):
         draw.text((x1,y1-size//2),'%s %d'%(class_names[d],floor(10.0*scr[i])),cfg.overlay_color[d],ImageFont.truetype(font,size)) # class score
     txtlist=[]
     size=int(size*1.8) # increase size
-    offset=max(1,size//10) # position offset for light dark text
+    offset=max(1,size//12) # position offset for light dark text
     for i in range(cfg.num_targets):
-        draw.text((0,0),'\n'*i+class_names[i],(225,225,225),ImageFont.truetype(font,size))
+        draw.text((0,0),'\n'*i+class_names[i],(210,210,210),ImageFont.truetype(font,size))
         draw.text((offset,offset),'\n'*i+class_names[i],cfg.overlay_color[i],ImageFont.truetype(font,size))
         this_pct=100.0*res[3*i+1]/total_pixels
         res[3*i+2]=this_pct
         txtlist.append('            # %d $ %d  %.1f%%'%(res[3*i],res[3*i+1],res[3*i+2]))
     txtblk='\n'.join(txtlist)
-    draw.text((0,0),txtblk,(225,225,225),ImageFont.truetype(font,size))
+    draw.text((0,0),txtblk,(210,210,210),ImageFont.truetype(font,size))
     draw.text((offset,offset),txtblk,(30,30,30),ImageFont.truetype(font,size))
     return np.array(origin),res

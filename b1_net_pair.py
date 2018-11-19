@@ -197,11 +197,11 @@ class BaseNetU(Config):
                         ri,ro,ci,co,tri,tro,tci,tco=self.get_proper_range(view[i].ori_row,view[i].ori_col,
                                 view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
                         mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
-                        for d in range(len(tgt_list)*self.dep_out):
+                        for d in range(len(tgt_list)):
                             mrg_out[ri:ro,ci:co,d]+=(msk[...,d]*mask_wt)[tri:tro,tci:tco]
                         mrg_out_wt[ri:ro,ci:co]+=mask_wt[tri:tro,tci:tco]
                 if self.separate:
-                    for d in range(len(tgt_list)*self.dep_out):
+                    for d in range(len(tgt_list)):
                         mrg_out[...,d]/=mrg_out_wt
                     print(grp); text_list=[grp]
                     merge_name=view[0].image_name

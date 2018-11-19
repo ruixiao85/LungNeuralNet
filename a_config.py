@@ -88,6 +88,8 @@ class Config:
 
     def find_best_models(self, pattern, allow_cache=False):
         import glob,os
+        pattern=pattern.replace('_%.1f_'%self.image_resize, '_*_') # also consider other models trained on different scales
+        print("Scanning for files matching %s"%pattern)
         if allow_cache:
             if not hasattr(self,"_model_cache"):
                 self._model_cache={}
