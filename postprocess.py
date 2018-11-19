@@ -109,19 +109,23 @@ def compare_call(cfg,img,msk,file=None):  # compare input and output with same d
     return rev_scale(msk,cfg.feed), res
 
 def draw_text(cfg,img,text_list,width):
-    font="arial.ttf"  #times.ttf
-    size=max(12,int(width/40)) # fontsize at least 12
-    off=max(1, size//15)  # text offset
-    origin=Image.fromarray(img.astype(np.uint8),'RGB')  # L RGB
-    draw=ImageDraw.Draw(origin)
-    txtblk='\n'.join(text_list)
-    draw.text((0,0),txtblk,(210,210,210),ImageFont.truetype(font,size))
-    draw.text((off,off),txtblk,(30,30,30),ImageFont.truetype(font,size))
-    for i in range(len(text_list)-1):
-        txtcrs=' \n'*(i+1)+' X'
-        draw.text((0,0),txtcrs,(210,210,210),ImageFont.truetype(font,size))
-        draw.text((off,off),txtcrs,cfg.overlay_color[i],ImageFont.truetype(font,size))
-    return np.array(origin)
+    black, white=cfg.overlay_text_bw
+    if black or white:
+        font="arial.ttf"  #times.ttf
+        size=max(12,int(width/40)) # fontsize at least 12
+        off=max(1, size//15)  # text offset
+        origin=Image.fromarray(img.astype(np.uint8),'RGB')  # L RGB
+        draw=ImageDraw.Draw(origin)
+        txtblk='\n'.join(text_list)
+        if white: draw.text((0,0),txtblk,(210,210,210),ImageFont.truetype(font,size))
+        if black: draw.text((off,off),txtblk,(30,30,30),ImageFont.truetype(font,size))
+        for i in range(len(text_list)-1):
+            txtcrs=' \n'*(i+1)+' X'
+            if white: draw.text((0,0),txtcrs,(210,210,210),ImageFont.truetype(font,size))
+            if black: draw.text((off,off),txtcrs,cfg.overlay_color[i],ImageFont.truetype(font,size))
+        return np.array(origin)
+    else:
+        return img
 
 
 def draw_detection(cfg,image,class_names,box,cls,scr,msk,sel=None):
@@ -161,13 +165,15 @@ def draw_detection(cfg,image,class_names,box,cls,scr,msk,sel=None):
     txtlist=[]
     size=int(size*1.8) # increase size
     offset=max(1,size//12) # position offset for light dark text
-    for i in range(cfg.num_targets):
-        draw.text((0,0),'\n'*i+class_names[i],(210,210,210),ImageFont.truetype(font,size))
-        draw.text((offset,offset),'\n'*i+class_names[i],cfg.overlay_color[i],ImageFont.truetype(font,size))
-        this_pct=100.0*res[3*i+1]/total_pixels
-        res[3*i+2]=this_pct
-        txtlist.append('            # %d $ %d  %.1f%%'%(res[3*i],res[3*i+1],res[3*i+2]))
-    txtblk='\n'.join(txtlist)
-    draw.text((0,0),txtblk,(210,210,210),ImageFont.truetype(font,size))
-    draw.text((offset,offset),txtblk,(30,30,30),ImageFont.truetype(font,size))
+    black, white=cfg.overlay_text_bw
+    if black or white:
+        for i in range(cfg.num_targets):
+            if white: draw.text((0,0),'\n'*i+class_names[i],(210,210,210),ImageFont.truetype(font,size))
+            if black: draw.text((offset,offset),'\n'*i+class_names[i],cfg.overlay_color[i],ImageFont.truetype(font,size))
+            this_pct=100.0*res[3*i+1]/total_pixels
+            res[3*i+2]=this_pct
+            txtlist.append('            # %d $ %d  %.1f%%'%(res[3*i],res[3*i+1],res[3*i+2]))
+        txtblk='\n'.join(txtlist)
+        if white: draw.text((0,0),txtblk,(210,210,210),ImageFont.truetype(font,size))
+        if black: draw.text((offset,offset),txtblk,(30,30,30),ImageFont.truetype(font,size))
     return np.array(origin),res

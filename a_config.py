@@ -14,7 +14,7 @@ class Config:
     def __init__(self, dim_in=None, dim_out=None,
                  num_targets=None,image_format=None,image_resize=None,image_padding=None,mask_color=None,
                  feed=None, act=None, out=None,batch_size=None,separate=None,coverage_train=None,coverage_predict=None,out_image=None,
-                 call_hardness=None,overlay_color=None,overlay_opacity=None,predict_size=None,
+                 call_hardness=None,overlay_color=None,overlay_opacity=None,overlay_text_bw=None,predict_size=None,
                  train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
                  train_vali_split=None,train_aug=None,train_continue=None,train_shuffle=None,indicator=None,indicator_trend=None):
         self.dim_in=dim_in or (512,512,3)
@@ -38,6 +38,7 @@ class Config:
             generate_colors(overlay_color) if isinstance(overlay_color, int) else \
                 generate_colors(self.num_targets)
         self.overlay_opacity=overlay_opacity if isinstance(overlay_color, list) else [0.3]*self.num_targets
+        self.overlay_text_bw=overlay_text_bw or (True,False) # default to draw black but not white
         self.predict_size=predict_size or num_targets
         self.batch_size=batch_size or 1
         self.train_rep=train_rep or 2  # times to repeat during training
