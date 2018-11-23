@@ -21,8 +21,8 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--input', dest='input', type=str,
                         default='Original', help='input: Original')
     parser.add_argument('-o', '--output', dest='output', type=str,
-                        default='SmallBloodVessel,Background,ConductingAirway,ConnectiveTissue,LargeBloodVessel,RespiratoryAirway', help='output: targets separated by comma')
-    args = parser.parse_args()
+                        default='Background,ConductingAirway,ConnectiveTissue,SmallBloodVessel,RespiratoryAirway,LargeBloodVessel', help='output: targets separated by comma')
+    args = parser.parse_args() #Background,RespiratoryAirway,
 
     script_dir = os.path.realpath(__file__)
     rel_dir = os.path.join(script_dir, args.dir)
@@ -35,19 +35,25 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from c1_unet import UNet2S
-
+    from c1_unet import UNet2S, UNet2, UNet2m
+    from c1_dense import UDenseNet
+    from c1_backbone import NetU_Dense121,NetU_Res50,NetU_Vgg16
     nets = [
         # SegNet(num_targets=len(targets)),
         # SegNetS(num_targets=len(targets)),
         # UNet(num_targets=len(targets)),
         # UNet2(num_targets=len(targets)),
+        # UNet2m(num_targets=len(targets)),
         # UNet(num_targets=len(targets)),
-        UNet2S(num_targets=len(targets)),
+        # UNet2S(num_targets=len(targets)),
         # UNet2M(num_targets=len(targets)),
         # UNet2L(num_targets=len(targets)),
         # VggSegNet(num_targets=len(targets)),
-        # Refine(num_targets=len(targets))
+        # Refine(num_targets=len(targets)),
+        # NetU_Vgg16(num_targets=len(targets)),
+        # NetU_Res50(num_targets=len(targets)),
+        # NetU_Dense121(num_targets=len(targets)),
+        UDenseNet(num_targets=len(targets),image_resize=0.7,overlay_color=(0,255,0)*6,overlay_opacity=[1.0]*4+[0.0,1.0]),
     ]
 
     mode = args.mode[0].lower()

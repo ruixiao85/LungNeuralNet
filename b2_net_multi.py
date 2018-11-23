@@ -24,7 +24,7 @@ from preprocess import prep_scale,augment_image_set,augment_patch
 
 
 class BaseNetM(Config):
-    def __init__(self,learning_rate=None,optimizer=None,loss_weight=None,indicator=None,indicator_trend=None,predict_proc=None,
+    def __init__(self,learning_rate=None,learning_continue=None,optimizer=None,loss_weight=None,indicator=None,indicator_trend=None,predict_proc=None,
                  trainable_layer_regex=None, mini_mask_shape=None,backbone=None,batch_norm=None,backbone_stride=None,pyramid_size=None,
                  fc_layers_size=None,rpn_anchor_scales=None,rpn_train_anchors_per_image=None,
                  rpn_anchor_ratio=None,rpn_anchor_stride=None,rpn_nms_threshold=None,rpn_bbox_stdev=None,
@@ -36,7 +36,8 @@ class BaseNetM(Config):
         super(BaseNetM,self).__init__(**kwargs)
         # self.coverage_train,self.coverage_predict=4,4 # override previous
         self.is_train=None # will set later
-        self.learning_rate=learning_rate or 1e-2
+        self.learning_rate=learning_rate or 1e-3
+        self.learning_continue=learning_continue or 1e-1
         from keras.optimizers import SGD
         self.optimizer=optimizer or SGD(lr=self.learning_rate, momentum=0.9, clipnorm=5.0)
         self.loss_weight=loss_weight or { "rpn_class_loss":1., "rpn_bbox_loss":1., "mrcnn_class_loss":1.,
@@ -53,8 +54,8 @@ class BaseNetM(Config):
             # r"# (res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 5+
         self.num_class=1+self.num_targets # plus background
         self.meta_shape=[1+3+3+4+1+self.num_class] # last number is NUM_CLASS
-        from c0_backbones import resnet50
-        self.backbone=backbone or resnet50 # resnet_101
+        from c0_backbones import v16
+        self.backbone=backbone or v16 # default backbone
         self.batch_norm=batch_norm if batch_norm is not None else False # default to false since batch size is often small
         self.backbone_strides=backbone_stride or [4,8,16,32,64] # strides of the FPN Pyramid (default for Resnet101)
         self.pyramid_size=pyramid_size or 256 # Size of the top-down layers used to build the feature pyramid
@@ -291,7 +292,7 @@ class BaseNetM(Config):
                         self.net.load_weights(last_best,by_name=True)
                         # print("Continue from previous model with weights & optimizer")
                         # self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
-                        learning_rate*=0.1
+                        learning_rate*=self.learning_continue
                         print('Lowered learning rate (%f -> %f) for the continued training'%(self.learning_rate,learning_rate))
                 print("Training %d/%d for %s"%(r+1,self.train_rep,export_name))
                 tr.on_epoch_end()
@@ -306,7 +307,7 @@ class BaseNetM(Config):
                        ModelCheckpointCustom(weight_file, monitor=self.indicator, mode=self.indicator_trend,
                                              best=best_value,save_weights_only=True,save_best_only=True,verbose=1),
                        EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=3,verbose=1),
-                       LearningRateScheduler(lambda x: learning_rate*(0.1**(0.2*x)), verbose=1)
+                       LearningRateScheduler(lambda x: learning_rate*(0.1**(0.2*x)), verbose=1),
                        # ReduceLROnPlateau(monitor=self.indicator, mode='min', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
                        # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                    ]).history
@@ -370,7 +371,7 @@ class BaseNetM(Config):
                         ri,ro,ci,co,tri,tro,tci,tco=self.get_proper_range(view[i].ori_row,view[i].ori_col,
                                 view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
                         mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
-                sel_index=utils.non_max_suppression(grp_box,grp_scr,threshold=0.3)
+                sel_index=utils.non_max_suppression(grp_box,grp_scr,threshold=self.detection_nms_threshold)
                 # cv2.imwrite(os.path.join(merge_dir,view[0].image_name),mrg_in)
                 blend,r_g=self.predict_proc(self,mrg_in,pair.targets,grp_box,grp_cls,grp_scr,grp_msk,sel_index)
                 res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
@@ -509,7 +510,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
             _active_class_ids=np.ones([self.cfg.num_class],dtype=np.int32)
             anchors=self.cfg.get_anchors_norm()[0]
             _img,_msk,_cls,_bbox = None,None,None,None
-            _img_meta, _rpn_match, _rpn_bbox=None,None,None
+            _img_meta,_rpn_match,_rpn_bbox = None,None,None
             # _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
                 this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex('+'.join([self.pair.origin]+self.pair.targets))),self.cfg)

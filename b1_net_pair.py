@@ -30,7 +30,7 @@ class BaseNetU(Config):
 
     #     model_out = 'softmax'   model_loss='categorical_crossentropy'
     #     model_out='sigmoid'    model_loss=[loss_bce_dice] 'binary_crossentropy' "bcedice"
-    def __init__(self,loss=None, metrics=None, learning_rate=None, optimizer=None, indicator=None, indicator_trend=None, predict_proc=None,
+    def __init__(self,loss=None, metrics=None, learning_rate=None, learning_continue=None, optimizer=None, indicator=None, indicator_trend=None, predict_proc=None,
                  filename=None, **kwargs):
         super(BaseNetU,self).__init__(**kwargs)
         from metrics import jac, dice, dice67, dice33, acc, acc67, acc33, loss_bce_dice, custom_function_keras
@@ -39,6 +39,7 @@ class BaseNetU(Config):
             loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy')  # 'binary_crossentropy'
         self.metrics=metrics or ([jac, dice, dice67, dice33] if self.dep_out==1 else [acc, acc67, acc33])
         self.learning_rate=learning_rate or 1e-4
+        self.learning_continue=learning_continue or 1e-1
         from keras.optimizers import Adam
         self.optimizer=optimizer or Adam(self.learning_rate)
         self.indicator=indicator if indicator is not None else ('val_dice' if self.dep_out==1 else 'val_acc')
@@ -105,7 +106,7 @@ class BaseNetU(Config):
                         # self.net.load_weights(last_best)
                         print("Continue from previous model with weights & optimizer")
                         self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
-                        learning_rate*=0.1
+                        learning_rate*=self.learning_continue
                         print('Lowered learning rate (%f -> %f) for the continued training'%(self.learning_rate,learning_rate))
                 print("Training %d/%d for %s"%(r+1,self.train_rep,export_name))
                 tr.on_epoch_end()
@@ -120,7 +121,7 @@ class BaseNetU(Config):
                        ModelCheckpointCustom(weight_file,monitor=self.indicator,mode=self.indicator_trend,
                                              best=best_val,save_weights_only=False,save_best_only=True,verbose=1),
                        EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=3,verbose=1),
-                       LearningRateScheduler(lambda x: learning_rate*(0.1**(0.2*x)),verbose=1)
+                       LearningRateScheduler(lambda x: learning_rate*(0.1**(0.2*x)),verbose=1),
                        # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
                        # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
                    ]).history
@@ -307,13 +308,13 @@ class ImageMaskGenerator(keras.utils.Sequence):
                     for ti,tgt in enumerate(self.target_list):
                         _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg)
             _img, _tgt = augment_image_pair(_img, _tgt, self.aug_value)  # integer N: a <= N <= b.
-            # cv2.imwrite("tr_img.jpg",_img[0]); cv2.imwrite("tr_tgt.jpg",_tgt[0])
+            # cv2.imwrite("pair_img.jpg",_img[0]); cv2.imwrite("pair_tgt.jpg",_tgt[0])
             return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
                 _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex(self.pair.origin)), self.cfg)
-                # imwrite("prd_img.jpg",_img[0])
+            # cv2.imwrite("pair_img.jpg",_img[0])
             return prep_scale(_img, self.cfg.feed), None
 
     def on_epoch_end(self):  # Updates indexes after each epoch
