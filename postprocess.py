@@ -112,7 +112,7 @@ def draw_text(cfg,img,text_list,width):
     black, white=cfg.overlay_text_bw
     if black or white:
         font="arial.ttf"  #times.ttf
-        size=max(12,int(width/40)) # fontsize at least 12
+        size=max(10,int(width/50)) # fontsize at least 12
         off=max(1, size//15)  # text offset
         origin=Image.fromarray(img.astype(np.uint8),'RGB')  # L RGB
         draw=ImageDraw.Draw(origin)
@@ -138,7 +138,7 @@ def draw_detection(cfg,image,class_names,box,cls,scr,msk,sel=None):
     font="arial.ttf"  #times.ttf
     ori_row,ori_col,_=image.shape
     total_pixels=ori_row*ori_col
-    size=max(12, int(ori_col/40)) # fontsize at least 12
+    size=max(10, int(ori_col/50)) # fontsize at least 12
     lwd=max(2, size//15) # line width
     blend=image.copy()
     res=np.zeros(cfg.num_targets*3,dtype=np.float32) # 1count 1area 1pct  2count 2area 2pct

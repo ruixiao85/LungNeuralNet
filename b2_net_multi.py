@@ -37,7 +37,7 @@ class BaseNetM(Config):
         # self.coverage_train,self.coverage_predict=4,4 # override previous
         self.is_train=None # will set later
         self.learning_rate=learning_rate or 1e-3
-        self.learning_continue=learning_continue or 1e-1
+        self.learning_continue=learning_continue or 1 # 1-same as first time
         from keras.optimizers import SGD
         self.optimizer=optimizer or SGD(lr=self.learning_rate, momentum=0.9, clipnorm=5.0)
         self.loss_weight=loss_weight or { "rpn_class_loss":1., "rpn_bbox_loss":1., "mrcnn_class_loss":1.,
@@ -371,7 +371,7 @@ class BaseNetM(Config):
                         ri,ro,ci,co,tri,tro,tci,tco=self.get_proper_range(view[i].ori_row,view[i].ori_col,
                                 view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
                         mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
-                sel_index=utils.non_max_suppression(grp_box,grp_scr,threshold=self.detection_nms_threshold)
+                sel_index=utils.non_max_suppression(grp_box,grp_scr,threshold=self.detection_nms_threshold) if grp_box.shape[0]>0 else None
                 # cv2.imwrite(os.path.join(merge_dir,view[0].image_name),mrg_in)
                 blend,r_g=self.predict_proc(self,mrg_in,pair.targets,grp_box,grp_cls,grp_scr,grp_msk,sel_index)
                 res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
@@ -403,7 +403,8 @@ class ImagePatchPair:
             self.pch_set=[PatchSet(cfg,wd,tgt,self.is_train,is_image=True) for tgt in targets] if self.is_train else None
             self.tr_list,self.val_list=self.cfg.split_train_vali(self.view_coord)
             self.blend_image_patch(
-                patch_per_pixel=[1000,6000], # patch per pixel, range to randomly select from, larger number: smaller density of
+                patch_per_pixel=[2000,8000], # patch per pixel, range to randomly select from, larger number: smaller density of
+                max_instance=25, # break out if more than this amount was inserted
                 bright_diff=-10,  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
                 max_std=40,  # original area should be clean, standard deviation should be low (< max_std)
                 adjacent_size=3,  # sample times of size adjacent to the patch
@@ -411,7 +412,7 @@ class ImagePatchPair:
                 adjacent_std=0.0  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
             )
 
-    def blend_image_patch(self,patch_per_pixel,bright_diff,max_std,adjacent_size,adjacent_std):
+    def blend_image_patch(self,patch_per_pixel,max_instance,bright_diff,max_std,adjacent_size,adjacent_std):
         # count_per_pixel.sort() # usaually not need
         img_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_in_ex('+'.join([self.origin]+self.targets))))
         pch_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_out_ex('-'.join([self.origin]+self.targets))))
@@ -425,20 +426,24 @@ class ImagePatchPair:
         print('processing %d categories on val #%d vs tr #%d'%(self.cfg.num_targets,len(self.val_list),len(self.tr_list)))
         for vi, vc in enumerate(self.img_set.view_coord):
             is_validation=vc in self.val_list # fewer in val_list, faster to check
-            rand_num=[(random.randint(0,self.cfg.num_targets-1), random.random(), random.uniform(0, 1), random.uniform(0, 1))
-                      for r in range(random.randint(pixels//patch_per_pixel[1], pixels//patch_per_pixel[0]))]  # label/class,index,row,col
+            pool=list(range(0,self.cfg.num_targets)) + [1,1,1] # equal chance, + weight to some category
+            nexample=random.randint(pixels//patch_per_pixel[1], pixels//patch_per_pixel[0])
+            labels=random.choices(pool, k=nexample)
             img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.sub_folder), self.cfg)
             # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
             inserted=[0]*self.cfg.num_targets # track # of inserts per category
-            for lirc in rand_num:
-                the_tgt=self.pch_set[lirc[0]]
+            for li in labels:
+                the_tgt=self.pch_set[li]
+                index=random.random()
+                rowpos=random.uniform(0,1)
+                colpos=random.uniform(0,1)
                 prev=img.copy()
-                idx=the_tgt.num_patches-1-int(lirc[1]*(self.cfg.train_vali_split*the_tgt.num_patches)) if is_validation else\
-                    int(lirc[1]*((1.0-self.cfg.train_vali_split)*the_tgt.num_patches)) # index of patch to apply
+                idx=the_tgt.num_patches-1-int(index*(self.cfg.train_vali_split*the_tgt.num_patches)) if is_validation else\
+                    int(index*((1.0-self.cfg.train_vali_split)*the_tgt.num_patches)) # index of patch to apply
                 patch=the_tgt.view_coord[idx]
                 p_row, p_col, p_ave, p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
-                lri=int(self.cfg.row_in*lirc[2])-p_row//2  # large row in/start
-                lci=int(self.cfg.col_in*lirc[3])-p_col//2  # large col in/start
+                lri=int(self.cfg.row_in*rowpos)-p_row//2  # large row in/start
+                lci=int(self.cfg.col_in*colpos)-p_col//2  # large col in/start
                 lro, lco=lri+p_row, lci+p_col  # large row/col out/end
                 pri=0 if lri>=0 else -lri; lri=max(0, lri)
                 pci=0 if lci>=0 else -lci; lci=max(0, lci)
@@ -457,14 +462,15 @@ class ImagePatchPair:
                     # cv2.imwrite('post.jpg',pat)
                     img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco].astype(np.uint8))
                     # img[lri:lro, lci:lco]-=pat[pri:pro, pci:pco].astype(np.uint8) # subtract
-                    # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if lirc[1]>self.cfg.train_vali_split else '^'))),
+                    # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if index>self.cfg.train_vali_split else '^'))),
                     #             smooth_brighten(prev-img))
-                    cv2.imwrite(os.path.join(self.wd, self.dir_out_ex('-'.join([self.origin]+self.targets)),vc.file_name_insert(self.cfg,'_%d^%d^'%(idx,lirc[0]+1))), #+('' if lirc[1]>self.cfg.train_vali_split else '^'))
+                    cv2.imwrite(os.path.join(self.wd, self.dir_out_ex('-'.join([self.origin]+self.targets)),vc.file_name_insert(self.cfg,'_%d^%d^'%(idx,li+1))), #+('' if index>self.cfg.train_vali_split else '^'))
                                 smooth_brighten(prev-img))
                     # lr=(lri+lro)//2
                     # lc=(lci+lco)//2
                     # msk[lr:lr+1,lc:lc+1,1]=255
-                    inserted[lirc[0]]+=1
+                    inserted[li]+=1
+                    if inserted[li]>max_instance: break;
             print("inserted %s for %s"%(inserted,vc.file_name))
             cv2.imwrite(os.path.join(self.wd, self.dir_in_ex('+'.join([self.origin]+self.targets)), vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
 
