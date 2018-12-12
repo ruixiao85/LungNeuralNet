@@ -4,17 +4,17 @@ import numpy as np
 
 
 def generate_colors(n, shuffle=False):
-    hsv = [(i / n, 0.9, 0.7) for i in range(n)]
+    hsv = [(i / n, 0.9, 0.9) for i in range(n)]
     colors = [tuple((255*np.array(col)).astype(np.uint8)) for col in map(lambda c: colorsys.hsv_to_rgb(*c), hsv)]
     if shuffle:
         random.shuffle(colors)
     return colors
 
 class Config:
-    def __init__(self, dim_in=None, dim_out=None,
+    def __init__(self,dim_in=None,dim_out=None,
                  num_targets=None,image_format=None,image_resize=None,image_padding=None,mask_color=None,
-                 feed=None, act=None, out=None,batch_size=None,separate=None,coverage_train=None,coverage_predict=None,out_image=None,
-                 call_hardness=None,overlay_color=None,overlay_opacity=None,overlay_text_bw=None,predict_size=None,
+                 feed=None,act=None,out=None,batch_size=None,separate=None,coverage_train=None,coverage_predict=None,out_image=None,
+                 call_hardness=None,overlay_color=None,overlay_opacity=None,overlay_textshape_bwif=None,predict_size=None,
                  train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
                  train_vali_split=None,train_aug=None,train_continue=None,train_shuffle=None,indicator=None,indicator_trend=None):
         self.dim_in=dim_in or (512,512,3)
@@ -38,15 +38,15 @@ class Config:
             generate_colors(overlay_color) if isinstance(overlay_color, int) else \
                 generate_colors(self.num_targets)
         self.overlay_opacity=overlay_opacity if isinstance(overlay_color, list) else [0.3]*self.num_targets
-        self.overlay_text_bw=overlay_text_bw or (True,False) # default to draw black but not white
+        self.overlay_textshape_bwif=overlay_textshape_bwif or (True,False,False,False) # draw black_legend, white_legend, color_instance_text, fill_shape
         self.predict_size=predict_size or num_targets
         self.batch_size=batch_size or 1
         self.train_rep=train_rep or 2  # times to repeat during training
         self.train_epoch=train_epoch or 20  # max epoches during training
-        self.train_step=train_step or 128
-        self.train_vali_step=train_vali_step or 64
+        self.train_step=train_step or 1280
+        self.train_vali_step=train_vali_step or 640
         self.train_vali_split=train_vali_split or 0.33
-        self.train_aug=train_aug or 4  # only to training set, not validation or prediction mode, applies to image-mask set and image+patch
+        self.train_aug=train_aug or 2  # only to training set, not validation or prediction mode, applies to image-mask set and image+patch
         self.train_shuffle=train_shuffle if train_shuffle is not None else True  # only to training set, not validation or prediction mode
         self.train_continue=train_continue if train_continue is not None else True  # continue training by loading previous weights
         self.indicator=indicator or 'val_acc'

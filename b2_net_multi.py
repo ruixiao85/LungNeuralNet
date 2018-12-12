@@ -471,8 +471,12 @@ class ImagePatchPair:
                     # msk[lr:lr+1,lc:lc+1,1]=255
                     inserted[li]+=1
                     if inserted[li]>max_instance: break;
-            print("inserted %s for %s"%(inserted,vc.file_name))
-            cv2.imwrite(os.path.join(self.wd, self.dir_in_ex('+'.join([self.origin]+self.targets)), vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+            if sum(inserted)>0:
+                print("inserted %s for %s"%(inserted,vc.file_name))
+                cv2.imwrite(os.path.join(self.wd, self.dir_in_ex('+'.join([self.origin]+self.targets)), vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+            else:
+                print("unable to insert for %s"%vc.file_name)
+
 
     def train_generator(self):
         yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets, self.tr_list), ImagePatchGenerator(self, 0, self.targets, self.val_list),

@@ -138,8 +138,9 @@ def draw_detection(cfg,image,class_names,box,cls,scr,msk,sel=None):
     font="arial.ttf"  #times.ttf
     ori_row,ori_col,_=image.shape
     total_pixels=ori_row*ori_col
-    size=max(10, int(ori_col/50)) # fontsize at least 12
-    lwd=max(2, size//15) # line width
+    size=max(10, ori_col//64) # fontsize at least 10
+    lwd=max(2, size//16) # line width
+    black, white, instance, fill=cfg.overlay_textshape_bwif
     blend=image.copy()
     res=np.zeros(cfg.num_targets*3,dtype=np.float32) # 1count 1area 1pct  2count 2area 2pct
     for i in sel:
@@ -151,21 +152,21 @@ def draw_detection(cfg,image,class_names,box,cls,scr,msk,sel=None):
         mask[ri:ro,ci:co]=patch  # range(0,1) -> (y2-y1,x2-x1))
         area=np.sum(patch,keepdims=False)
         for c in range(3):  # mask per channel
-            # blend[:,:,c]=np.where(mask>0,blend[:,:,c]*(1-cfg.overlay_opacity[d])+cfg.overlay_color[d][c]*cfg.overlay_opacity[d],blend[:,:,c]) # overlay
-            blend[:,:,c]=np.where(cv2.morphologyEx(mask,cv2.MORPH_GRADIENT,np.ones((lwd,lwd),np.uint8))>0, cfg.overlay_color[d][c], blend[:,:,c]) # opaque outline
+            blend[:,:,c]=np.where(mask>0,blend[:,:,c]*(1-cfg.overlay_opacity[d])+cfg.overlay_color[d][c]*cfg.overlay_opacity[d],blend[:,:,c]) if fill \
+            else np.where(cv2.morphologyEx(mask,cv2.MORPH_GRADIENT,np.ones((lwd,lwd),np.uint8))>0, cfg.overlay_color[d][c], blend[:,:,c])
         res[d*3]+=1; res[d*3+1]+=area
         # print(','.join([box[i],cls[i],scr[i],np.sum(patch,keepdims=False)]))
     origin=Image.fromarray(blend.astype(np.uint8),'RGB')  # L RGB
     draw=ImageDraw.Draw(origin)
-    for i in sel:
-        d=cls[i]-1
-        y1,x1,y2,x2=box[i]
-        # draw.rectangle((x1,y1,x2,y2),fill=None,outline=cfg.overlay_color[d]) # bbox
-        draw.text((x1,y1-size//2),'%s %d'%(class_names[d],floor(10.0*scr[i])),cfg.overlay_color[d],ImageFont.truetype(font,size)) # class score
+    if instance:
+        for i in sel:
+            d=cls[i]-1
+            y1,x1,y2,x2=box[i]
+            # draw.rectangle((x1,y1,x2,y2),fill=None,outline=cfg.overlay_color[d]) # bbox
+            draw.text((x1,y1-size//2),'%s %d'%(class_names[d],floor(10.0*scr[i])),cfg.overlay_color[d],ImageFont.truetype(font,size)) # class score
     txtlist=[]
     size=int(size*1.8) # increase size
     offset=max(1,size//12) # position offset for light dark text
-    black, white=cfg.overlay_text_bw
     if black or white:
         for i in range(cfg.num_targets):
             if white: draw.text((0,0),'\n'*i+class_names[i],(210,210,210),ImageFont.truetype(font,size))
