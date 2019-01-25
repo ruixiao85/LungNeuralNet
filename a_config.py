@@ -38,7 +38,7 @@ class Config:
             generate_colors(overlay_color) if isinstance(overlay_color, int) else \
                 generate_colors(self.num_targets)
         self.overlay_opacity=overlay_opacity if isinstance(overlay_color, list) else [0.3]*self.num_targets
-        self.overlay_textshape_bwif=overlay_textshape_bwif or (True,False,False,False) # draw black_legend, white_legend, color_instance_text, fill_shape
+        self.overlay_textshape_bwif=overlay_textshape_bwif or (True,True,False,False) # draw black_legend, white_legend, color_instance_text, fill_shape
         self.predict_size=predict_size or num_targets
         self.batch_size=batch_size or 1
         self.train_rep=train_rep or 2  # times to repeat during training
@@ -90,7 +90,7 @@ class Config:
     def find_best_models(self, pattern, allow_cache=False):
         import glob,os
         pattern=pattern.replace('_%.1f_'%self.image_resize, '_*_') # also consider other models trained on different scales
-        print("Scanning for files matching %s"%pattern)
+        print("Scanning for files matching %s in %s"%(pattern,os.getcwd()))
         if allow_cache:
             if not hasattr(self,"_model_cache"):
                 self._model_cache={}

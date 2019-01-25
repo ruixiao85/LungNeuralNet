@@ -109,7 +109,7 @@ def compare_call(cfg,img,msk,file=None):  # compare input and output with same d
     return rev_scale(msk,cfg.feed), res
 
 def draw_text(cfg,img,text_list,width):
-    black, white=cfg.overlay_text_bw
+    black,white,_,_ =cfg.overlay_textshape_bwif
     if black or white:
         font="arial.ttf"  #times.ttf
         size=max(10,int(width/50)) # fontsize at least 12
@@ -139,7 +139,7 @@ def draw_detection(cfg,image,class_names,box,cls,scr,msk,sel=None):
     ori_row,ori_col,_=image.shape
     total_pixels=ori_row*ori_col
     size=max(10, ori_col//64) # fontsize at least 10
-    lwd=max(2, size//16) # line width
+    lwd=max(3, size//12) # line width
     black, white, instance, fill=cfg.overlay_textshape_bwif
     blend=image.copy()
     res=np.zeros(cfg.num_targets*3,dtype=np.float32) # 1count 1area 1pct  2count 2area 2pct

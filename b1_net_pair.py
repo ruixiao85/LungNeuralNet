@@ -44,7 +44,7 @@ class BaseNetU(Config):
         self.optimizer=optimizer or Adam(self.learning_rate)
         self.indicator=indicator if indicator is not None else ('val_dice' if self.dep_out==1 else 'val_acc')
         self.indicator_trend=indicator_trend or 'max'
-        from postprocess import single_call
+        from postprocess import single_call,multi_call
         self.predict_proc=predict_proc if predict_proc is not None else single_call
         self.net=None # abstract -> instatiate in subclass
         self.filename=filename
@@ -136,7 +136,7 @@ class BaseNetU(Config):
     def predict(self,pair,pred_dir):
         self.build_net()
         # if hasattr(self, "_model_cache"): self._model_cache={}
-        xls_file="Result_%s_%s.xlsx"%(pred_dir,repr(self))
+        xls_file="Result_%s_%s.xlsx"%(pred_dir.replace(os.sep,'_'),repr(self))
         sum_i,sum_g=self.row_out*self.col_out,None
         msks,mask_wt,r_i,r_g,ra,ca=None,None,None,None,None,None
         mrg_in,mrg_out,mrg_out_wt,merge_dir=None,None,None,None
