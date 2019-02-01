@@ -14,7 +14,7 @@ class Config:
     def __init__(self,dim_in=None,dim_out=None,
                  num_targets=None,image_format=None,image_resize=None,image_padding=None,mask_color=None,
                  feed=None,act=None,out=None,batch_size=None,separate=None,coverage_train=None,coverage_predict=None,out_image=None,
-                 call_hardness=None,overlay_color=None,overlay_opacity=None,overlay_textshape_bwif=None,predict_size=None,
+                 call_hardness=None,overlay_color=None,overlay_opacity=None,overlay_textshape_bwif=None,predict_size=None,save_ind_raw=None,
                  train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
                  train_vali_split=None,train_aug=None,train_continue=None,train_shuffle=None,indicator=None,indicator_trend=None):
         self.dim_in=dim_in or (512,512,3)
@@ -25,13 +25,15 @@ class Config:
         self.image_format=image_format or "*.jpg"
         self.image_resize=image_resize or 1.0  # default 1.0, reduce size <=1.0
         self.image_padding=image_padding or 1.0  # default 1.0, padding proportionally >=1.0
+        # self.image_resize=image_resize if isinstance(image_resize, list) else [1.0]*self.num_targets  # default 1.0, reduce size <=1.0
+        # self.image_padding=image_padding if isinstance(image_padding, list) else [1.0]*self.num_targets  # default 1.0, padding proportionally >=1.0
         self.mask_color=mask_color or "white"  # green/white
         self.feed=feed or 'tanh'
         self.act=act or 'elu'
         self.out=out or ('sigmoid' if self.dep_out==1 else 'softmax')
         self.out_image=out_image if out_image is not None else False # output type: True=image False=mask
         self.separate=separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
-        self.coverage_train=coverage_train or 2.0
+        self.coverage_train=coverage_train or 3.0
         self.coverage_predict=coverage_predict or 3.0
         self.call_hardness=call_hardness or 1.0  # 0-smooth 1-hard binary call
         self.overlay_color=overlay_color if isinstance(overlay_color, list) else \
@@ -40,8 +42,9 @@ class Config:
         self.overlay_opacity=overlay_opacity if isinstance(overlay_color, list) else [0.3]*self.num_targets
         self.overlay_textshape_bwif=overlay_textshape_bwif or (True,True,False,False) # draw black_legend, white_legend, color_instance_text, fill_shape
         self.predict_size=predict_size or num_targets
+        self.save_ind_raw=save_ind_raw if isinstance(save_ind_raw,tuple) else (False,True)
         self.batch_size=batch_size or 1
-        self.train_rep=train_rep or 2  # times to repeat during training
+        self.train_rep=train_rep or 1  # times to repeat during training
         self.train_epoch=train_epoch or 20  # max epoches during training
         self.train_step=train_step or 1280
         self.train_vali_step=train_vali_step or 640

@@ -20,7 +20,7 @@ from image_set import PatchSet,ImageSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten,draw_detection
 from mrcnn import utils
-from preprocess import prep_scale,augment_image_set,augment_patch
+from preprocess import prep_scale,augment_image_set,augment_patch,read_resize_padding
 
 
 class BaseNetM(Config):
@@ -323,18 +323,18 @@ class BaseNetM(Config):
         self.build_net(is_train=False)
         # if hasattr(self, "_model_cache"): self._model_cache={}
         xls_file="Result_%s_%s.xlsx"%(pred_dir,repr(self))
-        mrg_in,mrg_out,mrg_out_wt,merge_dir=None,None,None,None
+        mrg_in,merge_dir=None,None
         batch=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
         dir_ex=pair.dir_out_ex()
         dir_cfg_append=str(self) if dir_ex is None else dir_ex+'_'+str(self)
+        save_ind,save_raw=pair.cfg.save_ind_raw
         res_ind,res_grp=None,None
-        save_ind_image=False
         for dir_out,tgt_list in pair.predict_generator_note():
             res_i,res_g=None,None
             print('Load model and predict to [%s]...'%dir_out)
             export_name=dir_out+'_'+dir_cfg_append
             target_dir=os.path.join(pair.wd,export_name)
-            if save_ind_image or not self.separate:  # skip saving individual images
+            if save_ind or not self.separate:  # skip saving individual images
                 mkdir_ifexist(target_dir)
             if self.separate:
                 merge_dir=os.path.join(pair.wd,dir_out+'+'+dir_cfg_append)  # group
@@ -356,7 +356,7 @@ class BaseNetM(Config):
                     origin=view[i].get_image(os.path.join(pair.wd,pair.dir_in_ex(pair.origin)),self)
                     blend, r_i=self.predict_proc(self,origin,pair.targets,final_rois,final_class_ids,final_scores,final_masks)
                     res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate([res_i,r_i[np.newaxis,...]],axis=0)
-                    if save_ind_image or not self.separate:
+                    if save_ind or not self.separate:
                         # cv2.imwrite(os.path.join(target_dir,view[i].file_name),origin)
                         cv2.imwrite(os.path.join(target_dir,view[i].file_name),blend)
                     if self.separate:
@@ -372,6 +372,9 @@ class BaseNetM(Config):
                                 view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
                         mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
                 sel_index=utils.non_max_suppression(grp_box,grp_scr,threshold=self.detection_nms_threshold) if grp_box.shape[0]>0 else None
+                if save_raw:  # high-res raw group image
+                    mrg_in=read_resize_padding(os.path.join(pair.wd,pair.origin,view[0].image_name),_resize=1.0,_padding=1.0)
+                    grp_box/=pair.cfg.image_resize
                 # cv2.imwrite(os.path.join(merge_dir,view[0].image_name),mrg_in)
                 blend,r_g=self.predict_proc(self,mrg_in,pair.targets,grp_box,grp_cls,grp_scr,grp_msk,sel_index)
                 res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))

@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 
 from osio import mkdir_ifexist,to_excel_sheet
-from preprocess import augment_image_pair,prep_scale
+from preprocess import augment_image_pair,prep_scale,read_resize_padding
 from postprocess import g_kern_rect,draw_text
 
 class BaseNetU(Config):
@@ -143,14 +143,14 @@ class BaseNetU(Config):
         batch=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
         dir_ex=pair.dir_out_ex()
         dir_cfg_append=str(self) if dir_ex is None else dir_ex+'_'+str(self)
+        save_ind,save_raw=pair.cfg.save_ind_raw
         res_ind,res_grp=None,None
-        save_ind_image=False
         for dir_out,tgt_list in pair.predict_generator_note():
             res_i,res_g=None,None
             print('Load model and predict to [%s]...'%dir_out)
             export_name=dir_out+'_'+dir_cfg_append
             target_dir=os.path.join(pair.wd,export_name)
-            if save_ind_image or not self.separate:  # skip saving individual images
+            if save_ind or not self.separate:  # skip saving individual images
                 mkdir_ifexist(target_dir)
             if self.separate:
                 merge_dir=os.path.join(pair.wd,dir_out+'+'+dir_cfg_append)  # group
@@ -189,7 +189,7 @@ class BaseNetU(Config):
                     for d in range(len(tgt_list)):
                         text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_i[d][1],r_i[d][0],sum_i,100.*r_i[d][0]/sum_i)
                         print(text); text_list.append(text)
-                    if save_ind_image or not self.separate:  # skip saving individual images
+                    if save_ind or not self.separate:  # skip saving individual images
                         blendtext=draw_text(self,blend,text_list,self.col_out)  # RGB:3x8-bit dark text
                         cv2.imwrite(ind_file,blendtext)
                     res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i,r_i[np.newaxis,...]))
@@ -207,13 +207,18 @@ class BaseNetU(Config):
                     print(grp); text_list=[grp]
                     merge_name=view[0].image_name
                     merge_file=os.path.join(merge_dir,merge_name)
+                    if save_raw: # high-res raw group image
+                        mrg_in=read_resize_padding(os.path.join(pair.wd,pair.origin,view[0].image_name),_resize=1.0,_padding=1.0)
+                        mrg_r, mrg_c, _=mrg_in.shape
+                        mrg_out=cv2.resize(mrg_out, (mrg_c,mrg_r))
+                        sum_g=mrg_r*mrg_c
                     blend,r_g=self.predict_proc(self,mrg_in,mrg_out,file=None) # merge_file.replace(self.image_format[1:],'')
                     for d in range(len(tgt_list)):
                         text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_g[d][1],r_g[d][0],sum_g,100.*r_g[d][0]/sum_g)
                         print(text); text_list.append(text)
                     blendtext=draw_text(self,blend,text_list,view[0].ori_col)  # RGB: 3x8-bit dark text
-                    cv2.imwrite(merge_file,blendtext)  # [...,np.newaxis]
                     res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
+                    cv2.imwrite(merge_file,blendtext)  # [...,np.newaxis]
             res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
             res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
         for i,note in [(0,'_area'),(1,'_count')]:
