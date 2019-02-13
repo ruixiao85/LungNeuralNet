@@ -37,7 +37,7 @@ class BaseNetU(Config):
         custom_function_keras()  # leakyrelu, swish
         self.loss=loss or (
             loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy')  # 'binary_crossentropy'
-        self.metrics=metrics or ([jac, dice, dice67, dice33] if self.dep_out==1 else [acc, acc67, acc33])
+        self.metrics=metrics or ([jac, dice] if self.dep_out==1 else [acc]) # dice67,dice33  acc67,acc33
         self.learning_rate=learning_rate or 1e-5
         self.learning_continue=learning_continue or 1e-1
         from keras.optimizers import Adam
@@ -49,11 +49,11 @@ class BaseNetU(Config):
         self.net=None # abstract -> instatiate in subclass
         self.filename=filename
 
-    @classmethod
-    def from_json(cls, filename):  # load model from json
-        my_net=cls(filename=filename)
+    def load_json(self,filename=None):  # load model from json
+        if filename is not None:
+            self.filename=filename
         with open(filename+".json", 'r') as json_file:
-            my_net.net=model_from_json(json_file.read())
+            self.net=model_from_json(json_file.read())
 
     def save_net(self):
         json_net=(self.filename if self.filename is not None else str(self)) + ".json"
@@ -91,14 +91,14 @@ class BaseNetU(Config):
         self.build_net()
         self.compile_net() # recompile to set optimizers,..
         for tr,val,dir_out in pair.train_generator():
-            export_name=dir_out+'_'+str(self)
-            # weight_file=export_name+".h5"
-            weight_file="%s^{%s:.2f}^.h5"%(export_name,self.indicator) # e.g., {epoch:02d}-{val_acc:.2f}
+            self.filename=dir_out+'_'+str(self)
+            # weight_file=self.filename+".h5"
+            weight_file="%s^{%s:.2f}^.h5"%(self.filename,self.indicator) # e.g., {epoch:02d}-{val_acc:.2f}
             print('Fitting neural net...')
             for r in range(self.train_rep):
                 best_val,learning_rate=None,self.learning_rate # store last best, init lr and reduce if continuing
                 if self.train_continue:
-                    last_saves=self.find_best_models(export_name+'^*^.h5')
+                    last_saves=self.find_best_models(self.filename+'^*^.h5')
                     if isinstance(last_saves,list) and len(last_saves)>0:
                         last_best=last_saves[0]
                         best_val=float(last_best.split('^')[1])
@@ -108,7 +108,9 @@ class BaseNetU(Config):
                         self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
                         learning_rate*=self.learning_continue
                         print('Lowered learning rate (%f -> %f) for the continued training'%(self.learning_rate,learning_rate))
-                print("Training %d/%d for %s"%(r+1,self.train_rep,export_name))
+                    else:
+                        raise Exception("No previously trained network found!")
+                print("Training %d/%d for %s"%(r+1,self.train_rep,self.filename))
                 tr.on_epoch_end()
                 val.on_epoch_end()
                 from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau,LearningRateScheduler
@@ -123,15 +125,17 @@ class BaseNetU(Config):
                        EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=1,verbose=1),
                        LearningRateScheduler(lambda x: learning_rate*(0.1**(0.2*x)),verbose=1),
                        # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
-                       # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
+                       # TensorBoardTrainVal(log_dir=os.path.join("log", self.filename), write_graph=True, write_grads=False, write_images=True),
                    ]).history
-                if not os.path.exists(export_name+".txt"):
-                    with open(export_name+".txt","w") as net_summary:
+                if not os.path.exists(self.filename+".txt"):
+                    with open(self.filename+".txt","w") as net_summary:
                         self.net.summary(print_fn=lambda x:net_summary.write(x+'\n'))
+                if not os.path.exists(self.filename+".json"):
+                    self.save_net()
                 df=pd.DataFrame(history)
                 df['time']=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                 df['repeat']=r+1
-                df.to_csv(export_name+".csv",mode="a",header=(not os.path.exists(export_name+".csv")))
+                df.to_csv(self.filename+".csv",mode="a",header=(not os.path.exists(self.filename+".csv")))
 
     def predict(self,pair,pred_dir):
         self.build_net()
@@ -163,8 +167,10 @@ class BaseNetU(Config):
                     o=min(i+self.dep_out,nt)
                     tgt_sub=tgt_list[i:o]
                     prd,tgt_name=pair.predict_generator_partial(tgt_sub,view)
-                    # weight_file=tgt_name+'_'+dir_cfg_append+'.h5'
                     weight_file=self.find_best_models(tgt_name+'_'+dir_cfg_append+'^*^.h5',allow_cache=True)[0]
+                    weight_file_overall=self.find_best_models(tgt_name+'_*^.h5',allow_cache=True)[0]
+                    if weight_file_overall!=weight_file: # load best regardless of archtecture
+                        self.load_json(weight_file_overall)
                     print(weight_file)
                     self.net.load_weights(weight_file)  # weights only
                     # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
