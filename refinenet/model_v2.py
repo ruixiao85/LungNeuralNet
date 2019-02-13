@@ -6,7 +6,7 @@ https://github.com/eragonruan/refinenet-image-segmentation
 
 import tensorflow as tf
 from tensorflow.contrib import slim
-from refinenet import resnet_v1
+from c1_refinenet import resnet_v1
 FLAGS = tf.app.flags.FLAGS
 
 def unpool(inputs,scale):

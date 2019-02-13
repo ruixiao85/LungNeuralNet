@@ -9,7 +9,8 @@ from module import cvac, ca3, ca33, cb3, cba3, dmp, uu, ct, sk
 
 class NetUBack(BaseNetU):
     # also base class for U-shaped networks
-    def __init__(self, dim_in=None, dim_out=None, backbone=None, filters=None, poolings=None, preproc=None, downconv=None,downjoin=None,downsamp=None,downmerge=None,downproc=None,
+    def __init__(self, dim_in=None, dim_out=None, backbone=None, freeze_bn=None, filters=None, poolings=None,
+                 preproc=None, downconv=None,downjoin=None,downsamp=None,downmerge=None,downproc=None,
                  upconv=None, upjoin=None, upsamp=None, upproc=None, postproc=None, **kwargs
         ):
         super(NetUBack,self).__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768, 768, 1), **kwargs)
@@ -17,6 +18,7 @@ class NetUBack(BaseNetU):
         # UNET same padding 576->288->144->72->36->72->144->288->576 take central 68% =392
         from c2_backbones import v16
         self.backbone=backbone or v16
+        self.freeze_bn=freeze_bn or False
         self.fs=filters or [64, 128, 256, 512, 512, 512]
         self.ps=poolings or [2]*len(self.fs)
         self.upconv=upconv or ca3
@@ -47,6 +49,14 @@ class NetUBack(BaseNetU):
         locals()['post0']=self.postproc(locals()['uproc0'],'post0',0,self.fs[0],self.act)
         locals()['out0']=cvac(locals()['post0'], 'out0', 0, self.dep_out, self.out, size=1)
         self.net=Model(locals()['in0'], locals()['out0'])
+
+        if self.freeze_bn:
+            print("Freeze All Batch Normalization Layers",sep=" ")
+            for layer in self.net.layers:
+                class_name=layer.__class__.__name__
+                if class_name=='BatchNormalization':
+                    layer.trainable=False
+                    print('+',sep="")
 
     def __str__(self):
         return '_'.join([
@@ -82,10 +92,6 @@ class NetU_Vgg16(NetUBack):
 class NetU_Vgg19(NetUBack):
     def __init__(self,**kwargs):
         super(NetU_Vgg19,self).__init__(backbone=v19,**kwargs)
-
-class NetU_Res_50(NetUBack):
-    def __init__(self,**kwargs):
-        super(NetU_Res_50,self).__init__(backbone=res_50,**kwargs)
 
 class NetU_Res50(NetUBack):
     def __init__(self,**kwargs):

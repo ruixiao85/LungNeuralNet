@@ -130,29 +130,3 @@ class SegNetS(UNet):
                          preproc=cba3, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=cba3,
                          upconv=cb3, upjoin=sk, upsamp=uu, upmerge=sk, upproc=cb3, postproc=sk, **kwargs)
 
-
-class ResN131(UNet):
-    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super(ResN131,self).__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768,768, 1),
-                         filters=filters or [64, 128, 256, 512], poolings=poolings or [2, 2, 2, 2],
-                         preproc=rn131r, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=rn131r,
-                         upconv=rn131r, upjoin=sk, upsamp=uu, upmerge=sk, upproc=rn131r, postproc=sk, **kwargs)
-class ResBN131(UNet):
-    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super(ResBN131,self).__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768,768, 1),
-                         filters=filters or [64, 128, 256, 512], poolings=poolings or [2, 2, 2, 2],
-                         preproc=rn131nr, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=rn131nr,
-                         upconv=rn131nr, upjoin=sk, upsamp=uu, upmerge=sk, upproc=rn131nr, postproc=sk, **kwargs)
-
-class ResN131S(UNet): # ResNet 1296x1296
-    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super(ResN131S,self).__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
-                         filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
-                         preproc=rn131r, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=rn131r,
-                         upconv=rn131r, upjoin=sk, upsamp=uu, upmerge=sk, upproc=rn131r, postproc=sk, **kwargs)
-class ResBN131S(UNet): # ResNet 1296x1296
-    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, **kwargs):
-        super(ResBN131S,self).__init__(dim_in=dim_in or (1296, 1296, 3), dim_out=dim_out or (1296, 1296, 1),
-                         filters=filters or [64, 96, 128, 196, 256, 256, 256, 256, 256], poolings=poolings or [2, 2, 2, 2, 3, 3, 3, 3, 3],
-                         preproc=rn131nr, downconv=sk, downjoin=sk, downsamp=dmp, downmerge=sk, downproc=rn131nr,
-                         upconv=rn131nr, upjoin=sk, upsamp=uu, upmerge=sk, upproc=rn131nr, postproc=sk, **kwargs)

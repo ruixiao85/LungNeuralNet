@@ -33,13 +33,14 @@ def cvacdp(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, d
 def cvbn(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilation=1):
     x=cv(in_layer, name+'_cv', idx, fs, act, size, stride, dilation)
     return BatchNormalization(name=name)(x)
+def bnac(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilation=1):
+    x=BatchNormalization(name=name+'_bn')(in_layer)
+    return Activation(activation=act, name=name)(x)
 def cvbnac(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilation=1):
     x=cv(in_layer, name+'_cv', idx, fs, act, size, stride, dilation)
-    x=BatchNormalization(name=name+'_bn')(x)
-    return Activation(activation=act, name=name)(x)
+    return bnac(x,name,idx,fs,act,size,stride,dilation)
 def bnaccv(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilation=1):
-    x=BatchNormalization(name=name+'_bn')(in_layer)
-    x=Activation(activation=act, name=name+'_ac')(x)
+    x=bnac(in_layer,name+'_ba',idx,fs,act,size,stride,dilation)
     return cv(x, name, idx, fs, act, size, stride, dilation)
 
 def tr(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilation=1):
@@ -160,6 +161,41 @@ def ca331(in_layer, name=None, idx=None, fs=None, act=None):
     x=cvac(x, name, idx, fs, act, size=1)
     return x
 
+def aca3(in_layer, name=None, idx=None, fs=None, act=None):
+    x=ac(in_layer, name+"_a", idx, fs, act, size=3)
+    x=cvac(x, name, idx, fs, act, size=3)
+    return x
+def aca33(in_layer, name=None, idx=None, fs=None, act=None):
+    x=ac(in_layer, name+"_a", idx, fs, act, size=3)
+    x=cvac(x, name+"_1", idx, fs, act, size=3)
+    x=cvac(x, name, idx, fs, act, size=3)
+    return x
+def baca3(in_layer, name=None, idx=None, fs=None, act=None):
+    x=bnac(in_layer, name+"_a", idx, fs, act, size=3)
+    x=cvac(x, name, idx, fs, act, size=3)
+    return x
+def baca33(in_layer, name=None, idx=None, fs=None, act=None):
+    x=bnac(in_layer, name+"_a", idx, fs, act, size=3)
+    x=cvac(x, name+"_1", idx, fs, act, size=3)
+    x=cvac(x, name, idx, fs, act, size=3)
+    return x
+
+
+def ac3(in_layer, name=None, idx=None, fs=None, act=None):
+    x=accv(in_layer, name, idx, fs, act, size=3)
+    return x
+def ac33(in_layer, name=None, idx=None, fs=None, act=None):
+    x=accv(in_layer, name+'_1', idx, fs, act, size=3)
+    x=accv(x, name, idx, fs, act, size=3)
+    return x
+
+def bac3(in_layer, name=None, idx=None, fs=None, act=None):
+    x=bnaccv(in_layer, name, idx, fs, act, size=3)
+    return x
+def bac33(in_layer, name=None, idx=None, fs=None, act=None):
+    x=bnaccv(in_layer, name+'_1', idx, fs, act, size=3)
+    x=bnaccv(x, name, idx, fs, act, size=3)
+    return x
 
 
 # DenseNet module #

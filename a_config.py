@@ -44,7 +44,7 @@ class Config:
         self.predict_size=predict_size or num_targets
         self.save_ind_raw=save_ind_raw if isinstance(save_ind_raw,tuple) else (False,True)
         self.batch_size=batch_size or 1
-        self.train_rep=train_rep or 1  # times to repeat during training
+        self.train_rep=train_rep or 2  # times to repeat during training
         self.train_epoch=train_epoch or 20  # max epoches during training
         self.train_step=train_step or 1280
         self.train_vali_step=train_vali_step or 640

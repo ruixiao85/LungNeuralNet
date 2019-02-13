@@ -38,10 +38,10 @@ class BaseNetU(Config):
         self.loss=loss or (
             loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy')  # 'binary_crossentropy'
         self.metrics=metrics or ([jac, dice, dice67, dice33] if self.dep_out==1 else [acc, acc67, acc33])
-        self.learning_rate=learning_rate or 1e-4
+        self.learning_rate=learning_rate or 1e-5
         self.learning_continue=learning_continue or 1e-1
         from keras.optimizers import Adam
-        self.optimizer=optimizer or Adam(self.learning_rate)
+        self.optimizer=optimizer or Adam
         self.indicator=indicator if indicator is not None else ('val_dice' if self.dep_out==1 else 'val_acc')
         self.indicator_trend=indicator_trend or 'max'
         from postprocess import single_call,multi_call
@@ -64,7 +64,7 @@ class BaseNetU(Config):
         pass
 
     def compile_net(self,save_net=False,print_summary=True):
-        self.net.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
+        self.net.compile(optimizer=self.optimizer(self.learning_rate), loss=self.loss, metrics=self.metrics)
         print("Model compiled")
         if save_net:
             self.save_net()
@@ -120,7 +120,7 @@ class BaseNetU(Config):
                    callbacks=[
                        ModelCheckpointCustom(weight_file,monitor=self.indicator,mode=self.indicator_trend,
                                              best=best_val,save_weights_only=False,save_best_only=True,verbose=1),
-                       EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=3,verbose=1),
+                       EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=1,verbose=1),
                        LearningRateScheduler(lambda x: learning_rate*(0.1**(0.2*x)),verbose=1),
                        # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
                        # TensorBoardTrainVal(log_dir=os.path.join("log", export_name), write_graph=True, write_grads=False, write_images=True),
