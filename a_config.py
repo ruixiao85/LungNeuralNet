@@ -15,7 +15,7 @@ class Config:
                  num_targets=None,image_format=None,image_resize=None,image_padding=None,mask_color=None,
                  feed=None,act=None,out=None,batch_size=None,separate=None,coverage_train=None,coverage_predict=None,out_image=None,
                  call_hardness=None,overlay_color=None,overlay_opacity=None,overlay_textshape_bwif=None,predict_size=None,save_ind_raw=None,
-                 train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
+                 ntop=None,train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
                  train_vali_split=None,train_aug=None,train_continue=None,train_shuffle=None,indicator=None,indicator_trend=None):
         self.dim_in=dim_in or (512,512,3)
         self.row_in, self.col_in, self.dep_in=self.dim_in
@@ -43,6 +43,7 @@ class Config:
         self.overlay_textshape_bwif=overlay_textshape_bwif or (True,True,False,False) # draw black_legend, white_legend, color_instance_text, fill_shape
         self.predict_size=predict_size or num_targets
         self.save_ind_raw=save_ind_raw if isinstance(save_ind_raw,tuple) else (False,True)
+        self.ntop=ntop if ntop is not None else 1 # numbers of top networks to keep, delete the networks that are less than ideal
         self.batch_size=batch_size or 1
         self.train_rep=train_rep or 2  # times to repeat during training
         self.train_epoch=train_epoch or 20  # max epoches during training
@@ -92,7 +93,7 @@ class Config:
 
     def find_best_models(self, pattern, allow_cache=False):
         import glob,os
-        pattern=pattern.replace('_%.1f_'%self.image_resize, '_*_') # also consider other models trained on different scales
+        # pattern=pattern.replace('_%.1f_'%self.image_resize, '_*_') # also consider other models trained on different scales
         print("Scanning for files matching %s in %s"%(pattern,os.getcwd()))
         if allow_cache:
             if not hasattr(self,"_model_cache"):
@@ -104,10 +105,9 @@ class Config:
             files=sorted(glob.glob(pattern), key=lambda t: t.split('^')[1], reverse=self.indicator_trend=='max')
             nfiles=len(files)
             if nfiles>0:
-                ntop=2
-                print('Found %d previous models, keeping the top %d (%s):'%(nfiles,ntop,self.indicator_trend))
+                print('Found %d previous models, keeping the top %d (%s):'%(nfiles,self.ntop,self.indicator_trend))
                 for l in range(nfiles):
-                    if l<ntop:
+                    if l<self.ntop:
                         print(('* 'if l==0 else '  '),end='')
                         print('%d. %s kept'%(l+1,files[l]))
                     else:
