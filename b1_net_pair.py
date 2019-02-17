@@ -102,14 +102,12 @@ class BaseNetU(Config):
                     if isinstance(last_saves,list) and len(last_saves)>0:
                         last_best=last_saves[0]
                         best_val=float(last_best.split('^')[1])
-                        # print("Continue from previous weights")
-                        # self.net.load_weights(last_best)
-                        print("Continue from previous model with weights & optimizer")
-                        self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
+                        print("Continue from previous weights")
+                        self.net.load_weights(last_best)
+                        # print("Continue from previous model with weights & optimizer")
+                        # self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
                         learning_rate*=self.learning_continue
                         print('Lowered learning rate (%f -> %f) for the continued training'%(self.learning_rate,learning_rate))
-                    else:
-                        raise Exception("No previously trained network found!")
                 print("Training %d/%d for %s"%(r+1,self.train_rep,self.filename))
                 tr.on_epoch_end()
                 val.on_epoch_end()
