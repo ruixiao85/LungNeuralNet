@@ -93,8 +93,8 @@ class ImageSet:
         self.work_directory=wd
         self.sub_folder=sf
         self.images=None
-        self.is_train=is_train
         self.coverage=cfg.coverage_train if is_train else cfg.coverage_predict
+        self.is_train=is_train
         self.is_image=is_image
         self.row=self.cfg.row_in if is_image else self.cfg.row_out
         self.col=self.cfg.col_in if is_image else self.cfg.col_out
@@ -166,14 +166,7 @@ class ImageSet:
                     ro=ri+self.row
                     co=ci+self.col
                     s_img=extract_pad_image(_img,ri,ro,ci,co)
-                    if self.is_train:  # skip if low contrast or masked information
-                        # col=self.filter_type[0].lower()
-                        # if col=='g': # green mask
-                        #     gmin=float(np.min(s_img[...,0]))+float(np.min(s_img[...,2])) # min_R min_B
-                        #     if gmin>15.0:
-                        #         print("skip tile r%d_c%d for no green mask (min_R+B=%.1f) for %s" % (r_index, c_index, gmin, image_name))
-                        #         continue
-                        # else: # default white/black or rgb
+                    if self.is_train and self.cfg.train_high_contrast:  # skip if low contrast or masked information
                         std=float(np.std(s_img))
                         if not self.is_image and self.cfg.mask_color[0].lower()!='g' and std<3.0:  # none green mask have a lower std requirement
                             print("skip tile r%d_c%d for low contrast (std=%.1f) for %s"%(r_index,c_index,std,image_name))
