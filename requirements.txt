@@ -1,15 +1,18 @@
-scipy>=0.19.1
-openpyxl>=2.4.8
 numpy>=1.14.2
-h5py>=2.7.0
-imgaug>=0.2.6
-opencv_python>=3.4.0
-scikit_image>=0.13.0
-pandas>=0.20.3
-matplotlib>=2.1.0
-ipython>=6.5.0
+scipy>=0.19.1
 Pillow>=5.2.0
+matplotlib>=2.1.0
+scikit_image>=0.13.0
+openpyxl>=2.4.8
+h5py>=2.7.0
+pandas>=0.20.3
+ipython>=6.5.0
 pycocotools>=2.0.0
 skimage>=0.0
 tensorflow_gpu>=1.10.0
 Keras>=2.2.0
+opencv_python>=3.4.0
+imgaug>=0.2.6
+
+# conda install six numpy scipy pandas Pillow matplotlib scikit-image imageio Shapely h5py tensorflow-gpu=1.12 Keras=2.2.4 progressbar2=3.39.2
+# pip install opencv-python imgaug keras-resnet keras-retinanet keras-maskrcnn

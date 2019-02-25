@@ -407,7 +407,7 @@ class ImagePatchPair:
             self.tr_list,self.val_list=self.cfg.split_train_vali(self.view_coord)
             self.blend_image_patch(
                 patch_per_pixel=[2000,8000], # patch per pixel, range to randomly select from, larger number: smaller density of
-                max_instance=25, # break out if more than this amount was inserted
+                max_instance=12, # break out if more than this amount was inserted
                 bright_diff=-10,  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
                 max_std=40,  # original area should be clean, standard deviation should be low (< max_std)
                 adjacent_size=3,  # sample times of size adjacent to the patch
@@ -417,8 +417,8 @@ class ImagePatchPair:
 
     def blend_image_patch(self,patch_per_pixel,max_instance,bright_diff,max_std,adjacent_size,adjacent_std):
         # count_per_pixel.sort() # usaually not need
-        img_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_in_ex('+'.join([self.origin]+self.targets))))
-        pch_exist=mkdir_ifexist(os.path.join(self.wd, self.dir_out_ex('-'.join([self.origin]+self.targets))))
+        img_exist,img_folder=mkdir_ifexist(os.path.join(self.wd, self.dir_in_ex('+'.join([self.origin]+self.targets))))
+        pch_exist,pch_folder=mkdir_ifexist(os.path.join(self.wd, self.dir_out_ex('-'.join([self.origin]+self.targets))))
         print('Image folder exist? %r'%img_exist) # e.g., Original+LYM+MONO+PMN
         print('Patch folder exist? %r' %pch_exist) # e.g., Original_LYM_MONO_PMN
         if img_exist and pch_exist:
@@ -427,58 +427,65 @@ class ImagePatchPair:
             print("Create new folders and blend images and patches")
         pixels=self.cfg.row_in*self.cfg.col_in
         print('processing %d categories on val #%d vs tr #%d'%(self.cfg.num_targets,len(self.val_list),len(self.tr_list)))
-        for vi, vc in enumerate(self.img_set.view_coord):
-            is_validation=vc in self.val_list # fewer in val_list, faster to check
-            pool=list(range(0,self.cfg.num_targets)) + [1,1,1] # equal chance, + weight to some category
-            nexample=random.randint(pixels//patch_per_pixel[1], pixels//patch_per_pixel[0])
-            labels=random.choices(pool, k=nexample)
-            img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.sub_folder), self.cfg)
-            # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
-            inserted=[0]*self.cfg.num_targets # track # of inserts per category
-            for li in labels:
-                the_tgt=self.pch_set[li]
-                index=random.random()
-                rowpos=random.uniform(0,1)
-                colpos=random.uniform(0,1)
-                prev=img.copy()
-                idx=the_tgt.num_patches-1-int(index*(self.cfg.train_vali_split*the_tgt.num_patches)) if is_validation else\
-                    int(index*((1.0-self.cfg.train_vali_split)*the_tgt.num_patches)) # index of patch to apply
-                patch=the_tgt.view_coord[idx]
-                p_row, p_col, p_ave, p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
-                lri=int(self.cfg.row_in*rowpos)-p_row//2  # large row in/start
-                lci=int(self.cfg.col_in*colpos)-p_col//2  # large col in/start
-                lro, lco=lri+p_row, lci+p_col  # large row/col out/end
-                pri=0 if lri>=0 else -lri; lri=max(0, lri)
-                pci=0 if lci>=0 else -lci; lci=max(0, lci)
-                pro=p_row if lro<=self.cfg.row_in else p_row-lro+self.cfg.row_in; lro=min(self.cfg.row_in, lro)
-                pco=p_col if lco<=self.cfg.col_in else p_col-lco+self.cfg.col_in; lco=min(self.cfg.col_in, lco)
-                # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
-                if np.min(img[lri:lro, lci:lco])-p_ave>bright_diff \
-                    and np.std(img[lri:lro, lci:lco])<max_std\
-                    and int(np.std(img[lri-p_row*adjacent_size:lro+p_row*adjacent_size,lci-p_col*adjacent_size:lco+p_col*adjacent_size])>adjacent_std*p_std
-                    ):  # target area is brighter, then add patch
-                    # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(self.cfg.row_in,lri,lro,self.cfg.col_in,lci,lco,p_row,pri,pro,p_col,pci,pco))
-                    # pat=patch.get_image(os.path.join(self.wd, the_tgt.sub_folder),self.cfg)  # TODO 40X-40X resize=1.0
-                    pat=the_tgt.patches[idx]
-                    # cv2.imwrite('pre.jpg',pat)
-                    pat=augment_patch(pat,self.cfg.train_aug)
-                    # cv2.imwrite('post.jpg',pat)
-                    img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco].astype(np.uint8))
-                    # img[lri:lro, lci:lco]-=pat[pri:pro, pci:pco].astype(np.uint8) # subtract
-                    # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if index>self.cfg.train_vali_split else '^'))),
-                    #             smooth_brighten(prev-img))
-                    cv2.imwrite(os.path.join(self.wd, self.dir_out_ex('-'.join([self.origin]+self.targets)),vc.file_name_insert(self.cfg,'_%d^%d^'%(idx,li+1))), #+('' if index>self.cfg.train_vali_split else '^'))
-                                smooth_brighten(prev-img))
-                    # lr=(lri+lro)//2
-                    # lc=(lci+lco)//2
-                    # msk[lr:lr+1,lc:lc+1,1]=255
-                    inserted[li]+=1
-                    if inserted[li]>max_instance: break;
-            if sum(inserted)>0:
-                print("inserted %s for %s"%(inserted,vc.file_name))
-                cv2.imwrite(os.path.join(self.wd, self.dir_in_ex('+'.join([self.origin]+self.targets)), vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
-            else:
-                print("unable to insert for %s"%vc.file_name)
+        with open(img_folder+".csv","w") as csv_class: # cow,0 \n   cat,1 \n  bird,2
+            for ti,tgt in enumerate(self.targets):
+                csv_class.write(tgt+","+str(ti)+"\n")
+        with open(pch_folder+".csv","w") as csv_annot, open(pch_folder+"_val.csv","w") as csv_val: # /data/imgs/img_001.jpg,837,346,981,456,cow,/data/masks/img_001_001.png
+            for vi, vc in enumerate(self.img_set.view_coord):
+                is_validation=vc in self.val_list # fewer in val_list, faster to check
+                pool=list(range(0,self.cfg.num_targets)) + [1,1,1] # equal chance, + weight to some category
+                nexample=random.randint(pixels//patch_per_pixel[1], pixels//patch_per_pixel[0])
+                labels=random.choices(pool, k=nexample)
+                img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.sub_folder), self.cfg)
+                # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
+                inserted=[0]*self.cfg.num_targets # track # of inserts per category
+                for li in labels:
+                    the_tgt=self.pch_set[li]
+                    index=random.random()
+                    rowpos=random.uniform(0,1)
+                    colpos=random.uniform(0,1)
+                    prev=img.copy()
+                    idx=the_tgt.num_patches-1-int(index*(self.cfg.train_vali_split*the_tgt.num_patches)) if is_validation else\
+                        int(index*((1.0-self.cfg.train_vali_split)*the_tgt.num_patches)) # index of patch to apply
+                    patch=the_tgt.view_coord[idx]
+                    p_row, p_col, p_ave, p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
+                    lri=int(self.cfg.row_in*rowpos)-p_row//2  # large row in/start
+                    lci=int(self.cfg.col_in*colpos)-p_col//2  # large col in/start
+                    lro, lco=lri+p_row, lci+p_col  # large row/col out/end
+                    pri=0 if lri>=0 else -lri; lri=max(0, lri)
+                    pci=0 if lci>=0 else -lci; lci=max(0, lci)
+                    pro=p_row if lro<=self.cfg.row_in else p_row-lro+self.cfg.row_in; lro=min(self.cfg.row_in, lro)
+                    pco=p_col if lco<=self.cfg.col_in else p_col-lco+self.cfg.col_in; lco=min(self.cfg.col_in, lco)
+                    # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
+                    if np.min(img[lri:lro, lci:lco])-p_ave>bright_diff \
+                        and np.std(img[lri:lro, lci:lco])<max_std\
+                        and int(np.std(img[lri-p_row*adjacent_size:lro+p_row*adjacent_size,lci-p_col*adjacent_size:lco+p_col*adjacent_size])>adjacent_std*p_std
+                        ):  # target area is brighter, then add patch
+                        # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(self.cfg.row_in,lri,lro,self.cfg.col_in,lci,lco,p_row,pri,pro,p_col,pci,pco))
+                        # pat=patch.get_image(os.path.join(self.wd, the_tgt.sub_folder),self.cfg)  # TODO 40X-40X resize=1.0
+                        pat=the_tgt.patches[idx]
+                        # cv2.imwrite('pre.jpg',pat)
+                        pat=augment_patch(pat,self.cfg.train_aug)
+                        # cv2.imwrite('post.jpg',pat)
+                        img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco].astype(np.uint8))
+                        # img[lri:lro, lci:lco]-=pat[pri:pro, pci:pco].astype(np.uint8) # subtract
+                        # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if index>self.cfg.train_vali_split else '^'))),
+                        #             smooth_brighten(prev-img))
+                        cv2.imwrite(os.path.join(pch_folder,vc.file_name_insert(self.cfg,'_%d^%d^'%(idx,li+1))), #+('' if index>self.cfg.train_vali_split else '^'))
+                                    smooth_brighten(prev-img))
+                        annot='%s,%d,%d,%d,%d,%s,%s\n'%(os.path.join(img_folder, vc.file_name),lci,lri,lco,lro,
+                                  self.targets[li],os.path.join(pch_folder,vc.file_name_insert(self.cfg,'_%d^%d^'%(idx,li+1))))
+                        csv_val.write(annot) if is_validation else csv_annot.write(annot)
+                        # lr=(lri+lro)//2
+                        # lc=(lci+lco)//2
+                        # msk[lr:lr+1,lc:lc+1,1]=255
+                        inserted[li]+=1
+                        if inserted[li]>max_instance: break;
+                if sum(inserted)>0:
+                    print("inserted %s for %s"%(inserted,vc.file_name))
+                    cv2.imwrite(os.path.join(img_folder, vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+                else:
+                    print("unable to insert for %s"%vc.file_name)
 
 
     def train_generator(self):

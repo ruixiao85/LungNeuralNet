@@ -6,7 +6,7 @@ def mkdir_ifexist(_dir):
     exist=os.path.exists(_dir)
     if not exist:
         os.mkdir(_dir)
-    return exist
+    return exist,_dir
 
 def to_excel_sheet(_df, _xls, _sheet):
     if os.path.exists(_xls):
