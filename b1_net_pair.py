@@ -2,7 +2,6 @@ import datetime
 import random
 
 import keras
-import backend as K
 from keras.engine.saving import model_from_json,load_model
 
 from a_config import Config
@@ -166,9 +165,9 @@ class BaseNetU(Config):
                     tgt_sub=tgt_list[i:o]
                     prd,tgt_name=pair.predict_generator_partial(tgt_sub,view)
                     weight_file=self.find_best_models(tgt_name+'_'+dir_cfg_append+'^*^.h5',allow_cache=True)[0]
-                    weight_file_overall=self.find_best_models(tgt_name+'_*^.h5',allow_cache=True)[0]
-                    if weight_file_overall!=weight_file: # load best regardless of archtecture
-                        self.load_json(weight_file_overall)
+                    # weight_file_overall=self.find_best_models(tgt_name+'_*^.h5',allow_cache=True)[0]
+                    # if weight_file_overall!=weight_file: # load best regardless of archtecture
+                    #     self.load_json(weight_file_overall)
                     print(weight_file)
                     self.net.load_weights(weight_file)  # weights only
                     # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
