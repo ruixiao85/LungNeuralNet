@@ -68,7 +68,9 @@ class MetaInfo:
 
     def get_masks(self, _path, cfg:Config):
         import glob
+        import random
         files=glob.glob(os.path.join(_path,self.file_name.replace(cfg.image_format[1:],cfg.image_format)))
+        random.shuffle(files) # avaible same order of files
         # print('found %d files matching %s'%(len(files),self.file_name))
         msks,clss=None,[]
         for f in files:
