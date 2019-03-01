@@ -91,7 +91,6 @@ class BaseNetU(Config):
         self.compile_net() # recompile to set optimizers,..
         for tr,val,dir_out in pair.train_generator():
             self.filename=dir_out+'_'+str(self)
-            # weight_file=self.filename+".h5"
             weight_file="%s^{%s:.2f}^.h5"%(self.filename,self.indicator) # e.g., {epoch:02d}-{val_acc:.2f}
             print('Fitting neural net...')
             for r in range(self.train_rep):
@@ -107,9 +106,12 @@ class BaseNetU(Config):
                         # self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
                         learning_rate*=self.learning_continue
                         print('Lowered learning rate (%f -> %f) for the continued training'%(self.learning_rate,learning_rate))
+                if not os.path.exists(self.filename+".txt"):
+                    with open(self.filename+".txt","w") as net_summary:
+                        self.net.summary(print_fn=lambda x:net_summary.write(x+'\n'))
+                if not os.path.exists(self.filename+".json"):
+                    self.save_net()
                 print("Training %d/%d for %s"%(r+1,self.train_rep,self.filename))
-                tr.on_epoch_end()
-                val.on_epoch_end()
                 from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau,LearningRateScheduler
                 from callbacks import TensorBoardTrainVal,ModelCheckpointCustom
                 history=self.net.fit_generator(tr,validation_data=val,verbose=1,
@@ -124,11 +126,6 @@ class BaseNetU(Config):
                        # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
                        # TensorBoardTrainVal(log_dir=os.path.join("log", self.filename), write_graph=True, write_grads=False, write_images=True),
                    ]).history
-                if not os.path.exists(self.filename+".txt"):
-                    with open(self.filename+".txt","w") as net_summary:
-                        self.net.summary(print_fn=lambda x:net_summary.write(x+'\n'))
-                if not os.path.exists(self.filename+".json"):
-                    self.save_net()
                 df=pd.DataFrame(history)
                 df['time']=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                 df['repeat']=r+1
@@ -295,7 +292,8 @@ class ImageMaskGenerator(keras.utils.Sequence):
         self.aug_value=aug_value
         self.target_list=tgt_list
         self.view_coord=pair.view_coord if view_coord is None else view_coord
-        self.indexes = np.arange(len(self.view_coord))
+        self.indexes=None
+        self.on_epoch_end()
 
     def __len__(self):  # Denotes the number of batches per epoch
         return int(np.ceil(len(self.view_coord) / self.cfg.batch_size))
@@ -326,6 +324,6 @@ class ImageMaskGenerator(keras.utils.Sequence):
             return prep_scale(_img, self.cfg.feed), None
 
     def on_epoch_end(self):  # Updates indexes after each epoch
-        self.indexes = np.arange(len(self.view_coord))
+        self.indexes=np.arange(len(self.view_coord))
         if self.pair.is_train and self.cfg.train_shuffle:
             np.random.shuffle(self.indexes)
