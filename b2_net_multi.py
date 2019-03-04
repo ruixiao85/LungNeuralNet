@@ -57,16 +57,20 @@ class BaseNetM(Config):
         from c0_backbones import v16
         self.backbone=backbone or v16 # default backbone
         self.batch_norm=batch_norm if batch_norm is not None else False # default to false since batch size is often small
-        self.backbone_strides=backbone_stride or [4,8,16,32,64] # strides of the FPN Pyramid (default for Resnet101)
-        self.pyramid_size=pyramid_size or 256 # Size of the top-down layers used to build the feature pyramid
+        # self.backbone_strides=backbone_stride or [4,8,16,32,64] # strides of the FPN Pyramid (default for Resnet101)
+        self.backbone_strides=backbone_stride or [2,4,8,16,32] # strides of the FPN Pyramid (default for Resnet101)
+        self.pyramid_size=pyramid_size or 512 # Size of the top-down layers used to build the feature pyramid
         self.fc_layers_size=fc_layers_size or 1024 # Size of the fully-connected layers in the classification graph
-        self.rpn_anchor_scales=rpn_anchor_scales or (32,64,128,256,512) # Length of square anchor side in pixels
-        self.rpn_train_anchors_per_image=rpn_train_anchors_per_image or 256 # How many anchors per image to use for RPN training
-        self.rpn_anchor_ratios=rpn_anchor_ratio or [0.5,1,2] # Ratios of anchors at each cell (width/height) 1=square 0.5=wide
+        self.rpn_anchor_scales=rpn_anchor_scales or (8,16,32) # Length of square anchor side in pixels
+        # self.rpn_anchor_scales=rpn_anchor_scales or (16,32,64,128,256) # Length of square anchor side in pixels
+        # self.rpn_anchor_scales=rpn_anchor_scales or (32,64,128,256,512) # Length of square anchor side in pixels
+        self.rpn_train_anchors_per_image=rpn_train_anchors_per_image or 128 # How many anchors per image to use for RPN training
+        self.rpn_anchor_ratios=rpn_anchor_ratio or [0.75,1,1.25] # Ratios of anchors at each cell (width/height) 1=square 0.5=wide
+        # self.rpn_anchor_ratios=rpn_anchor_ratio or [0.5,1,2] # Ratios of anchors at each cell (width/height) 1=square 0.5=wide
         self.rpn_anchor_stride=rpn_anchor_stride or 1 # 1=no-skip cell 2=skip-one
-        self.rpn_nms_threshold=rpn_nms_threshold or 0.7 # Non-max suppression threshold to filter RPN proposals. larger=more propsals.
+        self.rpn_nms_threshold=rpn_nms_threshold or 0.9 # Non-max suppression threshold to filter RPN proposals. larger=more propsals.
         self.rpn_bbox_stdev=rpn_bbox_stdev or np.array([0.1,0.1,0.2,0.2]) # Bounding box refinement standard deviation for RPN and final detections.
-        self.pre_nms_limit=pre_nms_limit or 6000 # ROIs kept after tf.nn.top_k and before non-maximum suppression
+        self.pre_nms_limit=pre_nms_limit or 4000 # ROIs kept after tf.nn.top_k and before non-maximum suppression
         self.post_mns_train=post_mns_train or 2000 # ROIs kept after non-maximum suppression for train
         self.post_nms_predict=post_nms_predict or 1000 # ROIs kept after non-maximum suppression for predict
         self.pool_size=pool_size or 7 # Pooled ROIs
@@ -74,8 +78,8 @@ class BaseNetM(Config):
         self.mini_mask_shape=mini_mask_shape or [28,28,None] # target shape (downsized) of instance masks to reduce memory load.
         self.train_rois_per_image=train_rois_per_image or 200 # Number of ROIs per image to feed to classifier/mask heads (MRCNN paper 512)
         self.train_roi_positive_ratio=train_roi_positive_ratio or 0.33 # Percent of positive ROIs used to train classifier/mask heads
-        self.max_gt_instance=max_gt_instance or 100 # Maximum number of ground truth instances to use in one image
-        self.detection_max_instances=detection_max_instances or 100 # Max number of final detections
+        self.max_gt_instance=max_gt_instance or 200 # Maximum number of ground truth instances to use in one image
+        self.detection_max_instances=detection_max_instances or 400 # Max number of final detections
         self.detection_min_confidence=detection_min_confidence or 0.7 # Minimum probability to accept a detected instance, skip ROIs if below this threshold
         self.detection_nms_threshold=detection_nms_threshold or 0.3 # Non-maximum suppression threshold for detection
         self.detection_mask_threshold=detection_mask_threshold or 0.5 # threshold to determine fore/back-ground
@@ -316,6 +320,34 @@ class BaseNetM(Config):
                 df['repeat']=r+1
                 df.to_csv(self.filename+".csv",mode="a",header=(not os.path.exists(self.filename+".csv")))
 
+    def eval(self,pair):
+        self.build_net(is_train=False)
+        for tr,val,dir_out in pair.train_generator():
+            self.filename=dir_out+'_'+str(self)
+            print('Evaluating neural net...'); val.set_eval()
+            weight_files=self.find_best_models(self.filename+'^*^.h5',allow_cache=True)
+            for weight_file in weight_files:
+                print(weight_file)
+                self.net.load_weights(weight_file,by_name=True)  # weights only
+                steps_done,steps=0,len(val)
+                print("Total steps: ",steps)
+                val.on_epoch_end() #initialize
+                valiter=iter(val)
+                with open(self.filename+".log","a") as log:
+                    log.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+                    APs=[]; print(weight_file,"AP:",end=''); log.write(weight_file+',')
+                    while steps_done<steps:
+                        img,gt=next(valiter)
+                        detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=self.net.predict_on_batch(img)
+                        for i in range(np.shape(detections)[0]):
+                            final_rois,final_class_ids,final_scores,final_masks=parse_detections(detections[i],mrcnn_mask[i],self.dim_in,full_mask=True) # first element
+                            AP,precisions,recalls,overlaps=utils.compute_ap(gt[1][i],gt[0][i],gt[2][i],final_rois,final_class_ids,final_scores,
+                                np.transpose(final_masks,(1,2,0)))
+                            APs.append(AP); print(' %.2f'%AP,end='',flush=True)
+                        steps_done+=1;
+                    mAP=np.mean(APs)
+                    print("\nmAP: ",mAP); log.write(str(mAP)+'\n')
+
     def predict(self,pair,pred_dir):
         self.build_net(is_train=False)
         # if hasattr(self, "_model_cache"): self._model_cache={}
@@ -342,7 +374,6 @@ class BaseNetM(Config):
                 # weight_file=tgt_name+'_'+dir_cfg_append+'.h5'
                 weight_file=self.find_best_models(tgt_name+'_'+dir_cfg_append+'^*^.h5',allow_cache=True)[0]
                 print(weight_file)
-                # self.net.load_weights(weight_file)  # weights only
                 self.net.load_weights(weight_file,by_name=True)  # weights only
                 # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
                 detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=\
@@ -487,14 +518,15 @@ class ImagePatchPair:
 
 
     def train_generator(self):
-        yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets, self.tr_list), ImagePatchGenerator(self, 0, self.targets, self.val_list),
+        yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets,view_coord=self.tr_list),
+              ImagePatchGenerator(self, 0, self.targets,view_coord=self.val_list),
               self.dir_in_ex(self.origin) if self.is_reverse else self.dir_out_ex(self.cfg.join_targets(self.targets)))
 
     def predict_generator_note(self):
             yield (self.cfg.join_targets(self.targets),self.targets)
 
     def predict_generator_partial(self,subset,view):
-        return ImagePatchGenerator(self,0,subset,view),self.cfg.join_targets(subset)
+        return ImagePatchGenerator(self,0,subset,view_coord=view),self.cfg.join_targets(subset)
 
     def dir_in_ex(self,txt=None):
         ext=ImageSet.ext_folder(self.cfg, True)
@@ -513,19 +545,29 @@ class ImagePatchGenerator(keras.utils.Sequence):
     def __init__(self, pair:ImagePatchPair, aug_value, tgt_list, view_coord=None):
         self.pair=pair
         self.cfg=pair.cfg
-        if self.pair.is_train:
-            self.getitemfun=self.get_train_item
-            self._active_class_ids=np.ones([self.cfg.num_class],dtype=np.int32)
-            self._anchors=self.cfg.get_anchors_norm()[0]
-        else:
-            self.getitemfun=self.get_pred_item
-            self._active_class_ids=np.zeros([self.cfg.num_class],dtype=np.int32)
-            self._anchors=self.cfg.get_anchors_norm()[1]
+        self.getitemfun,self._active_class_ids,self._anchors=None,None,None
+        if self.cfg.is_train: # train
+            self.set_train()
+        else: # prediction
+            self.set_pred()
         self.aug_value=aug_value
         self.target_list=tgt_list
         self.view_coord=pair.view_coord if view_coord is None else view_coord
         self.indexes=None
         self.on_epoch_end()
+
+    def set_train(self):
+        self.getitemfun=self.get_train_item
+        self._active_class_ids=np.ones([self.cfg.num_class],dtype=np.int32)
+        self._anchors=self.cfg.get_anchors_norm()[0]
+    def set_eval(self):
+        self.getitemfun=self.get_eval_item
+        self._active_class_ids=np.zeros([self.cfg.num_class],dtype=np.int32)
+        self._anchors=self.cfg.get_anchors_norm()[1]
+    def set_pred(self):
+        self.getitemfun=self.get_pred_item
+        self._active_class_ids=np.zeros([self.cfg.num_class],dtype=np.int32)
+        self._anchors=self.cfg.get_anchors_norm()[1]
 
     def get_train_item(self,indexes):
         _img,_msk,_cls,_bbox=None,None,None,None
@@ -562,9 +604,8 @@ class ImagePatchGenerator(keras.utils.Sequence):
 
     def get_pred_item(self,indexes):
         _img,_img_meta,_anc=None,None,None
-        # _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
-            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex(self.pair.origin)),self.cfg)
+            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex('+'.join([self.pair.origin]+self.pair.targets))),self.cfg)
             this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
             this_img=this_img[np.newaxis,...]
             this_img_meta=this_img_meta[np.newaxis,...]
@@ -573,7 +614,30 @@ class ImagePatchGenerator(keras.utils.Sequence):
             _img_meta=this_img_meta if _img_meta is None else np.concatenate((_img_meta,this_img_meta),axis=0)
             _anc=this_anchors if _anc is None else np.concatenate((_anc,this_anchors),axis=0)
             _img=prep_scale(_img,self.cfg.feed)
-        return [_img,_img_meta,_anc]
+        return [_img,_img_meta,_anc], []
+
+    def get_eval_item(self,indexes):
+        _img,_img_meta,_anc=None,None,None
+        _cls,_bbox,_msk=None,None,None
+        for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
+            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex('+'.join([self.pair.origin]+self.pair.targets))),self.cfg)
+            this_msk,this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.dir_out_ex('-'.join([self.pair.origin]+self.pair.targets))),self.cfg)
+            this_bbox=utils.extract_bboxes(this_msk)
+            this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
+            this_img=this_img[np.newaxis,...]
+            this_img_meta=this_img_meta[np.newaxis,...]
+            this_anchors=self._anchors[np.newaxis,...]
+            _img=this_img if _img is None else np.concatenate((_img,this_img),axis=0)
+            _img_meta=this_img_meta if _img_meta is None else np.concatenate((_img_meta,this_img_meta),axis=0)
+            _anc=this_anchors if _anc is None else np.concatenate((_anc,this_anchors),axis=0)
+            _img=prep_scale(_img,self.cfg.feed)
+            this_cls=this_cls[np.newaxis,...]
+            this_bbox=this_bbox[np.newaxis,...]
+            this_msk=this_msk[np.newaxis,...]
+            _cls=this_cls if _cls is None else np.concatenate((_cls,this_cls),axis=0)
+            _bbox=this_bbox if _bbox is None else np.concatenate((_bbox,this_bbox),axis=0)
+            _msk=this_msk if _msk is None else np.concatenate((_msk,this_msk),axis=0)
+        return [_img,_img_meta,_anc], [_cls,_bbox,_msk]
 
     def __len__(self):  # Denotes the number of batches per epoch
         return int(np.ceil(len(self.view_coord) / self.cfg.batch_size))
@@ -585,7 +649,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
 
     def on_epoch_end(self):  # Updates indexes after each epoch
         self.indexes=np.arange(len(self.view_coord))
-        if self.pair.is_train and self.cfg.train_shuffle:
+        if self.cfg.is_train and self.cfg.train_shuffle:
             np.random.shuffle(self.indexes)
 
 # Anchors #
@@ -621,7 +685,7 @@ def generate_pyramid_anchors(scales, ratios, feature_shapes, feature_strides, an
     return np.concatenate(anchors, axis=0)
 
 # Parse Detection #
-def parse_detections(detections,mrcnn_mask,original_image_shape,image_shape=None,window=None):
+def parse_detections(detections,mrcnn_mask,original_image_shape,full_mask=False,image_shape=None,window=None):
     image_shape=image_shape or original_image_shape
     window=window or (0,0,image_shape[0],image_shape[1])
     zero_ix=np.where(detections[:,4]==0)[0]
@@ -630,7 +694,6 @@ def parse_detections(detections,mrcnn_mask,original_image_shape,image_shape=None
     boxes=detections[:N,:4]
     class_ids=detections[:N,4].astype(np.int32)
     scores=detections[:N,5]
-    masks=mrcnn_mask[np.arange(N),:,:,class_ids]
 
     # Translate normalized coordinates in the resized image to pixel coordinates in the original image before resizing
     window=utils.norm_boxes(window,image_shape[:2])
@@ -644,6 +707,16 @@ def parse_detections(detections,mrcnn_mask,original_image_shape,image_shape=None
     # Convert boxes to pixel coordinates on the original image
     boxes=utils.denorm_boxes(boxes,original_image_shape[:2])
 
+    if full_mask:
+        # masks=np.zeros((N,image_shape[0],image_shape[1]),dtype=np.bool)
+        # for i,cls in enumerate(class_ids):
+        #     masks[i]=utils.unmold_mask(mrcnn_mask[i,:,:,cls],boxes[i],image_shape)
+        masks=np.zeros((N,image_shape[0],image_shape[1]),dtype=np.bool)
+        for i,cls in enumerate(class_ids):
+            # Convert neural network mask to full size mask
+            masks[i]=utils.unmold_mask(mrcnn_mask[i,:,:,cls],boxes[i],image_shape)
+    else:
+        masks=mrcnn_mask[np.arange(N),:,:,class_ids] # default mini mask
 
     # exclude_ix=np.where((boxes[:,2]-boxes[:,0])*(boxes[:,3]-boxes[:,1])<=0)[0] # Only filter zero area detectionsm, may happens in early training
 

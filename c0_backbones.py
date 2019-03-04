@@ -43,8 +43,9 @@ def v19(input_image):
 
 def res50(input_image):
     model=resnet50.ResNet50(input_tensor=input_image,include_top=False,pooling=None)
-    # print(model.summary())
-    return [model.get_layer(name=n).output for n in ['activation_1','activation_10','activation_22','activation_40','activation_49']]
+    print(model.summary())
+    # return [model.get_layer(name=n).output for n in ['activation_1','activation_10','activation_22','activation_40','activation_49']]
+    return [model.get_layer(name=n).output for n in ['max_pooling2d_1','activation_10','activation_22','activation_40','activation_49']]
 
 # Inception Xception # 299x299 hard to match dimension #
 def incept3(input_image):
@@ -71,7 +72,9 @@ def keras_densenet_backbone(input_image,architecture):
     }
     blocks,creator=allowed_backbones[architecture]
     model=creator(input_tensor=input_image,include_top=False)
-    return [model.get_layer(name='conv1/relu').output]+\
+    print(model.summary())
+    # return [model.get_layer(name='conv1/relu').output]+\
+    return [model.get_layer(name='conv2_block1_0_relu').output]+\
            [model.get_layer(name='conv{}_block{}_concat'.format(idx+2,block_num)).output for idx,block_num in enumerate(blocks)]
 
 def densenet121(input_image):
