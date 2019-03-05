@@ -24,8 +24,8 @@ from preprocess import prep_scale,augment_image_set,augment_patch,read_resize_pa
 
 
 class BaseNetM(Config):
-    def __init__(self,learning_rate=None,learning_continue=None,optimizer=None,loss_weight=None,indicator=None,indicator_trend=None,predict_proc=None,
-                 trainable_layer_regex=None, mini_mask_shape=None,backbone=None,batch_norm=None,backbone_stride=None,pyramid_size=None,
+    def __init__(self,backbone=None,learning_rate=None,learning_continue=None,optimizer=None,loss_weight=None,indicator=None,indicator_trend=None,predict_proc=None,
+                 trainable_layer_regex=None, mini_mask_shape=None,batch_norm=None,backbone_stride=None,pyramid_size=None,
                  fc_layers_size=None,rpn_anchor_scales=None,rpn_train_anchors_per_image=None,
                  rpn_anchor_ratio=None,rpn_anchor_stride=None,rpn_nms_threshold=None,rpn_bbox_stdev=None,
                  pre_nms_limit=None,post_mns_train=None,post_nms_predict=None,pool_size=None,mask_pool_size=None,
@@ -36,8 +36,10 @@ class BaseNetM(Config):
         super(BaseNetM,self).__init__(**kwargs)
         # self.coverage_train,self.coverage_predict=4,4 # override previous
         self.is_train=None # will set later
-        self.learning_rate=learning_rate or 1e-3
-        self.learning_continue=learning_continue or 1 # 1-same as first time
+        from c0_backbones import v16, v19
+        self.backbone=backbone or v16 # default backbone
+        self.learning_rate=learning_rate or 1e-3 if self.backbone in [v16,v19] else 1e-2
+        self.learning_continue=learning_continue or 2e-1 # 1-same as first time
         from keras.optimizers import SGD
         self.optimizer=optimizer or SGD(lr=self.learning_rate, momentum=0.9, clipnorm=5.0)
         self.loss_weight=loss_weight or { "rpn_class_loss":1., "rpn_bbox_loss":1., "mrcnn_class_loss":1.,
@@ -54,17 +56,14 @@ class BaseNetM(Config):
             # r"# (res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 5+
         self.num_class=1+self.num_targets # plus background
         self.meta_shape=[1+3+3+4+1+self.num_class] # last number is NUM_CLASS
-        from c0_backbones import v16
-        self.backbone=backbone or v16 # default backbone
-        self.batch_norm=batch_norm if batch_norm is not None else False # default to false since batch size is often small
-        # self.backbone_strides=backbone_stride or [4,8,16,32,64] # strides of the FPN Pyramid (default for Resnet101)
-        self.backbone_strides=backbone_stride or [2,4,8,16,32] # strides of the FPN Pyramid (default for Resnet101)
+        self.batch_norm=batch_norm if batch_norm is not None else True # images in small batches also benefit from batchnorm
+        self.backbone_strides=backbone_stride or [4,8,16,32,64] # strides of the FPN Pyramid
         self.pyramid_size=pyramid_size or 512 # Size of the top-down layers used to build the feature pyramid
         self.fc_layers_size=fc_layers_size or 1024 # Size of the fully-connected layers in the classification graph
-        self.rpn_anchor_scales=rpn_anchor_scales or (8,16,32) # Length of square anchor side in pixels
+        self.rpn_anchor_scales=rpn_anchor_scales or (8,16,32,64,128) # Length of square anchor side in pixels
         # self.rpn_anchor_scales=rpn_anchor_scales or (16,32,64,128,256) # Length of square anchor side in pixels
         # self.rpn_anchor_scales=rpn_anchor_scales or (32,64,128,256,512) # Length of square anchor side in pixels
-        self.rpn_train_anchors_per_image=rpn_train_anchors_per_image or 128 # How many anchors per image to use for RPN training
+        self.rpn_train_anchors_per_image=rpn_train_anchors_per_image or 512 # How many anchors per image to use for RPN training
         self.rpn_anchor_ratios=rpn_anchor_ratio or [0.75,1,1.25] # Ratios of anchors at each cell (width/height) 1=square 0.5=wide
         # self.rpn_anchor_ratios=rpn_anchor_ratio or [0.5,1,2] # Ratios of anchors at each cell (width/height) 1=square 0.5=wide
         self.rpn_anchor_stride=rpn_anchor_stride or 1 # 1=no-skip cell 2=skip-one
@@ -76,7 +75,7 @@ class BaseNetM(Config):
         self.pool_size=pool_size or 7 # Pooled ROIs
         self.mask_pool_size=mask_pool_size or 14 # Pooled ROIs for mask
         self.mini_mask_shape=mini_mask_shape or [28,28,None] # target shape (downsized) of instance masks to reduce memory load.
-        self.train_rois_per_image=train_rois_per_image or 200 # Number of ROIs per image to feed to classifier/mask heads (MRCNN paper 512)
+        self.train_rois_per_image=train_rois_per_image or 256 # Number of ROIs per image to feed to classifier/mask heads (MRCNN paper 512)
         self.train_roi_positive_ratio=train_roi_positive_ratio or 0.33 # Percent of positive ROIs used to train classifier/mask heads
         self.max_gt_instance=max_gt_instance or 200 # Maximum number of ground truth instances to use in one image
         self.detection_max_instances=detection_max_instances or 400 # Max number of final detections
@@ -105,10 +104,10 @@ class BaseNetM(Config):
             if class_name=='BatchNormalization':
                 trainable=self.batch_norm # override for BatchNorm
                 text='B' if trainable else 'b'
-            elif class_name=='Conv2D' and layer.kernel_size==(7,7) and layer.strides==(2,2) and layer.filters==64:
-                trainable=False # override for 7x7 Conv2D
-                text='C' if trainable else 'c'
-            if class_name=='TimeDistributed': # set trainable deeper if TimeDistributed
+            # elif class_name=='Conv2D' and layer.kernel_size==(7,7) and layer.strides==(2,2) and layer.filters==64:
+            #     trainable=False # override for 7x7 Conv2D
+            #     text='C' if trainable else 'c'
+            elif class_name=='TimeDistributed': # set trainable deeper if TimeDistributed
                 layer.layer.trainable=trainable
             else:
                 layer.trainable=trainable
@@ -310,7 +309,7 @@ class BaseNetM(Config):
                    callbacks=[
                        ModelCheckpointCustom(weight_file, monitor=self.indicator, mode=self.indicator_trend,
                                              best=best_value,save_weights_only=True,save_best_only=True,verbose=1),
-                       EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=1,verbose=1),
+                       EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=2,verbose=1),
                        LearningRateScheduler(lambda x: learning_rate*(0.1**(0.2*x)), verbose=1),
                        # ReduceLROnPlateau(monitor=self.indicator, mode='min', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
                        # TensorBoardTrainVal(log_dir=os.path.join("log", self.filename), write_graph=True, write_grads=False, write_images=True),
@@ -335,7 +334,7 @@ class BaseNetM(Config):
                 valiter=iter(val)
                 with open(self.filename+".log","a") as log:
                     log.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
-                    APs=[]; print(weight_file,"AP:",end=''); log.write(weight_file+',')
+                    APs=[]; print("AP:",end=''); log.write(weight_file+',')
                     while steps_done<steps:
                         img,gt=next(valiter)
                         detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=self.net.predict_on_batch(img)

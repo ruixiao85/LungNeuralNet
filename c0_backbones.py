@@ -42,9 +42,11 @@ def v19(input_image):
 # Resnet Graph #
 
 def res50(input_image):
+    from model import resnet_graph
+    # return resnet_graph(input_image, "resnet50" ,stage5=True,train_bn=True)
+    # return resnet_graph(input_image, "resnet101" ,stage5=True,train_bn=True)
     model=resnet50.ResNet50(input_tensor=input_image,include_top=False,pooling=None)
-    print(model.summary())
-    # return [model.get_layer(name=n).output for n in ['activation_1','activation_10','activation_22','activation_40','activation_49']]
+    # print(model.summary())
     return [model.get_layer(name=n).output for n in ['max_pooling2d_1','activation_10','activation_22','activation_40','activation_49']]
 
 # Inception Xception # 299x299 hard to match dimension #
