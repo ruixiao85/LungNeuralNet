@@ -5,6 +5,18 @@ import keras.layers as KL
 import keras.engine as KE
 import keras.models as KM
 
+
+# VGG
+def c3t2mp(in_layer, name, idx, filters, act):
+    x=cvac(in_layer,name+'_2',idx,filters,act)
+    x=cvac(x,name+'_1',idx,filters,act)
+    return mp(x,name,idx=idx,fs=None,act=None,size=2,stride=2)
+def c3t3mp(in_layer, name, idx, filters, act):
+    x=cvac(in_layer,name+'_3',idx,filters,act)
+    x=cvac(x,name+'_2',idx,filters,act)
+    x=cvac(x,name+'_1',idx,filters,act)
+    return mp(x,name,idx=idx,fs=None,act=None,size=2,stride=2)
+
 # Resnet # https://github.com/fchollet/deep-learning-models/blob/master/resnet50.py
 # rn: ResNet https://arxiv.org/pdf/1512.03385.pdf 224x224
 # first layer f64, k7x7, s2x2 -> maxpool k3x3, s2x2
