@@ -29,7 +29,7 @@ class Config:
         # self.image_padding=image_padding if isinstance(image_padding, list) else [1.0]*self.num_targets  # default 1.0, padding proportionally >=1.0
         self.mask_color=mask_color or "white"  # green/white
         self.feed=feed or 'tanh'
-        self.act=act or 'elu'
+        self.act=act or 'relu'
         self.out=out or ('sigmoid' if self.dep_out==1 else 'softmax')
         self.out_image=out_image if out_image is not None else False # output type: True=image False=mask
         self.separate=separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
@@ -44,7 +44,7 @@ class Config:
         self.overlay_textshape_bwif=overlay_textshape_bwif or (True,True,False,False) # draw black_legend, white_legend, color_instance_text, fill_shape
         self.predict_size=predict_size or num_targets
         self.save_ind_raw=save_ind_raw if isinstance(save_ind_raw,tuple) else (False,True)
-        self.ntop=ntop if ntop is not None else 1 # numbers of top networks to keep, delete the networks that are less than ideal
+        self.ntop=ntop if ntop is not None else 3 # numbers of top networks to keep, delete the networks that are less than ideal
         self.batch_size=batch_size or 1
         self.train_rep=train_rep or 2  # times to repeat during training
         self.train_epoch=train_epoch or 20  # max epoches during training
@@ -57,8 +57,7 @@ class Config:
         self.indicator=indicator or 'val_acc'
         self.indicator_trend=indicator_trend or 'max'
 
-
-    def split_train_vali(self,view_coords):
+    def split_train_val_vc(self,view_coords):
         tr_list,val_list=[],[]  # list view_coords, can be from slices
         tr_image,val_image=set(),set()  # set whole images
         for vc in view_coords:

@@ -26,8 +26,13 @@ def keras_vgg_backbone(input_image,architecture):
     from c1_vgg import NetU_Vgg
     creator,convs=NetU_Vgg.config[architecture]
     model=creator(input_tensor=input_image,include_top=False,pooling=None)
+    from module import dca,ca3,ca33
+    from module_complex import c3t2mp, c3t3mp
     return [model.get_layer(name='block{}_pool'.format(bl+1)).output for bl,cv in enumerate(convs)]
-    # return [model.get_layer(name='block{}_conv{}'.format(bl+1,cv)).output for bl,cv in enumerate(convs)]
+    # return [model.get_layer(name='block{}_pool'.format(bl+2)).output for bl,cv in enumerate(convs[1:])]+\
+    #        [dca(model.get_layer(name='block{}_pool'.format(convs[-1]+2)).output,2,'dca%d'%(convs[-1]+2),6,512,'relu')]
+    # return [model.get_layer(name='block{}_conv{}'.format(bl+2,cv)).output for bl,cv in enumerate(convs[1:])]+\
+    #     [ca33(model.get_layer(name='block{}_pool'.format(convs[-1]+2)).output,'f_ca%d'%(convs[-1]+1),6,512,'relu')]
 
 def v16(input_image):
     return keras_vgg_backbone(input_image,'vgg16') # 64x2 128x2 256x3 512x3 512x3

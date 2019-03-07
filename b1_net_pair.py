@@ -38,7 +38,7 @@ class BaseNetU(Config):
             loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy')  # 'binary_crossentropy'
         self.metrics=metrics or ([jac, dice] if self.dep_out==1 else [acc]) # dice67,dice33  acc67,acc33
         self.learning_rate=learning_rate or 1e-5
-        self.learning_continue=learning_continue or 1e-1
+        self.learning_continue=learning_continue or 2e-1
         from keras.optimizers import Adam
         self.optimizer=optimizer or Adam
         self.indicator=indicator if indicator is not None else ('val_dice' if self.dep_out==1 else 'val_acc')
@@ -256,7 +256,7 @@ class ImageMaskPair:
                 self.msk_set.append(msk)
                 views = views.intersection(msk.view_coord)
             self.view_coord = sorted(views,key=lambda x:x.file_name)
-            tr_list,val_list=self.cfg.split_train_vali(self.view_coord)
+            tr_list,val_list=self.cfg.split_train_val_vc(self.view_coord)
             yield(ImageMaskGenerator(self,self.cfg.train_aug,tgt_list,tr_list),ImageMaskGenerator(self,0,tgt_list,val_list),
                   self.dir_in_ex(self.origin) if self.is_reverse else self.dir_out_ex(self.cfg.join_targets(tgt_list)))
             i=o

@@ -71,7 +71,7 @@ class MetaInfo:
         import random
         files=glob.glob(os.path.join(_path,self.file_name.replace(cfg.image_format[1:],cfg.image_format)))
         random.shuffle(files) # avaible same order of files
-        # print('found %d files matching %s'%(len(files),self.file_name))
+        # print(' found %d files matching %s'%(len(files),self.file_name))
         msks,clss=None,[]
         for f in files:
             class_split=f.split('^')
@@ -210,36 +210,25 @@ class ImageSet:
 
 class PatchSet(ImageSet):
     def __init__(self,cfg:Config,wd,sf,is_train,is_image):
-
         self.patches=None
         super(PatchSet,self).__init__(cfg,wd,sf,is_train,is_image)
         self.size_folder_update()
         self.num_patches=len(self.images)
-        # view_coord ori_row=45 ori_col=37 start~end are overrange
+        self.tr_list,self.val_list=self.split_train_val_id(self.images)
 
-        # self.cfg=cfg
-        # self.work_directory=wd
-        # self.sub_folder=sf
-        # self.images=None
-        # self.is_train=is_train
-        # self.coverage=cfg.coverage_train if is_train else cfg.coverage_predict
-        # self.is_image=is_image
-        # self.row=self.cfg.row_in if is_image else self.cfg.row_out
-        # self.col=self.cfg.col_in if is_image else self.cfg.col_out
-        # self.view_coord=None  # list
+    def split_train_val_id(self,items):
+        tr_list,val_list=[],[]  # list of unique items
+        for i,it in enumerate(items):
+            if (len(val_list)+0.05)/(len(tr_list)+0.05)>self.cfg.train_vali_split:
+                tr_list.append(i)
+            else:
+                val_list.append(i)
+        print("%s: %d split into train %d vs validation %d"%(self.sub_folder,len(items),len(tr_list),len(val_list)))
+        return tr_list,val_list
 
     def size_folder_update(self):
         print("checking %s"%self.sub_folder)
         self.find_file_recursive_rel()
-        # if self.cfg.separate:
-        #     new_dir="%s_%s" % (self.sub_folder, self.ext_folder(self.cfg, self.is_image))
-        #     new_path=os.path.join(self.work_directory, new_dir)
-            # shutil.rmtree(new_path)  # force delete
-            # if not os.path.exists(new_path): # change folder and not found
-            #     os.makedirs(new_path)
-            #     self.split_image_coord(new_path)
-            # self.sub_folder=new_dir
-            # self.find_file_recursive_rel()
         self.single_image_coord()
         return self
 

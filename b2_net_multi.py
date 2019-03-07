@@ -104,11 +104,13 @@ class BaseNetM(Config):
             if class_name=='BatchNormalization':
                 trainable=self.batch_norm # override for BatchNorm
                 text='B' if trainable else 'b'
-            # elif class_name=='Conv2D' and layer.kernel_size==(7,7) and layer.strides==(2,2) and layer.filters==64:
-            #     trainable=False # override for 7x7 Conv2D
-            #     text='C' if trainable else 'c'
+            elif class_name=='Conv2D':
+                # trainable=not (layer.kernel_size==(7,7) and layer.strides==(2,2) and layer.filters==64) # train all conv filters except first conv7x7
+                # trainable=True # force train all conv filters
+                text='C' if trainable else 'c'
             elif class_name=='TimeDistributed': # set trainable deeper if TimeDistributed
                 layer.layer.trainable=trainable
+                text='T' if trainable else 't'
             else:
                 layer.trainable=trainable
             # print(" "*indent+'%s - %s - trainable %r'%(layer.name,layer.__class__.__name__,trainable)) # verbose
@@ -431,10 +433,11 @@ class ImagePatchPair:
         self.is_reverse=is_reverse
 
         if self.is_train:
-            self.pch_set=[PatchSet(cfg,wd,tgt,self.is_train,is_image=True) for tgt in targets] if self.is_train else None
-            self.tr_list,self.val_list=self.cfg.split_train_vali(self.view_coord)
+            self.pch_set=[PatchSet(cfg,wd,tgt,self.is_train,is_image=True) for tgt in targets]
+            self.tr_list,self.val_list=self.cfg.split_train_val_vc(self.view_coord)
             self.blend_image_patch(
-                patch_per_pixel=[2000,8000], # patch per pixel, range to randomly select from, larger number: smaller density of
+                additional_weight=[1,1], # if you have three categories default=[0,1,2] to draw from, here you can add more weights
+                patch_per_pixel=[2000,9000], # patch per pixel, range to randomly select from, larger number: smaller density
                 max_instance=20, # break out if more than this amount was inserted
                 bright_diff=-10,  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
                 max_std=40,  # original area should be clean, standard deviation should be low (< max_std)
@@ -443,7 +446,7 @@ class ImagePatchPair:
                 adjacent_std=0.0  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
             )
 
-    def blend_image_patch(self,patch_per_pixel,max_instance,bright_diff,max_std,adjacent_size,adjacent_std):
+    def blend_image_patch(self,additional_weight,patch_per_pixel,max_instance,bright_diff,max_std,adjacent_size,adjacent_std):
         # count_per_pixel.sort() # usaually not need
         img_exist,img_folder=mkdir_ifexist(os.path.join(self.wd, self.dir_in_ex('+'.join([self.origin]+self.targets))))
         pch_exist,pch_folder=mkdir_ifexist(os.path.join(self.wd, self.dir_out_ex('-'.join([self.origin]+self.targets))))
@@ -461,7 +464,7 @@ class ImagePatchPair:
         with open(pch_folder+".csv","w") as csv_annot, open(pch_folder+"_val.csv","w") as csv_val: # /data/imgs/img_001.jpg,837,346,981,456,cow,/data/masks/img_001_001.png
             for vi, vc in enumerate(self.img_set.view_coord):
                 is_validation=vc in self.val_list # fewer in val_list, faster to check
-                pool=list(range(0,self.cfg.num_targets)) + [1,1,1] # equal chance, + weight to some category
+                pool=list(range(0,self.cfg.num_targets)) + additional_weight # equal chance, + weight to some category
                 nexample=random.randint(pixels//patch_per_pixel[1], pixels//patch_per_pixel[0])
                 labels=random.choices(pool, k=nexample)
                 img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.sub_folder), self.cfg)
@@ -469,12 +472,10 @@ class ImagePatchPair:
                 inserted=[0]*self.cfg.num_targets # track # of inserts per category
                 for li in labels:
                     the_tgt=self.pch_set[li]
-                    index=random.random()
+                    idx=random.choice(the_tgt.val_list) if is_validation else random.choice(the_tgt.tr_list)
                     rowpos=random.uniform(0,1)
                     colpos=random.uniform(0,1)
                     prev=img.copy()
-                    idx=the_tgt.num_patches-1-int(index*(self.cfg.train_vali_split*the_tgt.num_patches)) if is_validation else\
-                        int(index*((1.0-self.cfg.train_vali_split)*the_tgt.num_patches)) # index of patch to apply
                     patch=the_tgt.view_coord[idx]
                     p_row, p_col, p_ave, p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
                     lri=int(self.cfg.row_in*rowpos)-p_row//2  # large row in/start
@@ -493,7 +494,7 @@ class ImagePatchPair:
                         # pat=patch.get_image(os.path.join(self.wd, the_tgt.sub_folder),self.cfg)  # TODO 40X-40X resize=1.0
                         pat=the_tgt.patches[idx]
                         # cv2.imwrite('pre.jpg',pat)
-                        pat=augment_patch(pat,self.cfg.train_aug)
+                        pat=augment_patch(pat,0 if is_validation else self.cfg.train_aug)
                         # cv2.imwrite('post.jpg',pat)
                         img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco].astype(np.uint8))
                         # img[lri:lro, lci:lco]-=pat[pri:pro, pci:pco].astype(np.uint8) # subtract
