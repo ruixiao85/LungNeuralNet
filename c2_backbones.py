@@ -15,7 +15,7 @@ from keras.engine.saving import model_from_json,load_model
 
 from a_config import Config
 from b2_net_multi import BaseNetM
-from c0_backbones import v16,v19,res50,incept3,incepres2,xcept,densenet121,densenet169,densenet201,naslarge,nasmobile
+from c0_backbones import v16,v19,res50,incept3,incepres2,xcept,densenet121,densenet169,densenet201,mobile,mobile2,naslarge,nasmobile
 from image_set import PatchSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten
@@ -46,6 +46,14 @@ class MRCNN_IncepRes2(BaseNetM):
 class MRCNN_Xcept(BaseNetM):
     def __init__(self,**kwargs):
         super(MRCNN_Xcept,self).__init__(backbone=xcept,**kwargs)
+
+class MRCNN_Mobile(BaseNetM):
+    def __init__(self,**kwargs):
+        super(MRCNN_Mobile,self).__init__(backbone=mobile, **kwargs)
+
+class MRCNN_Mobile2(BaseNetM):
+    def __init__(self,**kwargs):
+        super(MRCNN_Mobile2,self).__init__(backbone=mobile2, **kwargs)
 
 class MRCNN_NASLarge(BaseNetM):
     def __init__(self,**kwargs):

@@ -2,26 +2,24 @@ from __future__ import print_function
 
 from keras.models import Model
 from keras.layers import Input
-from keras.applications import densenet
+from keras.applications import resnet50
 
 from b1_net_pair import BaseNetU
 from module import cvac,ca3,ca33,cb3,cba3,dmp,uu,ct,sk,db,td,uta,tu
 
 
-class NetU_Dense(BaseNetU):
+class NetU_ResNet(BaseNetU):
     config={
-        'densenet121':(densenet.DenseNet121,[6,12,24,16]),
-        'densenet169':(densenet.DenseNet169,[6,12,32,32]),
-        'densenet201':(densenet.DenseNet201,[6,12,48,32]),
+        'resnet50':(resnet50.ResNet50,[1,10,22,40,49])
     }
     def __init__(self,dim_in=None,dim_out=None,filters=None,poolings=None,variation=None,preproc=None,downconv=None,downjoin=None,downsamp=None,
             downmerge=None,downproc=None,upconv=None,upjoin=None,upsamp=None,upmerge=None,upproc=None,postproc=None,**kwargs):
-        super(NetU_Dense,self).__init__(dim_in=dim_in or (768,768,3),dim_out=dim_out or (768,768,1),**kwargs)
+        super(NetU_ResNet,self).__init__(dim_in=dim_in or (768,768,3),dim_out=dim_out or (768,768,1),**kwargs)
         # self.fs=filters or [64,128,256,384,512,512]
         self.fs=filters or [64,128,256,512,512,512]
         # self.fs=filters or [64,128,256,512,1024,1024]
         self.ps=poolings or [2]*len(self.fs)
-        self.variation=variation or 'densenet121'
+        self.variation=variation or 'resnet50'
         self.preproc=preproc or sk
         self.downconv=downconv or ca33
         self.downmerge=downmerge or sk  # before downsize, ->1st skip connect
@@ -38,26 +36,25 @@ class NetU_Dense(BaseNetU):
     def build_net(self):
         locals()['in0']=Input(shape=(self.row_in,self.col_in,self.dep_in))
         locals()['pre0']=self.preproc(locals()['in0'],'pre0',0,self.fs[0],self.act)
-        creater,blocks=self.config[self.variation]
+        creater,numbers=self.config[self.variation]
         base_model=creater(input_tensor=locals()['pre0'],include_top=False)  #, weights=None
         print(base_model.summary())
         for layer in base_model.layers: layer.trainable=True  # allow training on pre-trained weights
         locals()['dmerge0']=locals()['dconv0']=None
-        locals()['dproc1']=locals()['djoin1']=locals()['dsamp1']=base_model.get_layer("conv1/relu").output
-        # locals()['dproc1']=locals()['djoin1']=locals()['dsamp1']=base_model.get_layer("conv1/conv").output
+        locals()['dproc1']=locals()['djoin1']=locals()['dsamp1']=base_model.get_layer("activation_1").output
 
         locals()['dmerge1']=locals()['dconv1']=None
-        locals()['dproc2']=locals()['djoin2']=locals()['dsamp2']=base_model.get_layer("pool1").output
+        locals()['dproc2']=locals()['djoin2']=locals()['dsamp2']=base_model.get_layer("max_pooling2d_1").output
 
         # for i in range(2,5):
         #     locals()['dmerge%d'%i]=locals()['dconv%d'%i]=base_model.get_layer("pool%d_conv"%i).output
         #     locals()['dproc%d'%(i+1)]=locals()['djoin%d'%(i+1)]=locals()['dsamp%d'%(i+1)]=base_model.get_layer("pool%d_pool"%i).output
         for i in range(2,5):
             # locals()['dmerge%d'%i]=locals()['dconv%d'%i]=base_model.get_layer("conv%d_block%d_concat"%(i,blocks[i-2])).output
-            locals()['dconv%d'%i]=base_model.get_layer("conv%d_block%d_concat"%(i,blocks[i-2])).output
+            locals()['dconv%d'%i]=base_model.get_layer("conv%d_block%d_concat"%(i,numbers[i-2])).output
             locals()['dmerge%d'%i]=locals()['dconv%d'%i]=base_model.get_layer("pool%d_conv"%i).output
             locals()['dproc%d'%(i+1)]=locals()['djoin%d'%(i+1)]=locals()['dsamp%d'%(i+1)]=base_model.get_layer("pool%d_pool"%i).output
-        locals()['djoin5']=locals()['uproc5']=base_model.get_layer("conv%d_block%d_concat"%(5,blocks[5-2])).output
+        locals()['djoin5']=locals()['uproc5']=base_model.get_layer("conv%d_block%d_concat"%(5,numbers[5-2])).output
 
         for i in range(len(self.fs)-2,-1,-1):
             locals()['uconv%d'%(i+1)]=self.upconv(locals()['uproc%d'%(i+1)],'uconv%d'%(i+1),i,self.fs[i+1],self.act)
