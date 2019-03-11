@@ -38,7 +38,7 @@ class NetU_ResNet(BaseNetU):
         locals()['pre0']=self.preproc(locals()['in0'],'pre0',0,self.fs[0],self.act)
         creater,numbers=self.config[self.variation]
         base_model=creater(input_tensor=locals()['pre0'],include_top=False)  #, weights=None
-        print(base_model.summary())
+        # print(base_model.summary())
         for layer in base_model.layers: layer.trainable=True  # allow training on pre-trained weights
         locals()['dmerge0']=locals()['dconv0']=None
         locals()['dproc1']=locals()['djoin1']=locals()['dsamp1']=base_model.get_layer("activation_1").output
@@ -46,17 +46,13 @@ class NetU_ResNet(BaseNetU):
         locals()['dmerge1']=locals()['dconv1']=None
         locals()['dproc2']=locals()['djoin2']=locals()['dsamp2']=base_model.get_layer("max_pooling2d_1").output
 
-        # for i in range(2,5):
-        #     locals()['dmerge%d'%i]=locals()['dconv%d'%i]=base_model.get_layer("pool%d_conv"%i).output
-        #     locals()['dproc%d'%(i+1)]=locals()['djoin%d'%(i+1)]=locals()['dsamp%d'%(i+1)]=base_model.get_layer("pool%d_pool"%i).output
         for i in range(2,5):
-            # locals()['dmerge%d'%i]=locals()['dconv%d'%i]=base_model.get_layer("conv%d_block%d_concat"%(i,blocks[i-2])).output
-            locals()['dconv%d'%i]=base_model.get_layer("conv%d_block%d_concat"%(i,numbers[i-2])).output
-            locals()['dmerge%d'%i]=locals()['dconv%d'%i]=base_model.get_layer("pool%d_conv"%i).output
-            locals()['dproc%d'%(i+1)]=locals()['djoin%d'%(i+1)]=locals()['dsamp%d'%(i+1)]=base_model.get_layer("pool%d_pool"%i).output
-        locals()['djoin5']=locals()['uproc5']=base_model.get_layer("conv%d_block%d_concat"%(5,numbers[5-2])).output
+            key="activation_%d"%(numbers[i-1])
+            locals()['dmerge%d'%i]=locals()['dconv%d'%i]=base_model.get_layer(key).output
+            locals()['dproc%d'%(i+1)]=locals()['djoin%d'%(i+1)]=None
+        locals()['djoin5']=locals()['uproc5']=base_model.get_layer("activation_%d"%numbers[-1]).output
 
-        for i in range(len(self.fs)-2,-1,-1):
+        for i in range(4,-1,-1):
             locals()['uconv%d'%(i+1)]=self.upconv(locals()['uproc%d'%(i+1)],'uconv%d'%(i+1),i,self.fs[i+1],self.act)
             locals()['ujoin%d'%(i+1)]=self.upjoin(locals()['uconv%d'%(i+1)],locals()['djoin%d'%(i+1)],'ujoin%d'%(i+1),i,self.fs[i+1],self.act)
             locals()['usamp%d'%i]=self.upsamp(locals()['ujoin%d'%(i+1)],self.ps[i],'usamp%d'%i,i,self.fs[i+1],self.act)
