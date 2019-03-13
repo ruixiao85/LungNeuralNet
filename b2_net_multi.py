@@ -42,8 +42,8 @@ class BaseNetM(Config):
         self.learning_continue=learning_continue or 2e-1 # 1-same as first time
         from keras.optimizers import SGD
         self.optimizer=optimizer or SGD(lr=self.learning_rate, momentum=0.9, clipnorm=5.0)
-        self.loss_weight=loss_weight or { "rpn_class_loss":1., "rpn_bbox_loss":1., "mrcnn_class_loss":1.,
-                                        "mrcnn_bbox_loss":1., "mrcnn_mask_loss":1.} # Loss weights for more precise optimization.
+        self.loss_weight=loss_weight or { "rpn_class_loss":1., "rpn_bbox_loss":1.,
+                "mrcnn_class_loss":1., "mrcnn_bbox_loss":1., "mrcnn_mask_loss":1.} # Loss weights for more precise optimization.
         self.indicator=indicator or 'val_loss'
         self.indicator_trend=indicator_trend or 'min'
         from postprocess import draw_detection
@@ -400,7 +400,7 @@ class BaseNetM(Config):
                         ri,ro,ci,co,tri,tro,tci,tco=self.get_proper_range(view[i].ori_row,view[i].ori_col,
                                 view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
                         mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
-                sel_index=utils.non_max_suppression(grp_box,grp_scr,threshold=self.detection_nms_threshold) if grp_box.shape[0]>0 else None
+                sel_index=utils.non_max_suppression(grp_box,grp_scr,threshold=self.detection_nms_threshold) if grp_box.shape[0]>0 and self.coverage_predict>1 else None
                 if save_raw:  # high-res raw group image
                     mrg_in=read_resize_padding(os.path.join(pair.wd,pair.origin,view[0].image_name),_resize=1.0,_padding=1.0)
                     if pair.cfg.image_resize!=1:
@@ -437,7 +437,7 @@ class ImagePatchPair:
             self.tr_list,self.val_list=self.cfg.split_train_val_vc(self.view_coord)
             self.blend_image_patch(
                 additional_weight=[1,1], # if you have three categories default=[0,1,2] to draw from, here you can add more weights
-                patch_per_pixel=[2000,9000], # patch per pixel, range to randomly select from, larger number: smaller density
+                patch_per_pixel=[2000,18000], # patch per pixel, range to randomly select from, larger number: smaller density
                 max_instance=20, # break out if more than this amount was inserted
                 bright_diff=-10,  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
                 max_std=40,  # original area should be clean, standard deviation should be low (< max_std)
@@ -605,7 +605,8 @@ class ImagePatchGenerator(keras.utils.Sequence):
     def get_pred_item(self,indexes):
         _img,_img_meta,_anc=None,None,None
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
-            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex('+'.join([self.pair.origin]+self.pair.targets))),self.cfg)
+            # this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex('+'.join([self.pair.origin]+self.pair.targets))),self.cfg)
+            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.dir_in_ex(self.pair.origin)),self.cfg)
             this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
             this_img=this_img[np.newaxis,...]
             this_img_meta=this_img_meta[np.newaxis,...]
