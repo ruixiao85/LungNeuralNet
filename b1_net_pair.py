@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 
 from osio import mkdir_ifexist,to_excel_sheet
-from preprocess import augment_image_pair,prep_scale,read_resize_padding
+from preprocess import augment_image_pair,prep_scale,read_image
 from postprocess import g_kern_rect,draw_text
 
 class BaseNetU(Config):
@@ -147,13 +147,9 @@ class BaseNetU(Config):
             res_i,res_g=None,None
             print('Load model and predict to [%s]...'%dir_out)
             export_name=dir_out+'_'+dir_cfg_append
-            target_dir=os.path.join(pair.wd,export_name)
-            if save_ind or not self.separate:  # skip saving individual images
-                mkdir_ifexist(target_dir)
-            if self.separate:
-                merge_dir=os.path.join(pair.wd,dir_out+'+'+dir_cfg_append)  # group
-                mkdir_ifexist(merge_dir)
-                mask_wt=g_kern_rect(self.row_out,self.col_out)
+            target_dir=os.path.join(pair.wd,export_name); mkdir_ifexist(target_dir) # folder to save individual slices
+            merge_dir=os.path.join(pair.wd,dir_out+'+'+dir_cfg_append); mkdir_ifexist(merge_dir) # folder to save grouped/whole images
+            mask_wt=g_kern_rect(self.row_out,self.col_out)
             for grp,view in batch.items():
                 msks=None
                 i=0; nt=len(tgt_list)
@@ -173,61 +169,56 @@ class BaseNetU(Config):
                     i=o
                 print('Saving predicted results [%s] to folder [%s]...'%(grp,export_name))
                 # r_i=np.zeros((len(multi.img_set.images),len(tgt_list)), dtype=np.uint32)
-                if self.separate:
-                    mrg_in=np.zeros((view[0].ori_row,view[0].ori_col,self.dep_in),dtype=np.float32)
-                    mrg_out=np.zeros((view[0].ori_row,view[0].ori_col,len(tgt_list)*self.dep_out),dtype=np.float32)
-                    mrg_out_wt=np.zeros((view[0].ori_row,view[0].ori_col),dtype=np.float32)+np.finfo(np.float32).eps
-                    sum_g=view[0].ori_row*view[0].ori_col
-                    # r_g=np.zeros((1,len(tgt_list)*self.dep_out), dtype=np.uint32)
+                mrg_in=np.zeros((view[0].ori_row,view[0].ori_col,self.dep_in),dtype=np.float32)
+                mrg_out=np.zeros((view[0].ori_row,view[0].ori_col,len(tgt_list)*self.dep_out),dtype=np.float32)
+                mrg_out_wt=np.zeros((view[0].ori_row,view[0].ori_col),dtype=np.float32)+np.finfo(np.float32).eps
+                sum_g=view[0].ori_row*view[0].ori_col
+                # r_g=np.zeros((1,len(tgt_list)*self.dep_out), dtype=np.uint32)
                 for i,msk in enumerate(msks):
                     # if i>=len(multi.view_coord): print("skip %d for overrange"%i); break # last batch may have unused entries
                     ind_name=view[i].file_name
                     ind_file=os.path.join(target_dir,ind_name)
-                    origin=view[i].get_image(os.path.join(pair.wd,pair.dir_in_ex(pair.origin)),self)
+                    origin=view[i].get_image(os.path.join(pair.wd,pair.origin),self)
                     print(ind_name); text_list=[ind_name]
                     blend,r_i=self.predict_proc(self,origin,msk,file=None) # ind_file.replace(self.image_format[1:],'')
                     for d in range(len(tgt_list)):
                         text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_i[d][1],r_i[d][0],sum_i,100.*r_i[d][0]/sum_i)
                         print(text); text_list.append(text)
-                    if save_ind or not self.separate:  # skip saving individual images
-                        blendtext=draw_text(self,blend,text_list,self.col_out)  # RGB:3x8-bit dark text
-                        cv2.imwrite(ind_file,blendtext)
+                    blendtext=draw_text(self,blend,text_list,self.col_out)  # RGB:3x8-bit dark text
+                    cv2.imwrite(ind_file,blendtext)
                     res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i,r_i[np.newaxis,...]))
 
-                    if self.separate:
-                        ri,ro,ci,co,tri,tro,tci,tco=self.get_proper_range(view[i].ori_row,view[i].ori_col,
-                                view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
-                        mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
-                        for d in range(len(tgt_list)):
-                            mrg_out[ri:ro,ci:co,d]+=(msk[...,d]*mask_wt)[tri:tro,tci:tco]
-                        mrg_out_wt[ri:ro,ci:co]+=mask_wt[tri:tro,tci:tco]
-                if self.separate:
+                    ri,ro,ci,co,tri,tro,tci,tco=self.get_proper_range(view[i].ori_row,view[i].ori_col,
+                            view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
+                    mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
                     for d in range(len(tgt_list)):
-                        mrg_out[...,d]/=mrg_out_wt
-                    print(grp); text_list=[grp]
-                    merge_name=view[0].image_name
-                    merge_file=os.path.join(merge_dir,merge_name)
-                    if save_raw: # high-res raw group image
-                        mrg_in=read_resize_padding(os.path.join(pair.wd,pair.origin,view[0].image_name),_resize=1.0,_padding=1.0)
-                        mrg_r, mrg_c, _=mrg_in.shape
-                        mrg_out=cv2.resize(mrg_out, (mrg_c,mrg_r))
-                        sum_g=mrg_r*mrg_c
-                    blend,r_g=self.predict_proc(self,mrg_in,mrg_out,file=None) # merge_file.replace(self.image_format[1:],'')
-                    for d in range(len(tgt_list)):
-                        text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_g[d][1],r_g[d][0],sum_g,100.*r_g[d][0]/sum_g)
-                        print(text); text_list.append(text)
-                    blendtext=draw_text(self,blend,text_list,view[0].ori_col)  # RGB: 3x8-bit dark text
-                    res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
-                    cv2.imwrite(merge_file,blendtext)  # [...,np.newaxis]
+                        mrg_out[ri:ro,ci:co,d]+=(msk[...,d]*mask_wt)[tri:tro,tci:tco]
+                    mrg_out_wt[ri:ro,ci:co]+=mask_wt[tri:tro,tci:tco]
+                for d in range(len(tgt_list)):
+                    mrg_out[...,d]/=mrg_out_wt
+                print(grp); text_list=[grp]
+                merge_name=view[0].image_name
+                merge_file=os.path.join(merge_dir,merge_name)
+                if save_raw: # high-res raw group image
+                    mrg_in=read_image(os.path.join(pair.wd,pair.origin,view[0].image_name))
+                    mrg_r, mrg_c, _=mrg_in.shape
+                    mrg_out=cv2.resize(mrg_out, (mrg_c,mrg_r))
+                    sum_g=mrg_r*mrg_c
+                blend,r_g=self.predict_proc(self,mrg_in,mrg_out,file=None) # merge_file.replace(self.image_format[1:],'')
+                for d in range(len(tgt_list)):
+                    text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_g[d][1],r_g[d][0],sum_g,100.*r_g[d][0]/sum_g)
+                    print(text); text_list.append(text)
+                blendtext=draw_text(self,blend,text_list,view[0].ori_col)  # RGB: 3x8-bit dark text
+                res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
+                cv2.imwrite(merge_file,blendtext)  # [...,np.newaxis]
             res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
             res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
         for i,note in [(0,'_area'),(1,'_count')]:
             df=pd.DataFrame(res_ind[...,i],index=pair.img_set.images,columns=pair.targets*pair.cfg.dep_out)
             to_excel_sheet(df,xls_file,pair.origin+note)  # per slice
-        if self.separate:
-            for i,note in [(0,'_area'),(1,'_count')]:
-                df=pd.DataFrame(res_grp[...,i],index=batch.keys(),columns=pair.targets*pair.cfg.dep_out)
-                to_excel_sheet(df,xls_file,pair.origin+note+"_sum")
+        for i,note in [(0,'_area'),(1,'_count')]:
+            df=pd.DataFrame(res_grp[...,i],index=batch.keys(),columns=pair.targets*pair.cfg.dep_out)
+            to_excel_sheet(df,xls_file,pair.origin+note+"_sum")
 
 
 class ImageMaskPair:
@@ -237,7 +228,7 @@ class ImageMaskPair:
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
         # self.dir_out=targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
-        self.img_set=ImageSet(cfg, wd, origin, is_train, is_image=True).size_folder_update()
+        self.img_set=ImageSet(cfg, wd, origin, is_train, is_image=True).prep_folder()
         self.msk_set=None
         self.view_coord=self.img_set.view_coord
         self.is_train=is_train
@@ -252,7 +243,7 @@ class ImageMaskPair:
             tgt_list=[]
             for t in self.targets[i:o]:
                 tgt_list.append(t)
-                msk = ImageSet(self.cfg, self.wd, t, is_train=True, is_image=False).size_folder_update()
+                msk = ImageSet(self.cfg, self.wd, t, is_train=True, is_image=False).prep_folder()
                 self.msk_set.append(msk)
                 views = views.intersection(msk.view_coord)
             self.view_coord = sorted(views,key=lambda x:x.file_name)

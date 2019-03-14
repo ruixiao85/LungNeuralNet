@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import imgaug as ia
 from cv2 import cv2
@@ -57,23 +59,37 @@ def reverse_tanh(_array):
     # return ((1.0-_array.astype(np.float32))*127.5).astype(np.uint8)  # +1 ~ -1
 
 
-def read_resize_padding(_file, _resize, _padding):
+def read_image(_file):
+    return cv2.imread(_file)
+
+def read_resize(_file, _resize=1.0):
+    img=read_image(_file)
     if _resize != 1.0:
-        img = cv2.resize(cv2.imread(_file), (0, 0), fx=_resize, fy=_resize, interpolation=cv2.INTER_AREA)
-        # print(" Resize [%.1f] applied "%_resize,end='')
-    else:
-        img =  cv2.imread(_file)
-        # print(" Resize [%.1f] not applied "%_resize,end='')
+        img=cv2.resize(img, (0, 0), fx=_resize, fy=_resize, interpolation=cv2.INTER_AREA)
+    return img
+
+def read_resize_pad(_file, _resize=1.0,_padding=1.0):
+    img=read_resize(_file, _resize)
     if _padding > 1.0:
         row,col,_=img.shape
         row_pad=int(_padding*row-row)
         col_pad=int(_padding*col-col)
         # print(" Padding [%.1f] applied "%_padding,end='')
-        return np.pad(img,((row_pad,row_pad),(col_pad,col_pad),(0,0)), 'reflect')
-    else:
-    #     print(" Padding [%.1f] not applied "%_padding,end='')
-        return img
+        img=np.pad(img,((row_pad,row_pad),(col_pad,col_pad),(0,0)), 'reflect')
+    return img
 
+def read_resize_fit(_file, _resize, _row, _col):
+    img=read_resize(_file, _resize)
+    row,col,_=img.shape
+    if row==_row and col==_col:
+        return img
+    if row<_row or col<_col: # pad needed
+        row_pad=max(0,int(math.ceil(_row-row)/2.0))
+        col_pad=max(0,int(math.ceil(_col-col)/2.0))
+        # print(" Padding [%.1f] applied "%_padding,end='')
+        img=np.pad(img,((row_pad,row_pad),(col_pad,col_pad),(0,0)), 'reflect')
+    ri=(row-_row)//2; ci=(col-_col)//2
+    return img[ri:ri+_row,ci:ci+_col,...]
 
 def extract_pad_image(lg_img, r0, r1, c0, c1):
     _row, _col, _ = lg_img.shape
@@ -215,15 +231,15 @@ def augment_per_channel(_aug,_msks):
 # Patch # padding white 255
 
 aug_pat_1 = iaa.Sequential([
-    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
+    iaa.Fliplr(0.5), iaa.Flipud(0.5),
 ])
 aug_pat_2 = iaa.Sequential([
-    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
+    iaa.Fliplr(0.5), iaa.Flipud(0.5),
     iaa.Sometimes(0.7, iaa.Affine(rotate=(-12, 12), mode='constant', cval=255)),
 ])
 aug_pat_3 = iaa.Sequential([
-    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
-    iaa.Sometimes(0.5, iaa.Affine(
+    iaa.Fliplr(0.5), iaa.Flipud(0.5),
+    iaa.Sometimes(0.7, iaa.Affine(
         scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
         rotate=(-20, 20), shear=(-10, 10), order=[0, 1],  mode='constant', cval=255
     )),

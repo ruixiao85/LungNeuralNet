@@ -1,6 +1,9 @@
 import colorsys
+import os
 import random
 import numpy as np
+
+from osio import find_file_pattern
 
 
 def generate_colors(n, shuffle=False):
@@ -12,8 +15,8 @@ def generate_colors(n, shuffle=False):
 
 class Config:
     def __init__(self,num_targets,dim_in=None,dim_out=None,
-                 image_format=None,image_resize=None,image_padding=None,mask_color=None,feed=None,act=None,out=None,
-                 batch_size=None,separate=None,coverage_train=None,coverage_predict=None,train_high_contrast=None,out_image=None,
+                 image_format=None,target_scale=None,feed=None,act=None,out=None,
+                 batch_size=None,coverage_train=None,coverage_predict=None,train_contrast=None,out_image=None,
                  call_hardness=None,overlay_color=None,overlay_opacity=None,overlay_textshape_bwif=None,save_ind_raw=None,
                  ntop=None,train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
                  train_vali_split=None,train_aug=None,train_continue=None,train_shuffle=None,indicator=None,indicator_trend=None):
@@ -24,19 +27,14 @@ class Config:
         self.row_out, self.col_out, self.dep_out=self.dim_out
         self.dep_out=min(self.dep_out,num_targets)
         self.image_format=image_format or "*.jpg"
-        self.image_resize=image_resize or 1.0  # default 1.0, reduce size <=1.0
-        self.image_padding=image_padding or 1.0  # default 1.0, padding proportionally >=1.0
-        # self.image_resize=image_resize if isinstance(image_resize, list) else [1.0]*self.num_targets  # default 1.0, reduce size <=1.0
-        # self.image_padding=image_padding if isinstance(image_padding, list) else [1.0]*self.num_targets  # default 1.0, padding proportionally >=1.0
-        self.mask_color=mask_color or "white"  # green/white
+        self.target_scale=target_scale or 1.0 # pixel scale to target default to 10X=1px/µm (e.g., 40X=4px/µm)
         self.feed=feed or 'tanh'
         self.act=act or 'relu'
         self.out=out or ('sigmoid' if self.dep_out==1 else 'softmax')
         self.out_image=out_image if out_image is not None else False # output type: True=image False=mask
-        self.separate=separate if separate is not None else True  # True: split into multiple smaller views; False: take one view only
         self.coverage_train=coverage_train or 3.0
         self.coverage_predict=coverage_predict or 3.0
-        self.train_high_contrast=train_high_contrast if train_high_contrast is not None else True
+        self.train_contrast=train_contrast or (8.0,0.0) # skip low-contrasts (std<?) for training (image,mask), smaller values train more images/masks
         self.call_hardness=call_hardness or 1.0  # 0-smooth 1-hard binary call
         self.overlay_color=overlay_color if isinstance(overlay_color, list) else \
             generate_colors(overlay_color) if isinstance(overlay_color, int) else \
@@ -56,6 +54,8 @@ class Config:
         self.train_continue=train_continue if train_continue is not None else True  # continue training by loading previous weights
         self.indicator=indicator or 'val_acc'
         self.indicator_trend=indicator_trend or 'max'
+        self._model_cache=None
+
 
     def split_train_val_vc(self,view_coords):
         tr_list,val_list=[],[]  # list view_coords, can be from slices
@@ -92,17 +92,17 @@ class Config:
         return ri,ro,ci,co,tri,tro,tci,tco
 
     def find_best_models(self, pattern, allow_cache=False):
-        import glob,os
+        cwd=os.getcwd()
         # pattern=pattern.replace('_%.1f_'%self.image_resize, '_*_') # also consider other models trained on different scales
-        print("Scanning for files matching %s in %s"%(pattern,os.getcwd()))
+        print("Scanning for files matching %s in %s"%(pattern,cwd))
         if allow_cache:
             if not hasattr(self,"_model_cache"):
                 self._model_cache={}
             if not pattern in self._model_cache:
-                self._model_cache[pattern]=sorted(glob.glob(pattern), key=lambda t: t.split('^')[1], reverse=self.indicator_trend=='max')
+                self._model_cache[pattern]=sorted(find_file_pattern(os.path.join(cwd,pattern)), key=lambda t: t.split('^')[1], reverse=self.indicator_trend=='max')
             return self._model_cache[pattern]
         else: # search
-            files=sorted(glob.glob(pattern), key=lambda t: t.split('^')[1], reverse=self.indicator_trend=='max')
+            files=sorted(find_file_pattern(os.path.join(cwd,pattern)), key=lambda t: t.split('^')[1], reverse=self.indicator_trend=='max')
             nfiles=len(files)
             if nfiles>0:
                 print('Found %d previous models, keeping the top %d (%s):'%(nfiles,self.ntop,self.indicator_trend))
@@ -125,3 +125,4 @@ class Config:
         maxchar=max(1, int(28 / len(tgt_list))) # clip to fewer leading chars
         # maxchar=9999 # include all
         return ','.join(tgt[:maxchar] for tgt in tgt_list)
+

@@ -3,8 +3,8 @@ from cv2 import cv2
 import numpy as np
 
 from a_config import Config
-from osio import find_file_recursive
-from preprocess import read_resize_padding,extract_pad_image
+from osio import mkdir_ifexist,find_file_pattern,find_file_pattern_rel,find_folder_contain,find_folder_contain_rel,find_file_ext_recursive,find_file_ext_recursive_rel
+from preprocess import read_image,read_resize,read_resize_pad,read_resize_fit,extract_pad_image
 
 ALL_TARGET = 'All'
 class MetaInfo:
@@ -45,26 +45,17 @@ class MetaInfo:
         return self.image_name.replace(".jpg", "_#%d#%d#%d#%d#%d#%d#.jpg"
                  % (self.ori_row, self.ori_col, self.row_start,self.row_end,self.col_start,self.col_end))
 
-    def get_image(self, _path, cfg:Config, override=None):
-        file=override or self.file_name
-        return read_resize_padding(os.path.join(_path, file),_resize=1.0,_padding=1.0) if cfg.separate else\
-            extract_pad_image(read_resize_padding(os.path.join(_path, file),cfg.image_resize,cfg.image_padding), self.row_start, self.row_end, self.col_start, self.col_end)
+    def get_image(self, _path, overridde=None):
+        file=overridde if overridde is not None else self.file_name
+        return read_image(os.path.join(_path, file))
+        # return extract_pad_image(read_resize_padding(os.path.join(_path, file),_resize=1.0,_padding=1.0), self.row_start, self.row_end, self.col_start, self.col_end)
 
-    def get_mask(self, _path, cfg:Config, override=None):
-        img=self.get_image(_path, cfg, override)
+    def get_mask(self, _path, overridde=None):
+        img=self.get_image(_path, overridde)
         # imwrite("test_img.jpg",img)
-        code=cfg.mask_color[0].lower()
-        if code=='g': # green
-            img=img.astype(np.int16)
-            # imwrite("test_2f_-0.3.jpg",np.clip(5*(img[..., 1] - img[..., 0]-100), 0, 255)[..., np.newaxis])
-            # imwrite("test_2f_-0.4.jpg",np.clip(5*(img[..., 1] - img[..., 0]-120), 0, 255)[..., np.newaxis])
-            # imwrite("test_2f_-0.5.jpg",np.clip(5*(img[..., 1] - img[..., 0]-140), 0, 255)[..., np.newaxis])
-            # imwrite("test_2f_-0.6.jpg",np.clip(5*(img[..., 1] - img[..., 0]-160), 0, 255)[..., np.newaxis])
-            return np.clip(5*(img[..., 1] - img[..., 0]-110), 0, 255).astype(np.uint8)
-        else: # default to white/black
-            # return img[...,1]  # from green channel
-            return np.max(img,axis=-1,keepdims=False)  # max channel
-            # return np.clip(np.sum(img,axis=-1,keepdims=False), 0, 255).astype(np.uint8)  # sum channel
+        # return img[...,1]  # from green channel
+        return np.max(img,axis=-1,keepdims=False)  # max channel
+        # return np.clip(np.sum(img,axis=-1,keepdims=False), 0, 255).astype(np.uint8)  # sum channel
 
     def get_masks(self, _path, cfg:Config):
         import glob
@@ -76,7 +67,7 @@ class MetaInfo:
         for f in files:
             class_split=f.split('^')
             clss.append(class_split[int(len(class_split)-2)])
-            msk=self.get_mask(_path, cfg, f)[...,np.newaxis] # np.uint8 0-255
+            msk=self.get_mask(_path, f)[...,np.newaxis] # np.uint8 0-255
             msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
         return msks, np.array(clss,dtype=np.uint8) # 0 ~ 255
 
@@ -91,67 +82,41 @@ class MetaInfo:
 
 class ImageSet:
     def __init__(self,cfg:Config,wd,sf,is_train,is_image):
-        self.cfg=cfg
         self.work_directory=wd
-        self.sub_folder=sf
-        self.images=None
-        self.coverage=cfg.coverage_train if is_train else cfg.coverage_predict
+        self.sub_category=sf
+        self.image_format=cfg.image_format
+        self.target_scale=cfg.target_scale
         self.is_train=is_train
         self.is_image=is_image
-        self.row=self.cfg.row_in if is_image else self.cfg.row_out
-        self.col=self.cfg.col_in if is_image else self.cfg.col_out
+        self.coverage=cfg.coverage_train if is_train else cfg.coverage_predict
+        self.train_step=cfg.train_step
+        self.contrast_std=(cfg.train_contrast[0] if is_image else cfg.train_contrast[1]) if is_train else 0
+        self.row=cfg.row_in if is_image else cfg.row_out
+        self.col=cfg.col_in if is_image else cfg.col_out
+        self.target_folder="%s_%.1f_%dx%d"%(self.sub_category,self.target_scale,self.row,self.col)
+        self.images=None
         self.view_coord=None  # list
 
-    def find_file_recursive_rel(self):
-        path=os.path.join(self.work_directory,self.sub_folder)
-        self.images=[os.path.relpath(absp,path) for absp in find_file_recursive(path, self.cfg.image_format)]
+    def prep_folder(self):
+        exist,_=mkdir_ifexist(os.path.join(self.work_directory,self.target_folder))
+        if not exist:
+            folders=sorted(find_folder_contain_rel(self.work_directory,self.sub_category+'_'),key=lambda t:float(t.split('_')[1]),
+                reverse=True)  # high-res first
+            self.convert_from_folder(folders[0])
+        self.scan_folder()
 
-    def size_folder_update(self):
-        self.find_file_recursive_rel()
-        if self.cfg.separate:
-            new_dir="%s_%s"%(self.sub_folder,self.ext_folder(self.cfg,self.is_image))
-            new_path=os.path.join(self.work_directory,new_dir)
-            # shutil.rmtree(new_path)  # force delete
-            if not os.path.exists(new_path):  # change folder and not found
-                os.makedirs(new_path)
-                self.split_image_coord(new_path)
-            self.sub_folder=new_dir
-            self.find_file_recursive_rel()
-        self.single_image_coord()
-        return self
-
-    def single_image_coord(self):
-        self.view_coord=[]
-        ratio=0.5  # if self.predict_mode is True else random.random() # add randomness if not prediction/full
-        total=len(self.images)
-        print('Parsing %d files...'%total)
-        for i,image_name in enumerate(self.images):
-            _img=read_resize_padding(os.path.join(self.work_directory,self.sub_folder,image_name),self.cfg.image_resize,self.cfg.image_padding)
-            pct10=10*(i+1)//total
-            if pct10 > 10*i//total:
-                print('%.0f%% ... %s'%(pct10*10,image_name))
-            entry=MetaInfo.from_single(image_name)
-            if entry.row_start is None:
-                lg_row,lg_col,lg_dep=_img.shape
-                ri,ro,ci,co=0,lg_row,0,lg_col
-                if self.row is not None or self.col is not None:  # dimension specified
-                    rd=int(ratio*(lg_row-self.row))
-                    cd=int(ratio*(lg_col-self.col))
-                    ri+=rd; ci+=cd
-                    ro-=lg_row-self.row-rd
-                    co-=lg_col-self.col-cd
-                entry.update_coord(lg_row,lg_col,ri,ro,ci,co)
-            self.view_coord.append(entry)
-
-    def split_image_coord(self,ex_dir):
-        self.view_coord=[]
-        for image_name in self.images:
-            _img=read_resize_padding(os.path.join(self.work_directory,self.sub_folder,image_name),self.cfg.image_resize,self.cfg.image_padding)
+    def convert_from_folder(self,raw_folder):
+        raw_scale=float(raw_folder.split('_')[1]); resize_ratio=round(self.target_scale/raw_scale,1)
+        print("Converting from folder [%s -> %s] %.1f -> %.1f (%.1fx) ..."%(raw_folder,self.target_folder,raw_scale,self.target_scale,resize_ratio))
+        if raw_scale<self.target_scale:
+            print("Warning, upsampling from low-res raw images is not recommended!")
+        images=find_file_ext_recursive_rel(os.path.join(self.work_directory,raw_folder),self.image_format)
+        for image in images:
+            _img=read_resize(os.path.join(self.work_directory,raw_folder,image),resize_ratio)
             lg_row,lg_col,lg_dep=_img.shape
             r_len=max(1,1+int(round((lg_row-self.row)/self.row*self.coverage)))
             c_len=max(1,1+int(round((lg_col-self.col)/self.col*self.coverage)))
-            print("%s target %d x %d (coverage %.1f): original %d x %d ->  row /%d col /%d"%
-                  (image_name,self.row,self.col,self.coverage,lg_row,lg_col,r_len,c_len))
+            print("%s target %d x %d (coverage %.1f): original %d x %d ->  row /%d col /%d"%(image,self.row,self.col,self.coverage,lg_row,lg_col,r_len,c_len))
             r0,c0,r_step,c_step=0,0,0,0  # start position and step default to (0,0)
             if r_len>1:
                 r_step=float(lg_row-self.row)/(r_len-1)
@@ -168,133 +133,116 @@ class ImageSet:
                     ro=ri+self.row
                     co=ci+self.col
                     s_img=extract_pad_image(_img,ri,ro,ci,co)
-                    if self.is_train and self.cfg.train_high_contrast:  # skip if low contrast or masked information
-                        std=float(np.std(s_img))
-                        if not self.is_image and self.cfg.mask_color[0].lower()!='g' and std<3.0:  # none green mask have a lower std requirement
-                            print("skip tile r%d_c%d for low contrast (std=%.1f) for %s"%(r_index,c_index,std,image_name))
+                    if self.is_train:  # skip if low contrast
+                        std=float(np.mean(np.std(s_img,axis=-1)))
+                        if std<self.contrast_std:
+                            print("skip tile r%d_c%d for low contrast (std=%.1f<%.1f) for %s"%(r_index,c_index,std,self.contrast_std,image))
                             continue
-                        elif std<10.0:
-                            print("skip tile r%d_c%d for low contrast (std=%.1f) for %s"%(r_index,c_index,std,image_name))
-                            continue
-                    entry=MetaInfo.from_whole(image_name,lg_row,lg_col,ri,ro,ci,co)
-                    cv2.imwrite(os.path.join(ex_dir,entry.file_name),s_img,
-                            [int(cv2.IMWRITE_JPEG_QUALITY),100] if self.is_image else [int(cv2.IMWRITE_JPEG_QUALITY),80])
-                    # entry.ri, entry.ro, entry.ci, entry.co = 0, self.row, 0, self.col
-                    self.view_coord.append(entry)  # updated to target single exported file
+                    entry=MetaInfo.from_whole(image,lg_row,lg_col,ri,ro,ci,co)
+                    cv2.imwrite(os.path.join(self.work_directory,self.target_folder,entry.file_name),s_img,[int(cv2.IMWRITE_JPEG_QUALITY),100])
+
+
+    def scan_folder(self):
+        self.images=find_file_ext_recursive_rel(os.path.join(self.work_directory,self.target_folder),self.image_format)
+        total=len(self.images)
+        ratio=0.5 # crop the middle portion if actual image is larger
+        self.view_coord=[]
+        print('Parsing %d files...'%total)
+        for i,image in enumerate(self.images):
+            _img=read_image(os.path.join(self.work_directory,self.target_folder,image))
+            pct10=10*(i+1)//total
+            if pct10 > 10*i//total:
+                print('%.0f%% ... %s'%(pct10*10,image))
+            entry=MetaInfo.from_single(image)
+            if entry.row_start is None:
+                lg_row,lg_col,lg_dep=_img.shape
+                ri,ro,ci,co=0,lg_row,0,lg_col
+                if self.row is not None or self.col is not None:  # dimension specified
+                    rd=int(ratio*(lg_row-self.row))
+                    cd=int(ratio*(lg_col-self.col))
+                    ri+=rd; ci+=cd
+                    ro-=lg_row-self.row-rd
+                    co-=lg_col-self.col-cd
+                entry.update_coord(lg_row,lg_col,ri,ro,ci,co)
+            self.view_coord.append(entry)
+
 
     def view_coord_batch(self):
         view_batch={}
-        if self.cfg.separate:
-            for view in self.view_coord:
-                key=self.file_to_whole_image(view.file_name)
-                sub_list=view_batch.get(key) or []
+        whole_id=0
+        for view in self.view_coord:
+            key,whole=self.file_to_whole_image(view.file_name)
+            if whole:
+                whole+=1 if len(view_batch.get(str(whole_id), []))>self.train_step else 0
+                sub_list=view_batch.get(str(whole_id), [])
+                sub_list.append(view)
+                view_batch[str(whole_id)]=sub_list
+            else:
+                sub_list=view_batch.get(key, [])
                 sub_list.append(view)
                 view_batch[key]=sub_list
-            return view_batch
-        else:
-            n = self.cfg.train_step
-            return { x:self.view_coord[x:x + n] for x in range(0, len(self.view_coord), n)}  # break into sub-lists
+        return view_batch
 
     @staticmethod
     def file_to_whole_image(text):
         half=text.split('_#')
         if len(half)==2:
             dot_sep=text.split('.')
-            return "%s.%s"%(half[0],dot_sep[len(dot_sep)-1])
-        return text
+            return "%s.%s"%(half[0],dot_sep[len(dot_sep)-1]),False
+        return text,True
 
-    @staticmethod
-    def ext_folder(cfg, is_image):
-        return "%.1f_%dx%d" % (cfg.image_resize, cfg.row_in, cfg.col_in)\
-            if is_image else "%.1f_%dx%d" % (cfg.image_resize, cfg.row_out, cfg.col_out)
 
-class PatchSet(ImageSet):
+class PatchSet:
     def __init__(self,cfg:Config,wd,sf,is_train,is_image):
-        self.patches=None
-        super(PatchSet,self).__init__(cfg,wd,sf,is_train,is_image)
-        self.size_folder_update()
-        self.num_patches=len(self.images)
-        self.tr_list,self.val_list=self.split_train_val_id(self.images)
+        self.work_directory=wd
+        self.sub_category=sf
+        self.image_format=cfg.image_format
+        self.target_scale=cfg.target_scale
+        self.is_train=is_train
+        self.is_image=is_image
+        self.coverage=cfg.coverage_train if is_train else cfg.coverage_predict
+        self.train_step=cfg.train_step
+        self.contrast_std=(cfg.train_contrast[0] if is_image else cfg.train_contrast[1]) if is_train else 0
+        self.train_vali_split=cfg.train_vali_split
+        self.target_folder="%s_%.1f"%(self.sub_category,self.target_scale) # resolution not specified
+        self.images=None
+        self.view_coord=None  # list
+        self.tr_list,self.val_list=None,None
 
-    def split_train_val_id(self,items):
-        tr_list,val_list=[],[]  # list of unique items
-        for i,it in enumerate(items):
-            if (len(val_list)+0.05)/(len(tr_list)+0.05)>self.cfg.train_vali_split:
-                tr_list.append(i)
-            else:
-                val_list.append(i)
-        print("%s: %d split into train %d vs validation %d"%(self.sub_folder,len(items),len(tr_list),len(val_list)))
-        return tr_list,val_list
 
-    def size_folder_update(self):
-        print("checking %s"%self.sub_folder)
-        self.find_file_recursive_rel()
-        self.single_image_coord()
-        return self
+    def prep_folder(self):
+        exist,_=mkdir_ifexist(os.path.join(self.work_directory,self.target_folder))
+        if not exist:
+            folders=sorted(find_folder_contain_rel(self.work_directory,self.sub_category+'_'),key=lambda t:float(t.split('_')[1]),reverse=True)  # high-res first
+            self.convert_from_folder(folders[0])
+        self.scan_folder_split()
 
-    def single_image_coord(self):
+    def convert_from_folder(self,raw_folder): # override parent class
+        raw_scale=float(raw_folder.split('_')[1])
+        resize_ratio=round(self.target_scale/raw_scale,1)
+        print("Converting from folder [%s -> %s] %.1f -> %.1f (%.1fx) ..."%(raw_folder,self.target_folder,raw_scale,self.target_scale,resize_ratio))
+        if raw_scale<self.target_scale:
+            print("Warning, upsampling from low-res raw images is not recommended!")
+        images=find_file_ext_recursive_rel(os.path.join(self.work_directory,raw_folder),self.image_format)
+        for image in images:
+            _img=read_resize(os.path.join(self.work_directory,raw_folder,image),resize_ratio)
+            cv2.imwrite(os.path.join(self.work_directory,self.target_folder,image),_img,[int(cv2.IMWRITE_JPEG_QUALITY),100])
+
+    def scan_folder_split(self):
+        self.images=find_file_ext_recursive_rel(os.path.join(self.work_directory,self.target_folder),self.image_format)
+        total=len(self.images)
+        self.tr_list,self.val_list=[],[]  # list of unique items
         self.view_coord=[]
-        self.patches=[]
-        for image_name in self.images:
-            _img = read_resize_padding(os.path.join(self.work_directory, self.sub_folder, image_name),
-                                       _resize=self.cfg.image_resize,_padding=self.cfg.image_padding)
-            minVal,maxVal,minLoc,maxLoc=cv2.minMaxLoc(np.max(_img,axis=-1))
-            # print(','.join([str(minVal),str(maxVal),str(minLoc),str(maxLoc)]))
-            _img=_img+(255-maxVal)
-            # cv2.imwrite('this.jpg',_img)
-            self.patches.append(_img)
-            entry=MetaInfo.from_single(image_name)
-            if entry.row_start is None:
-                lg_row, lg_col, lg_dep=_img.shape
-                ri, ro, ci, co=int(np.average(_img)), int(np.std(_img)), np.max(_img), np.min(_img)
-                entry.update_coord(lg_row, lg_col, ri, ro, ci, co) # store ave, std, max, min of patch
-                print('%s ave:%f std:%f max:%f min:%f'%(image_name,ri,ro,ci,co))
-            self.view_coord.append(entry)
-
-
-    def split_image_coord(self, ex_dir):
-        self.view_coord=[]
-        for image_name in self.images:
-            _img = read_resize_padding(os.path.join(self.work_directory, self.sub_folder, image_name),self.cfg.image_resize,self.cfg.image_padding)
-            lg_row, lg_col, lg_dep = _img.shape
-            r_len = max(1, 1+int(round((lg_row - self.row) / self.row * self.coverage)))
-            c_len = max(1, 1+int(round((lg_col - self.col) / self.col * self.coverage)))
-            print("%s target %d x %d (coverage %.1f): original %d x %d ->  row /%d col /%d" %
-                  (image_name, self.row, self.col, self.coverage, lg_row, lg_col, r_len, c_len))
-            r0, c0, r_step, c_step = 0, 0, 0, 0  # start position and step default to (0,0)
-            if r_len > 1:
-                r_step = float(lg_row - self.row) / (r_len - 1)
+        print('Parsing %d patches...'%total)
+        for i,image in enumerate(self.images):
+            _img=read_image(os.path.join(self.work_directory,self.target_folder,image))
+            pct10=10*(i+1)//total
+            if pct10 > 10*i//total:
+                print('%.0f%% ... %s'%(pct10*10,image))
+            lg_row,lg_col,lg_dep=_img.shape
+            self.view_coord.append(MetaInfo(image, image, lg_row, lg_col, 0, lg_row, 0, lg_col))
+            if (len(self.val_list)+0.05)/(len(self.tr_list)+0.05)>self.train_vali_split:
+                self.tr_list.append(i)
             else:
-                r0 = int(0.5 * (lg_row - self.row))
-            if c_len > 1:
-                c_step = float(lg_col - self.col) / (c_len - 1)
-            else:
-                c0 = int(0.5 * (lg_col - self.col))
-            for r_index in range(r_len):
-                for c_index in range(c_len):
-                    ri = r0 + int(round(r_index * r_step))
-                    ci = c0 + int(round(c_index * c_step))
-                    ro = ri + self.row
-                    co = ci + self.col
-                    s_img = extract_pad_image(_img, ri, ro, ci, co)
-                    if self.is_train: # skip if low contrast or masked information
-                        # col=self.filter_type[0].lower()
-                        # if col=='g': # green mask
-                        #     gmin=float(np.min(s_img[...,0]))+float(np.min(s_img[...,2])) # min_R min_B
-                        #     if gmin>15.0:
-                        #         print("skip tile r%d_c%d for no green mask (min_R+B=%.1f) for %s" % (r_index, c_index, gmin, image_name))
-                        #         continue
-                        # else: # default white/black or rgb
-                        std=float(np.std(s_img))
-                        if not self.is_image and self.cfg.mask_color[0].lower()!='g' and std<3.0: # none green mask have a lower std requirement
-                            print("skip tile r%d_c%d for low contrast (std=%.1f) for %s" % (r_index, c_index, std, image_name))
-                            continue
-                        elif std<10.0:
-                            print("skip tile r%d_c%d for low contrast (std=%.1f) for %s" % (r_index, c_index, std, image_name))
-                            continue
-                    entry = MetaInfo.from_whole(image_name, lg_row, lg_col, ri, ro, ci, co)
-                    cv2.imwrite(os.path.join(ex_dir, entry.file_name), s_img,
-                        [int(cv2.IMWRITE_JPEG_QUALITY), 100] if self.is_image else [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-                    # entry.ri, entry.ro, entry.ci, entry.co = 0, self.row, 0, self.col
-                    self.view_coord.append(entry)  # updated to target single exported file
-
+                self.val_list.append(i)
+        print("%s was split into train %d vs validation %d"%(self.sub_category,len(self.tr_list),len(self.val_list)))
