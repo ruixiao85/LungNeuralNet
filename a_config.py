@@ -11,17 +11,18 @@ def generate_colors(n, shuffle=False):
     return colors
 
 class Config:
-    def __init__(self,dim_in=None,dim_out=None,
-                 num_targets=None,image_format=None,image_resize=None,image_padding=None,mask_color=None,feed=None,act=None,out=None,
+    def __init__(self,num_targets,dim_in=None,dim_out=None,
+                 image_format=None,image_resize=None,image_padding=None,mask_color=None,feed=None,act=None,out=None,
                  batch_size=None,separate=None,coverage_train=None,coverage_predict=None,train_high_contrast=None,out_image=None,
-                 call_hardness=None,overlay_color=None,overlay_opacity=None,overlay_textshape_bwif=None,predict_size=None,save_ind_raw=None,
+                 call_hardness=None,overlay_color=None,overlay_opacity=None,overlay_textshape_bwif=None,save_ind_raw=None,
                  ntop=None,train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
                  train_vali_split=None,train_aug=None,train_continue=None,train_shuffle=None,indicator=None,indicator_trend=None):
+        self.num_targets=num_targets
         self.dim_in=dim_in or (512,512,3)
         self.row_in, self.col_in, self.dep_in=self.dim_in
         self.dim_out=dim_out or (512,512,1)
         self.row_out, self.col_out, self.dep_out=self.dim_out
-        self.num_targets=num_targets or 10  # lead to default overlay_color predict_group
+        self.dep_out=min(self.dep_out,num_targets)
         self.image_format=image_format or "*.jpg"
         self.image_resize=image_resize or 1.0  # default 1.0, reduce size <=1.0
         self.image_padding=image_padding or 1.0  # default 1.0, padding proportionally >=1.0
@@ -42,8 +43,7 @@ class Config:
                 generate_colors(self.num_targets)
         self.overlay_opacity=overlay_opacity if isinstance(overlay_color, list) else [0.3]*self.num_targets
         self.overlay_textshape_bwif=overlay_textshape_bwif or (True,True,False,False) # draw black_legend, white_legend, color_instance_text, fill_shape
-        self.predict_size=predict_size or num_targets
-        self.save_ind_raw=save_ind_raw if isinstance(save_ind_raw,tuple) else (False,True)
+        self.save_ind_raw=save_ind_raw if isinstance(save_ind_raw,tuple) else (True,True)
         self.ntop=ntop if ntop is not None else 3 # numbers of top networks to keep, delete the networks that are less than ideal
         self.batch_size=batch_size or 1
         self.train_rep=train_rep or 2  # times to repeat during training

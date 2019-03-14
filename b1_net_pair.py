@@ -263,9 +263,9 @@ class ImageMaskPair:
 
     def predict_generator_note(self):
         i = 0; nt = len(self.targets)
-        ps = self.cfg.predict_size
+        predict_size = self.cfg.dep_out
         while i < nt:
-            o = min(i + ps, nt)
+            o = min(i + predict_size, nt)
             tgt_list=self.targets[i:o]
             yield (self.cfg.join_targets(tgt_list), tgt_list)
             i = o
