@@ -133,14 +133,10 @@ class BaseNetU(Config):
 
     def predict(self,pair,pred_dir):
         self.build_net()
-        # if hasattr(self, "_model_cache"): self._model_cache={}
         xls_file="Result_%s_%s.xlsx"%(pred_dir.replace(os.sep,'_'),repr(self))
         sum_i,sum_g=self.row_out*self.col_out,None
-        msks,mask_wt,r_i,r_g,ra,ca=None,None,None,None,None,None
-        mrg_in,mrg_out,mrg_out_wt,merge_dir=None,None,None,None
         batch=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
-        dir_ex=pair.dir_out_ex()
-        dir_cfg_append=str(self) if dir_ex is None else dir_ex+'_'+str(self)
+        dir_cfg_append=pair.img_set.category_append(None,self.row_out,self.col_out)+'_'+str(self)
         save_ind,save_raw=pair.cfg.save_ind_raw
         res_ind,res_grp=None,None
         for dir_out,tgt_list in pair.predict_generator_note():
@@ -178,14 +174,15 @@ class BaseNetU(Config):
                     # if i>=len(multi.view_coord): print("skip %d for overrange"%i); break # last batch may have unused entries
                     ind_name=view[i].file_name
                     ind_file=os.path.join(target_dir,ind_name)
-                    origin=view[i].get_image(os.path.join(pair.wd,pair.origin),self)
+                    origin=view[i].get_image(os.path.join(pair.wd,pair.img_set.target_folder))
                     print(ind_name); text_list=[ind_name]
                     blend,r_i=self.predict_proc(self,origin,msk,file=None) # ind_file.replace(self.image_format[1:],'')
                     for d in range(len(tgt_list)):
                         text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_i[d][1],r_i[d][0],sum_i,100.*r_i[d][0]/sum_i)
                         print(text); text_list.append(text)
                     blendtext=draw_text(self,blend,text_list,self.col_out)  # RGB:3x8-bit dark text
-                    cv2.imwrite(ind_file,blendtext)
+                    if save_ind:
+                        cv2.imwrite(ind_file,blendtext)
                     res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i,r_i[np.newaxis,...]))
 
                     ri,ro,ci,co,tri,tro,tci,tco=self.get_proper_range(view[i].ori_row,view[i].ori_col,
@@ -199,8 +196,8 @@ class BaseNetU(Config):
                 print(grp); text_list=[grp]
                 merge_name=view[0].image_name
                 merge_file=os.path.join(merge_dir,merge_name)
-                if save_raw: # high-res raw group image
-                    mrg_in=read_image(os.path.join(pair.wd,pair.origin,view[0].image_name))
+                if save_raw and pair.img_set.resize_ratio<1.0: # high-res raw group image
+                    mrg_in=read_image(os.path.join(pair.wd,pair.img_set.raw_folder,view[0].image_name))
                     mrg_r, mrg_c, _=mrg_in.shape
                     mrg_out=cv2.resize(mrg_out, (mrg_c,mrg_r))
                     sum_g=mrg_r*mrg_c
@@ -222,17 +219,14 @@ class BaseNetU(Config):
 
 
 class ImageMaskPair:
-    def __init__(self,cfg:BaseNetU,wd,origin,targets,is_train,is_reverse=False):
+    def __init__(self,cfg:BaseNetU,wd,origin,targets,is_train):
         self.cfg=cfg
         self.wd=wd
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
-        # self.dir_out=targets[0] if len(targets)==1 else ','.join([t[:4] for t in targets])
         self.img_set=ImageSet(cfg, wd, origin, is_train, is_image=True).prep_folder()
         self.msk_set=None
-        self.view_coord=self.img_set.view_coord
         self.is_train=is_train
-        self.is_reverse=is_reverse
 
     def train_generator(self):
         i = 0; no=self.cfg.dep_out; nt=len(self.targets)
@@ -246,17 +240,16 @@ class ImageMaskPair:
                 msk = ImageSet(self.cfg, self.wd, t, is_train=True, is_image=False).prep_folder()
                 self.msk_set.append(msk)
                 views = views.intersection(msk.view_coord)
-            self.view_coord = sorted(views,key=lambda x:x.file_name)
-            tr_list,val_list=self.cfg.split_train_val_vc(self.view_coord)
+            self.img_set.view_coord = sorted(views,key=lambda x:x.file_name)
+            tr_list,val_list=self.cfg.split_train_val_vc(self.img_set.view_coord)
             yield(ImageMaskGenerator(self,self.cfg.train_aug,tgt_list,tr_list),ImageMaskGenerator(self,0,tgt_list,val_list),
-                  self.dir_in_ex(self.origin) if self.is_reverse else self.dir_out_ex(self.cfg.join_targets(tgt_list)))
+                    self.img_set.category_detail(self.cfg.join_targets(tgt_list),self.cfg.target_scale,self.cfg.row_out,self.cfg.col_out))
             i=o
 
     def predict_generator_note(self):
         i = 0; nt = len(self.targets)
-        predict_size = self.cfg.dep_out
         while i < nt:
-            o = min(i + predict_size, nt)
+            o = min(i + self.cfg.predict_size, nt)
             tgt_list=self.targets[i:o]
             yield (self.cfg.join_targets(tgt_list), tgt_list)
             i = o
@@ -264,17 +257,6 @@ class ImageMaskPair:
     def predict_generator_partial(self,subset,view):
         return ImageMaskGenerator(self,0,subset,view),self.cfg.join_targets(subset)
 
-    def dir_in_ex(self,txt=None):
-        ext=ImageSet.ext_folder(self.cfg, True)
-        if txt is None:
-            return ext if self.cfg.separate else None
-        return txt+'_'+ext if self.cfg.separate else txt
-
-    def dir_out_ex(self,txt=None):
-        ext=ImageSet.ext_folder(self.cfg, False)
-        if txt is None:
-            return ext if self.cfg.separate else None
-        return txt+'_'+ext if self.cfg.separate else txt
 
 class ImageMaskGenerator(keras.utils.Sequence):
     def __init__(self,pair:ImageMaskPair,aug_value,tgt_list,view_coord):
@@ -282,7 +264,7 @@ class ImageMaskGenerator(keras.utils.Sequence):
         self.cfg=pair.cfg
         self.aug_value=aug_value
         self.target_list=tgt_list
-        self.view_coord=pair.view_coord if view_coord is None else view_coord
+        self.view_coord=pair.img_set.view_coord if view_coord is None else view_coord
         self.indexes=None
         self.on_epoch_end()
 
@@ -296,21 +278,16 @@ class ImageMaskGenerator(keras.utils.Sequence):
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex(self.pair.origin)), self.cfg)
-                if self.cfg.out_image:
-                    # for ti,tgt in enumerate(self.target_list):
-                    #     _tgt[vi, ...,ti] =np.average( vc.get_image(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg), axis=-1) # average RGB to gray
-                    _tgt[vi, ...] =vc.get_image(os.path.join(self.pair.wd, self.pair.dir_out_ex(self.target_list[0])), self.cfg)
-                else:
-                    for ti,tgt in enumerate(self.target_list):
-                        _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.dir_out_ex(tgt)), self.cfg)
+                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.img_set.target_folder))
+                for ti,tgt in enumerate(self.target_list):
+                    _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.msk_set[ti].target_folder))
             _img, _tgt = augment_image_pair(_img, _tgt, self.aug_value)  # integer N: a <= N <= b.
             # cv2.imwrite("pair_img.jpg",_img[0]); cv2.imwrite("pair_tgt.jpg",_tgt[0])
             return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.dir_in_ex(self.pair.origin)), self.cfg)
+                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.img_set.target_folder))
             # cv2.imwrite("pair_img.jpg",_img[0])
             return prep_scale(_img, self.cfg.feed), None
 

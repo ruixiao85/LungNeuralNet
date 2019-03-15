@@ -7,7 +7,7 @@ def mkdir_ifexist(_dir):
     exist=os.path.exists(_dir)
     if not exist:
         os.mkdir(_dir)
-    return exist,_dir
+    return exist
 
 def to_excel_sheet(_df, _xls, _sheet):
     if os.path.exists(_xls):
@@ -21,14 +21,11 @@ def to_excel_sheet(_df, _xls, _sheet):
     else:
         _df.to_excel(_xls, sheet_name=_sheet)
 
-def find_folder_contain(_path, _contain):
-    _items=[name for name in os.listdir(_path) if os.path.isdir(os.path.join(_path, name) and _contain in name)]
+def find_folder_prefix(_path, _prefix):
+    _items=[_dir for _dir in os.listdir(_path) if os.path.isdir(os.path.join(_path,_dir)) and _dir.startswith(_prefix)]
     _total=len(_items)
-    print("Found [%d] folders containing [%s] from [%s]" % (_total, _contain,  _path))
+    print("Found [%d] folders start with [%s] from [%s]" % (_total, _prefix,  _path))
     return _items
-
-def find_folder_contain_rel(_path, _contain):
-    return [os.path.relpath(abspath,_path) for abspath in find_folder_contain(_path, _contain)]
 
 def find_file_pattern(_path, _pattern):
     _items=glob(os.path.join(_path,_pattern))

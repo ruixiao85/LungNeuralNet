@@ -3,7 +3,7 @@ from cv2 import cv2
 import numpy as np
 
 from a_config import Config
-from osio import mkdir_ifexist,find_file_pattern,find_file_pattern_rel,find_folder_contain,find_folder_contain_rel,find_file_ext_recursive,find_file_ext_recursive_rel
+from osio import mkdir_ifexist,find_file_pattern,find_file_pattern_rel,find_folder_prefix,find_file_ext_recursive,find_file_ext_recursive_rel
 from preprocess import read_image,read_resize,read_resize_pad,read_resize_fit,extract_pad_image
 
 ALL_TARGET = 'All'
@@ -80,6 +80,14 @@ class MetaInfo:
     def __hash__(self):
         return str(self).__hash__()
 
+
+def parse_float(text):
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
 class ImageSet:
     def __init__(self,cfg:Config,wd,sf,is_train,is_image):
         self.work_directory=wd
@@ -93,26 +101,46 @@ class ImageSet:
         self.contrast_std=(cfg.train_contrast[0] if is_image else cfg.train_contrast[1]) if is_train else 0
         self.row=cfg.row_in if is_image else cfg.row_out
         self.col=cfg.col_in if is_image else cfg.col_out
-        self.target_folder="%s_%.1f_%dx%d"%(self.sub_category,self.target_scale,self.row,self.col)
+        self.raw_folder,self.raw_scale=None,None
+        self.target_folder=self.category_detail()
+        self.resize_ratio=None
         self.images=None
         self.view_coord=None  # list
 
-    def prep_folder(self):
-        exist,_=mkdir_ifexist(os.path.join(self.work_directory,self.target_folder))
-        if not exist:
-            folders=sorted(find_folder_contain_rel(self.work_directory,self.sub_category+'_'),key=lambda t:float(t.split('_')[1]),
-                reverse=True)  # high-res first
-            self.convert_from_folder(folders[0])
-        self.scan_folder()
+    def category_append(self,scale=None,row=None,col=None):
+        return "%.1f_%dx%d"%(scale or self.target_scale,row or self.row,col or self.col)
+    def category_detail(self,cate=None,scale=None,row=None,col=None):
+        return "%s_%.1f_%dx%d"%(cate or self.sub_category,scale or self.target_scale,row or self.row,col or self.col)
 
-    def convert_from_folder(self,raw_folder):
-        raw_scale=float(raw_folder.split('_')[1]); resize_ratio=round(self.target_scale/raw_scale,1)
-        print("Converting from folder [%s -> %s] %.1f -> %.1f (%.1fx) ..."%(raw_folder,self.target_folder,raw_scale,self.target_scale,resize_ratio))
-        if raw_scale<self.target_scale:
+    def prep_folder(self):
+        initial_folders=find_folder_prefix(self.work_directory,self.sub_category+'_')
+        folders=initial_folders.copy()
+        for folder in initial_folders:
+            print(' ',folder,end=' ')
+            if folder==self.target_folder:
+                print('individual images.')
+            else:
+                sections=folder.split('_')
+                if len(sections)!=2 or parse_float(sections[1]) is None:
+                    folders.remove(folder)
+                    print('removed.')
+                else:
+                    print('potential raw images.')
+        self.raw_folder=sorted(folders,key=lambda t:float(t.split('_')[1]), reverse=True)[0]  # high-res first
+        self.raw_scale=float(self.raw_folder.split('_')[1])
+        self.resize_ratio=round(self.target_scale/self.raw_scale,1)
+        if not mkdir_ifexist(os.path.join(self.work_directory,self.target_folder)):
+            self.convert_from_folder()
+        self.scan_folder()
+        return self
+
+    def convert_from_folder(self):
+        print("Converting from folder [%s -> %s] %.1f -> %.1f (%.1fx) ..."%(self.raw_folder,self.target_folder,self.raw_scale,self.target_scale,self.resize_ratio))
+        if self.resize_ratio>1.0:
             print("Warning, upsampling from low-res raw images is not recommended!")
-        images=find_file_ext_recursive_rel(os.path.join(self.work_directory,raw_folder),self.image_format)
+        images=find_file_ext_recursive_rel(os.path.join(self.work_directory,self.raw_folder),self.image_format)
         for image in images:
-            _img=read_resize(os.path.join(self.work_directory,raw_folder,image),resize_ratio)
+            _img=read_resize(os.path.join(self.work_directory,self.raw_folder,image),self.resize_ratio)
             lg_row,lg_col,lg_dep=_img.shape
             r_len=max(1,1+int(round((lg_row-self.row)/self.row*self.coverage)))
             c_len=max(1,1+int(round((lg_col-self.col)/self.col*self.coverage)))
@@ -141,6 +169,32 @@ class ImageSet:
                     entry=MetaInfo.from_whole(image,lg_row,lg_col,ri,ro,ci,co)
                     cv2.imwrite(os.path.join(self.work_directory,self.target_folder,entry.file_name),s_img,[int(cv2.IMWRITE_JPEG_QUALITY),100])
 
+    def split_train_val_vc(self,view_coords):
+        tr_list,val_list=[],[]  # list view_coords, can be from slices
+        tr_image,val_image=set(),set()  # set whole images
+        for vc in view_coords:
+            if vc.image_name in tr_image:
+                tr_list.append(vc)
+                tr_image.add(vc.image_name)
+            elif vc.image_name in val_image:
+                val_list.append(vc)
+                val_image.add(vc.image_name)
+            else:
+                if (len(val_list)+0.05)/(len(tr_list)+0.05)>self.train_vali_split:
+                    tr_list.append(vc)
+                    tr_image.add(vc.image_name)
+                else:
+                    val_list.append(vc)
+                    val_image.add(vc.image_name)
+        print("From %d split into train: %d views %d images; validation %d views %d images"%(
+        len(view_coords),len(tr_list),len(tr_image),len(val_list),len(val_image)))
+        print("Training Images:");
+        print(tr_image)
+        print("Validation Images:");
+        print(val_image)
+        # tr_list.sort(key=lambda x: str(x), reverse=False)
+        # val_list.sort(key=lambda x: str(x), reverse=False)
+        return tr_list,val_list
 
     def scan_folder(self):
         self.images=find_file_ext_recursive_rel(os.path.join(self.work_directory,self.target_folder),self.image_format)
@@ -165,7 +219,6 @@ class ImageSet:
                     co-=lg_col-self.col-cd
                 entry.update_coord(lg_row,lg_col,ri,ro,ci,co)
             self.view_coord.append(entry)
-
 
     def view_coord_batch(self):
         view_batch={}
@@ -207,15 +260,13 @@ class PatchSet:
         self.target_folder="%s_%.1f"%(self.sub_category,self.target_scale) # resolution not specified
         self.images=None
         self.view_coord=None  # list
-        self.tr_list,self.val_list=None,None
 
 
     def prep_folder(self):
-        exist,_=mkdir_ifexist(os.path.join(self.work_directory,self.target_folder))
-        if not exist:
-            folders=sorted(find_folder_contain_rel(self.work_directory,self.sub_category+'_'),key=lambda t:float(t.split('_')[1]),reverse=True)  # high-res first
+        if not mkdir_ifexist(os.path.join(self.work_directory,self.target_folder)):
+            folders=sorted(find_folder_prefix(self.work_directory,self.sub_category+'_'),key=lambda t:float(t.split('_')[1]),reverse=True)  # high-res first
             self.convert_from_folder(folders[0])
-        self.scan_folder_split()
+        self.scan_folder()
 
     def convert_from_folder(self,raw_folder): # override parent class
         raw_scale=float(raw_folder.split('_')[1])
@@ -228,10 +279,9 @@ class PatchSet:
             _img=read_resize(os.path.join(self.work_directory,raw_folder,image),resize_ratio)
             cv2.imwrite(os.path.join(self.work_directory,self.target_folder,image),_img,[int(cv2.IMWRITE_JPEG_QUALITY),100])
 
-    def scan_folder_split(self):
+    def scan_folder(self):
         self.images=find_file_ext_recursive_rel(os.path.join(self.work_directory,self.target_folder),self.image_format)
         total=len(self.images)
-        self.tr_list,self.val_list=[],[]  # list of unique items
         self.view_coord=[]
         print('Parsing %d patches...'%total)
         for i,image in enumerate(self.images):
@@ -241,8 +291,9 @@ class PatchSet:
                 print('%.0f%% ... %s'%(pct10*10,image))
             lg_row,lg_col,lg_dep=_img.shape
             self.view_coord.append(MetaInfo(image, image, lg_row, lg_col, 0, lg_row, 0, lg_col))
-            if (len(self.val_list)+0.05)/(len(self.tr_list)+0.05)>self.train_vali_split:
-                self.tr_list.append(i)
-            else:
-                self.val_list.append(i)
-        print("%s was split into train %d vs validation %d"%(self.sub_category,len(self.tr_list),len(self.val_list)))
+
+    # if (len(self.val_list)+0.05)/(len(self.tr_list)+0.05)>self.train_vali_split:
+    #     self.tr_list.append(i)
+    # else:
+    #     self.val_list.append(i)
+    # print("%s was split into train %d vs validation %d"%(self.sub_category,len(self.tr_list),len(self.val_list)))

@@ -3,48 +3,48 @@ import os
 import random
 import numpy as np
 
-from osio import find_file_pattern
+from osio import find_file_pattern,find_file_pattern_rel
 
 
 def generate_colors(n, shuffle=False):
     hsv = [(i / n, 0.9, 0.9) for i in range(n)]
-    colors = [tuple((255*np.array(col)).astype(np.uint8)) for col in map(lambda c: colorsys.hsv_to_rgb(*c), hsv)]
+    # colors = [tuple((255*np.array(col)).astype(np.uint8)) for col in map(lambda c: colorsys.hsv_to_rgb(*c), hsv)] # rgb
+    colors = [tuple((255*np.array(col)[::-1]).astype(np.uint8)) for col in map(lambda c: colorsys.hsv_to_rgb(*c), hsv)] # bgr to match opencv
     if shuffle:
         random.shuffle(colors)
     return colors
 
 class Config:
-    def __init__(self,num_targets,dim_in=None,dim_out=None,
-                 image_format=None,target_scale=None,feed=None,act=None,out=None,
-                 batch_size=None,coverage_train=None,coverage_predict=None,train_contrast=None,out_image=None,
-                 call_hardness=None,overlay_color=None,overlay_opacity=None,overlay_textshape_bwif=None,save_ind_raw=None,
+    def __init__(self,num_targets,target_scale,dim_in=None,dim_out=None,image_format=None,feed=None,act=None,out=None,
+                 batch_size=None,coverage_train=None,coverage_predict=None,train_contrast=None,
+                 predict_size=None,call_hardness=None,overlay_color=None,overlay_opacity=None,overlay_textshape_bwif=None,save_ind_raw=None,
                  ntop=None,train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
                  train_vali_split=None,train_aug=None,train_continue=None,train_shuffle=None,indicator=None,indicator_trend=None):
         self.num_targets=num_targets
+        self.target_scale=target_scale or 1.0 # pixel scale to target default to 10X=1px/µm (e.g., 40X=4px/µm)
         self.dim_in=dim_in or (512,512,3)
         self.row_in, self.col_in, self.dep_in=self.dim_in
         self.dim_out=dim_out or (512,512,1)
         self.row_out, self.col_out, self.dep_out=self.dim_out
         self.dep_out=min(self.dep_out,num_targets)
         self.image_format=image_format or "*.jpg"
-        self.target_scale=target_scale or 1.0 # pixel scale to target default to 10X=1px/µm (e.g., 40X=4px/µm)
         self.feed=feed or 'tanh'
         self.act=act or 'relu'
         self.out=out or ('sigmoid' if self.dep_out==1 else 'softmax')
-        self.out_image=out_image if out_image is not None else False # output type: True=image False=mask
-        self.coverage_train=coverage_train or 3.0
-        self.coverage_predict=coverage_predict or 3.0
+        self.coverage_train=coverage_train or 2.0
+        self.coverage_predict=coverage_predict or 2.0
         self.train_contrast=train_contrast or (8.0,0.0) # skip low-contrasts (std<?) for training (image,mask), smaller values train more images/masks
+        self.predict_size=predict_size or self.num_targets # output each target invididually or grouped
         self.call_hardness=call_hardness or 1.0  # 0-smooth 1-hard binary call
         self.overlay_color=overlay_color if isinstance(overlay_color, list) else \
             generate_colors(overlay_color) if isinstance(overlay_color, int) else \
                 generate_colors(self.num_targets)
-        self.overlay_opacity=overlay_opacity if isinstance(overlay_color, list) else [0.3]*self.num_targets
+        self.overlay_opacity=overlay_opacity if isinstance(overlay_opacity, list) else [0.2]*self.num_targets
         self.overlay_textshape_bwif=overlay_textshape_bwif or (True,True,False,False) # draw black_legend, white_legend, color_instance_text, fill_shape
         self.save_ind_raw=save_ind_raw if isinstance(save_ind_raw,tuple) else (True,True)
         self.ntop=ntop if ntop is not None else 3 # numbers of top networks to keep, delete the networks that are less than ideal
         self.batch_size=batch_size or 1
-        self.train_rep=train_rep or 2  # times to repeat during training
+        self.train_rep=train_rep or 1  # times to repeat during training
         self.train_epoch=train_epoch or 20  # max epoches during training
         self.train_step=train_step or 1280
         self.train_vali_step=train_vali_step or 640
@@ -54,35 +54,13 @@ class Config:
         self.train_continue=train_continue if train_continue is not None else True  # continue training by loading previous weights
         self.indicator=indicator or 'val_acc'
         self.indicator_trend=indicator_trend or 'max'
-        self._model_cache=None
+        self._model_cache={}
 
 
-    def split_train_val_vc(self,view_coords):
-        tr_list,val_list=[],[]  # list view_coords, can be from slices
-        tr_image,val_image=set(),set()  # set whole images
-        for vc in view_coords:
-            if vc.image_name in tr_image:
-                tr_list.append(vc)
-                tr_image.add(vc.image_name)
-            elif vc.image_name in val_image:
-                val_list.append(vc)
-                val_image.add(vc.image_name)
-            else:
-                if (len(val_list)+0.05)/(len(tr_list)+0.05)>self.train_vali_split:
-                    tr_list.append(vc)
-                    tr_image.add(vc.image_name)
-                else:
-                    val_list.append(vc)
-                    val_image.add(vc.image_name)
-        print("From %d split into train: %d views %d images; validation %d views %d images"%
-              (len(view_coords),len(tr_list),len(tr_image),len(val_list),len(val_image)))
-        print("Training Images:"); print(tr_image)
-        print("Validation Images:"); print(val_image)
-        # tr_list.sort(key=lambda x: str(x), reverse=False)
-        # val_list.sort(key=lambda x: str(x), reverse=False)
-        return tr_list,val_list
 
-    def get_proper_range(self,ra,ca,ri,ro,ci,co,tri,tro,tci,tco): # row/col limit of large image, row/col index on large image, row/col index for small image
+
+    @staticmethod
+    def get_proper_range(ra,ca,ri,ro,ci,co,tri,tro,tci,tco): # row/col limit of large image, row/col index on large image, row/col index for small image
         # print('%d %d %d:%d,%d,%d %d:%d,%d,%d'%(ra,ca,ri,ro,ci,co,tri,tro,tci,tco),end='')
         if ri<0: tri=-ri; ri=0
         if ci<0: tci=-ci; ci=0
@@ -96,13 +74,11 @@ class Config:
         # pattern=pattern.replace('_%.1f_'%self.image_resize, '_*_') # also consider other models trained on different scales
         print("Scanning for files matching %s in %s"%(pattern,cwd))
         if allow_cache:
-            if not hasattr(self,"_model_cache"):
-                self._model_cache={}
             if not pattern in self._model_cache:
-                self._model_cache[pattern]=sorted(find_file_pattern(os.path.join(cwd,pattern)), key=lambda t: t.split('^')[1], reverse=self.indicator_trend=='max')
+                self._model_cache[pattern]=sorted(find_file_pattern_rel(cwd,pattern), key=lambda t: t.split('^')[1], reverse=self.indicator_trend=='max')
             return self._model_cache[pattern]
         else: # search
-            files=sorted(find_file_pattern(os.path.join(cwd,pattern)), key=lambda t: t.split('^')[1], reverse=self.indicator_trend=='max')
+            files=sorted(find_file_pattern_rel(cwd,pattern), key=lambda t: t.split('^')[1], reverse=self.indicator_trend=='max')
             nfiles=len(files)
             if nfiles>0:
                 print('Found %d previous models, keeping the top %d (%s):'%(nfiles,self.ntop,self.indicator_trend))

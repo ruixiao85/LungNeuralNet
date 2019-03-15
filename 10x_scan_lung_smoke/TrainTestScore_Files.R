@@ -30,7 +30,7 @@ df2<-cbind(df2m,Sd=df2sd[,3])
 require(reshape)
 df3=transform(df2, profile=colsplit(Profile, split = "_", names = c('tis','mag','res','arch',
                                                                     'bone','conv','decon','act')))
-df3$profile.bone=factor(df3$profile.bone,levels=c("Vgg16","Res50","Dense121")) # order old->new
+df3$profile.bone=factor(df3$profile.bone,levels=c("Vgg16","V16T5","Res50","Dense121")) # order old->new
 df3$profile.mag=paste0(df3$profile.mag,"px/µm")
 df3$profile.mag=factor(df3$profile.mag,levels=c("1px/µm","0.8px/µm","0.6px/µm","0.4px/µm")) # order original->reduced
 df3$profile.decon=factor(substr(df3$profile.decon,1,4),levels=c("Ca3C","Ca33"))
