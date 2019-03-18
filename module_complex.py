@@ -7,11 +7,11 @@ import keras.models as KM
 
 
 # VGG
-def c3t2mp(in_layer, name, idx, filters, act):
+def c3t2mp(in_layer, name, idx, filters=3, act='relu'):
     x=cvac(in_layer,name+'_2',idx,filters,act)
     x=cvac(x,name+'_1',idx,filters,act)
     return mp(x,name,idx=idx,fs=None,act=None,size=2,stride=2)
-def c3t3mp(in_layer, name, idx, filters, act):
+def c3t3mp(in_layer, name, idx, filters=3, act='relu'):
     x=cvac(in_layer,name+'_3',idx,filters,act)
     x=cvac(x,name+'_2',idx,filters,act)
     x=cvac(x,name+'_1',idx,filters,act)

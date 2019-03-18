@@ -107,23 +107,6 @@ def extract_pad_image(lg_img, r0, r1, c0, c1):
     else:
         return lg_img[r0:r1, c0:c1, ...]
 
-def skip_image(s_img, mode, skip_param=12, if_print=True):
-    def print_return(_if_skip, _report):
-        if _if_skip:
-            print(_report + " skip"); return True
-        else:
-            print(_report + " accept"); return False
-    col = mode[0].lower()
-    if col == 'g':  # green mask
-        gmin = float(np.min(s_img[..., 0])) + float(np.min(s_img[..., 2]))  # min_R min_B
-        if_skip = gmin > skip_param
-        return print_return(if_skip, "checking tile for green mask (min_R+B=%.1f)" % gmin) if if_print else if_skip
-    else:  # default white/black or rgb
-        std = float(np.std(s_img))
-        if_skip = std < skip_param
-        return print_return(if_skip, "checking tile for contrast (std=%.1f)" % std) if if_print else if_skip
-
-
 # image-mask pair # pad black 0
 aug_both_1 = iaa.Sequential([
     iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance

@@ -57,7 +57,32 @@ class Config:
         self._model_cache={}
 
 
-
+    def split_train_val_vc(self,view_coords):
+        tr_list,val_list=[],[]  # list view_coords, can be from slices
+        tr_image,val_image=set(),set()  # set whole images
+        for vc in view_coords:
+            if vc.image_name in tr_image:
+                tr_list.append(vc)
+                tr_image.add(vc.image_name)
+            elif vc.image_name in val_image:
+                val_list.append(vc)
+                val_image.add(vc.image_name)
+            else:
+                if (len(val_list)+0.05)/(len(tr_list)+0.05)>self.train_vali_split:
+                    tr_list.append(vc)
+                    tr_image.add(vc.image_name)
+                else:
+                    val_list.append(vc)
+                    val_image.add(vc.image_name)
+        print("From %d split into train: %d views %d images; validation %d views %d images"%(
+        len(view_coords),len(tr_list),len(tr_image),len(val_list),len(val_image)))
+        print("Training Images:");
+        print(tr_image)
+        print("Validation Images:");
+        print(val_image)
+        # tr_list.sort(key=lambda x: str(x), reverse=False)
+        # val_list.sort(key=lambda x: str(x), reverse=False)
+        return tr_list,val_list
 
     @staticmethod
     def get_proper_range(ra,ca,ri,ro,ci,co,tri,tro,tci,tco): # row/col limit of large image, row/col index on large image, row/col index for small image
@@ -71,7 +96,6 @@ class Config:
 
     def find_best_models(self, pattern, allow_cache=False):
         cwd=os.getcwd()
-        # pattern=pattern.replace('_%.1f_'%self.image_resize, '_*_') # also consider other models trained on different scales
         print("Scanning for files matching %s in %s"%(pattern,cwd))
         if allow_cache:
             if not pattern in self._model_cache:

@@ -16,7 +16,7 @@ import keras.models as KM
 from keras.engine.saving import model_from_json,load_model
 
 from a_config import Config
-from image_set import PatchSet,ImageSet
+from image_set import PatchSet,ViewSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten,draw_detection
 from mrcnn import utils
@@ -374,7 +374,7 @@ class BaseNetM(Config):
                 mrg_in=np.zeros((view[0].ori_row,view[0].ori_col,self.dep_in),dtype=np.float32)
                 for i,(det,msk) in enumerate(zip(detections,mrcnn_mask)): # each view
                     final_rois,final_class_ids,final_scores,final_masks=parse_detections(det,msk,self.dim_in)
-                    origin=view[i].get_image(os.path.join(pair.wd,pair.img_set.category_detail()),self)
+                    origin=view[i].get_image(os.path.join(pair.wd,pair.img_set.target_folder))
                     blend, r_i=self.predict_proc(self,origin,pair.targets,final_rois,final_class_ids,final_scores,final_masks)
                     res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate([res_i,r_i[np.newaxis,...]],axis=0)
                     if save_ind:
@@ -392,10 +392,9 @@ class BaseNetM(Config):
                             view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
                     mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
                 sel_index=utils.non_max_suppression(grp_box,grp_scr,threshold=self.detection_nms_threshold) if grp_box.shape[0]>0 and self.coverage_predict>1 else None
-                if save_raw:  # high-res raw group image
-                    mrg_in=read_image(os.path.join(pair.wd,pair.origin,view[0].image_name))
-                    if pair.cfg.image_resize!=1:
-                        grp_box=(grp_box.astype(np.float32)/pair.cfg.image_resize).astype(np.int32)
+                if save_raw and pair.img_set.resize_ratio!=1:  # high-res raw group image
+                    mrg_in=read_image(os.path.join(pair.wd,pair.img_set.raw_folder,view[0].image_name))
+                    grp_box=(grp_box.astype(np.float32)/pair.img_set.resize_ratio).astype(np.int32)
                 # cv2.imwrite(os.path.join(merge_dir,view[0].image_name),mrg_in)
                 blend,r_g=self.predict_proc(self,mrg_in,pair.targets,grp_box,grp_cls,grp_scr,grp_msk,sel_index)
                 res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
@@ -414,10 +413,11 @@ class ImagePatchPair:
         self.wd=wd
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
-        self.img_set=ImageSet(cfg,wd,origin,is_train,is_image=True).prep_folder()
+        self.is_train=is_train
+        self.img_set=ViewSet(cfg,wd,origin,is_train).prep_folder()
         self.pch_set=None
         self.view_coord=sorted(self.img_set.view_coord, key=lambda x: x.file_name)
-        self.is_train=is_train
+        self.tr_list,self.val_list=self.cfg.split_train_val_vc(self.view_coord)
 
     def blend_image_patch(self,additional_weight,patch_per_pixel,max_instance,bright_diff,max_std,adjacent_size,adjacent_std):
         img_folder=os.path.join(self.wd,self.img_set.category_detail('+'.join([self.origin]+self.targets)))
@@ -465,7 +465,7 @@ class ImagePatchPair:
                         and int(np.std(img[lri-p_row*adjacent_size:lro+p_row*adjacent_size,lci-p_col*adjacent_size:lco+p_col*adjacent_size])>adjacent_std*p_std
                         ):  # target area is brighter, then add patch
                         # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(self.cfg.row_in,lri,lro,self.cfg.col_in,lci,lco,p_row,pri,pro,p_col,pci,pco))
-                        pat=the_tgt.images[idx]
+                        pat=the_tgt.image_data[idx]
                         # cv2.imwrite('pre.jpg',pat)
                         pat=augment_patch(pat,0 if is_validation else self.cfg.train_aug)
                         # cv2.imwrite('post.jpg',pat)
@@ -491,8 +491,7 @@ class ImagePatchPair:
 
 
     def train_generator(self):
-        self.pch_set=[PatchSet(self.cfg,self.wd,tgt,self.is_train,is_image=True).prep_folder() for tgt in self.targets]
-        tr_list,val_list=self.cfg.split_train_val_vc(self.view_coord)
+        self.pch_set=[PatchSet(self.cfg,self.wd,tgt,self.is_train).prep_folder() for tgt in self.targets]
         self.blend_image_patch(
             additional_weight=[1,1],  # if you have three categories default=[0,1,2] to draw from, here you can add more weights
             patch_per_pixel=[2000,18000],  # patch per pixel, range to randomly select from, larger number: smaller density
@@ -503,12 +502,12 @@ class ImagePatchPair:
             # adjacent_std=0.2  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
             adjacent_std=0.0  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
         )
-        yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets,view_coord=tr_list),
-              ImagePatchGenerator(self, 0, self.targets,view_coord=val_list),
+        yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets,view_coord=self.tr_list),
+              ImagePatchGenerator(self, 0, self.targets,view_coord=self.val_list),
               self.img_set.category_detail(self.cfg.join_targets(self.targets)))
 
     def predict_generator_note(self):
-        return self.cfg.join_targets(self.targets),self.targets
+        yield (self.cfg.join_targets(self.targets),self.targets)
 
     def predict_generator_partial(self,subset,view):
         return ImagePatchGenerator(self,0,subset,view_coord=view),self.cfg.join_targets(subset)
@@ -547,7 +546,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
         # _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
             this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.img_set.category_detail('+'.join([self.pair.origin]+self.pair.targets))))
-            this_msk,this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.img_set.category_detail('-'.join([self.pair.origin]+self.pair.targets))))
+            this_msk,this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.img_set.category_detail('-'.join([self.pair.origin]+self.pair.targets))),self.cfg)
             # cv2.imwrite("pre1.jpg",this_img); cv2.imwrite("pre2.jpg",this_msk[...,0:3])
             this_img,this_msk=augment_image_set(this_img,this_msk,_level=self.aug_value)  # integer N: a <= N <= b.
             # cv2.imwrite("post1.jpg",this_img); cv2.imwrite("post2.jpg",this_msk[...,0:3])
@@ -577,7 +576,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
     def get_pred_item(self,indexes):
         _img,_img_meta,_anc=None,None,None
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
-            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.img_set.category_detail()))
+            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.img_set.target_folder))
             this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
             this_img=this_img[np.newaxis,...]
             this_img_meta=this_img_meta[np.newaxis,...]
@@ -593,7 +592,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
         _cls,_bbox,_msk=None,None,None
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
             this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.img_set.category_detail('+'.join([self.pair.origin]+self.pair.targets))))
-            this_msk,this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.img_set.category_detail('-'.join([self.pair.origin]+self.pair.targets))))
+            this_msk,this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.img_set.category_detail('-'.join([self.pair.origin]+self.pair.targets))),self.cfg)
             this_bbox=utils.extract_bboxes(this_msk)
             this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
             this_img=this_img[np.newaxis,...]

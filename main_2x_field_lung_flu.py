@@ -1,8 +1,6 @@
 import argparse
 from b1_net_pair import ImageMaskPair
 from keras.backend import clear_session
-
-from c1_backbone import NetU_Vgg16
 from osio import *
 
 if __name__ == '__main__':
@@ -15,12 +13,6 @@ if __name__ == '__main__':
                         default='pred', help='predict sub-directory')
     parser.add_argument('-m', '--mode', dest='mode', action='store',
                         default='p', help='mode: enter initials from train/test, predict/inference or evaluation (e.g., \'tep\' train->eval->pred)')
-    parser.add_argument('-c', '--width', dest='width', type=int,
-                        default='512', help='width/columns')
-    parser.add_argument('-r', '--height', dest='height', type=int,
-                        default='512', help='height/rows')
-    parser.add_argument('-e', '--ext', dest='ext', action='store',
-                        default='*.jpg', help='extension')
     parser.add_argument('-i', '--input', dest='input', type=str,
                         default='Original', help='input: Original')
     parser.add_argument('-o', '--output', dest='output', type=str,
@@ -38,15 +30,21 @@ if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
     origins = args.input.split(',')
     targets = args.output.split(',')
-    from c1_unet import UNet2
-    from postprocess import multi_call
+    from c1_unet import SegNet,UNet,UNet2
+    from c1_resnet import NetU_ResNet
+    from c1_vgg import NetU_Vgg
+    from c1_dense import NetU_Dense
+    from postprocess import single_call,multi_call
     from module import ca3, ca33, sk, ac3, ac33, bac3, bac33, cba3, cba33, aca3, aca33
     nets=[
-        # SegNet(num_targets=len(targets)),
-        # UNet(num_targets=len(targets)),
-        UNet2(num_targets=len(targets)),
-        NetU_Vgg16(num_targets=len(targets),upconv=ca33,upproc=sk,postproc=ca33,image_resize=1.0,predict_proc=multi_call,coverage_predict=1.0,
-            save_ind_raw=(True,True),overlay_color=[(0,255,0),]*6,overlay_opacity=[0.8]*4+[0.0,0.8],overlay_textshape_bwif=(False,False,False,False)),  #BCCLRS
+        # SegNet(num_targets=len(targets),target_scale=0.2),
+        # UNet(num_targets=len(targets),target_scale=0.2),
+        # UNet2(num_targets=len(targets),target_scale=0.2),
+        NetU_Vgg(num_targets=len(targets),target_scale=0.2,predict_size=1), # individually
+        # NetU_Vgg(num_targets=len(targets),target_scale=0.2,overlay_color=[(256,24,24),(24,24,256)]),
+        # NetU_Vgg(num_targets=len(targets),target_scale=0.2),
+        # NetU_Dense(num_targets=len(targets),target_scale=0.2),
+        # NetU_ResNet(num_targets=len(targets),target_scale=0.2),
     ]
 
     for m in args.mode.lower():

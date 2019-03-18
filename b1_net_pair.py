@@ -5,7 +5,7 @@ import keras
 from keras.engine.saving import model_from_json,load_model
 
 from a_config import Config
-from image_set import ImageSet
+from image_set import ViewSet
 from metrics import custom_function_dict
 import os, cv2
 import pandas as pd
@@ -142,8 +142,7 @@ class BaseNetU(Config):
         for dir_out,tgt_list in pair.predict_generator_note():
             res_i,res_g=None,None
             print('Load model and predict to [%s]...'%dir_out)
-            export_name=dir_out+'_'+dir_cfg_append
-            target_dir=os.path.join(pair.wd,export_name); mkdir_ifexist(target_dir) # folder to save individual slices
+            target_dir=os.path.join(pair.wd,dir_out+'_'+dir_cfg_append); mkdir_ifexist(target_dir) # folder to save individual slices
             merge_dir=os.path.join(pair.wd,dir_out+'+'+dir_cfg_append); mkdir_ifexist(merge_dir) # folder to save grouped/whole images
             mask_wt=g_kern_rect(self.row_out,self.col_out)
             for grp,view in batch.items():
@@ -163,7 +162,7 @@ class BaseNetU(Config):
                     msk=self.net.predict_generator(prd,max_queue_size=1,workers=0,use_multiprocessing=False,verbose=1)
                     msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
                     i=o
-                print('Saving predicted results [%s] to folder [%s]...'%(grp,export_name))
+                print('Saving predicted results [%s] to folder [%s]...'%(grp,target_dir))
                 # r_i=np.zeros((len(multi.img_set.images),len(tgt_list)), dtype=np.uint32)
                 mrg_in=np.zeros((view[0].ori_row,view[0].ori_col,self.dep_in),dtype=np.float32)
                 mrg_out=np.zeros((view[0].ori_row,view[0].ori_col,len(tgt_list)*self.dep_out),dtype=np.float32)
@@ -224,7 +223,7 @@ class ImageMaskPair:
         self.wd=wd
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
-        self.img_set=ImageSet(cfg, wd, origin, is_train, is_image=True).prep_folder()
+        self.img_set=ViewSet(cfg, wd, origin, is_train).prep_folder()
         self.msk_set=None
         self.is_train=is_train
 
@@ -237,12 +236,12 @@ class ImageMaskPair:
             tgt_list=[]
             for t in self.targets[i:o]:
                 tgt_list.append(t)
-                msk = ImageSet(self.cfg, self.wd, t, is_train=True, is_image=False).prep_folder()
+                msk = ViewSet(self.cfg, self.wd, t, is_train=True).prep_folder()
                 self.msk_set.append(msk)
                 views = views.intersection(msk.view_coord)
             self.img_set.view_coord = sorted(views,key=lambda x:x.file_name)
             tr_list,val_list=self.cfg.split_train_val_vc(self.img_set.view_coord)
-            yield(ImageMaskGenerator(self,self.cfg.train_aug,tgt_list,tr_list),ImageMaskGenerator(self,0,tgt_list,val_list),
+            yield (ImageMaskGenerator(self,self.cfg.train_aug,tgt_list,tr_list),ImageMaskGenerator(self,0,tgt_list,val_list),
                     self.img_set.category_detail(self.cfg.join_targets(tgt_list),self.cfg.target_scale,self.cfg.row_out,self.cfg.col_out))
             i=o
 
