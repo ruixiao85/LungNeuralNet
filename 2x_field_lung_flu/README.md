@@ -20,20 +20,20 @@ Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia Unive
     <dd>sum of pixels: 813216 (56% of the entire image)</dd>
 </dl>
 
-![alt text](pred/Parenchyma1.0_512x512_Unet_8F64-256P2-2_Ca3Ca3SDmpSCa3_SSUuCCa3Ca3_EluSigmoidBcedice1/36_KO_FLU_1.jpe?raw=true "lung parenchymal region")
+![alt text](pred/Parenchyma+0.2_768x768_NetU_Vgg16_6F64-512P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1/36_KO_FLU_1.jpe?raw=true "lung parenchymal region")
 
 <dl>
     <dt>Predicted to be severe inflammation in the lung</dt>
     <dd>sum of pixels: 279179 (19% of the entire image)</dd>
 </dl>
 
-![alt text](pred/SevereInflammation1.0_512x512_Unet_8F64-256P2-2_Ca3Ca3SDmpSCa3_SSUuCCa3Ca3_EluSigmoidBcedice1/36_KO_FLU_1.jpe?raw=true "severe inflammation in the lung")
+![alt text](pred/SevereInflammation+0.2_768x768_NetU_Vgg16_6F64-512P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1/36_KO_FLU_1.jpe?raw=true "severe inflammation in the lung")
 
 <dl>
     <dt>Multi-label overlay</dd>
 </dl>
 
-![alt text](pred/Parenchyma,SevereInflam1.0_512x512_Unet_8F64-256P2-2_Ca3Ca3SDmpSCa3_SSUuCCa3Ca3_EluSigmoidBcedice1/36_KO_FLU_1.jpe?raw=true "severe inflammation in the lung")
+![alt text](pred/Parenchyma,SevereInflamma+0.2_768x768_NetU_Vgg16_6F64-512P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1/36_KO_FLU_1.jpe?raw=true "severe inflammation in the lung")
 
 
 <dl>
