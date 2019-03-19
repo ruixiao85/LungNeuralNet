@@ -107,7 +107,7 @@ class ImageSet:
                 sections=folder.split('_')
                 if len(sections)!=2 or parse_float(sections[1]) is None:
                     folders.remove(folder)
-                    print('- removed.')
+                    print('- omitted.')
                 else:
                     print('# potential raw images.')
         self.raw_folder=sorted(folders,key=lambda t:float(t.split('_')[1]),reverse=True)[0]  # high-res first
