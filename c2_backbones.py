@@ -70,3 +70,7 @@ class MRCNN_Dense121(BaseNetM):
 class MRCNN_Dense169(BaseNetM):
     def __init__(self,**kwargs):
         super(MRCNN_Dense169,self).__init__(backbone=densenet169, **kwargs)
+
+class MRCNN_Dense201(BaseNetM):
+    def __init__(self,**kwargs):
+        super(MRCNN_Dense201,self).__init__(backbone=densenet201, **kwargs)
