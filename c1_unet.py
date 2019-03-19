@@ -7,26 +7,24 @@ from module import cvac, ca3, ca33, cb3, cba3, dmp, uu, ct, sk
 
 class UNet(BaseNetU):
     # also base class for U-shaped networks
-    def __init__(self, dim_in=None, dim_out=None, filters=None, poolings=None, preproc=None, downconv=None,downjoin=None,downsamp=None,downmerge=None,downproc=None,
-                 upconv=None, upjoin=None, upsamp=None, upmerge=None, upproc=None, postproc=None, **kwargs
-        ):
-        super(UNet,self).__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768, 768, 1), **kwargs)
+    def __init__(self,**kwargs):
+        super(UNet,self).__init__(**kwargs)
         # UNET valid padding 572,570,568->284,282,280->140,138,136->68,66,64->32,30,28->56,54,52->104,102,100->200,198,196->392,390,388 388/572=67.8322% center
         # UNET same padding 576->288->144->72->36->72->144->288->576 take central 68% =392
-        self.fs=filters or [64, 128, 256, 512, 1024]
-        self.ps=poolings or [2]*len(self.fs)
-        self.preproc=preproc or ca3
-        self.downconv=downconv or ca3
-        self.downjoin=downjoin or sk
-        self.downsamp=downsamp or dmp
-        self.downmerge=downmerge or sk
-        self.downproc=downproc or ca3
-        self.upconv=upconv or sk
-        self.upjoin=upjoin or sk  # 2nd no skip
-        self.upsamp=upsamp or uu
-        self.upmerge=upmerge or ct  # 1st skip
-        self.upproc=upproc or ca33
-        self.postproc=postproc or sk
+        self.fs=kwargs.get('filters', [64, 128, 256, 512, 1024])
+        self.ps=kwargs.get('poolings', [2]*len(self.fs))
+        self.preproc=kwargs.get('preproc', ca3)
+        self.downconv=kwargs.get('downconv', ca3)
+        self.downjoin=kwargs.get('downjoin', sk)
+        self.downsamp=kwargs.get('downsamp', dmp)
+        self.downmerge=kwargs.get('downmerge', sk)
+        self.downproc=kwargs.get('downproc', ca3)
+        self.upconv=kwargs.get('upconv', sk)
+        self.upjoin=kwargs.get('upjoin', sk) # 2nd no skip
+        self.upsamp=kwargs.get('upsamp', uu)
+        self.upmerge=kwargs.get('upmerge', ct) # 1st skip
+        self.upproc=kwargs.get('upproc', ca33)
+        self.postproc=kwargs.get('postproc', sk)
 
     def build_net(self):
         locals()['in0']=Input((self.row_in, self.col_in, self.dep_in))

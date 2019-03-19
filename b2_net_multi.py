@@ -24,67 +24,57 @@ from preprocess import prep_scale,augment_image_set,augment_patch,read_image,rea
 
 
 class BaseNetM(Config):
-    def __init__(self,backbone=None,learning_rate=None,learning_continue=None,optimizer=None,loss_weight=None,indicator=None,indicator_trend=None,predict_proc=None,
-                 trainable_layer_regex=None, mini_mask_shape=None,batch_norm=None,backbone_stride=None,pyramid_size=None,
-                 fc_layers_size=None,rpn_anchor_scales=None,rpn_train_anchors_per_image=None,
-                 rpn_anchor_ratio=None,rpn_anchor_stride=None,rpn_nms_threshold=None,rpn_bbox_stdev=None,
-                 pre_nms_limit=None,post_mns_train=None,post_nms_predict=None,pool_size=None,mask_pool_size=None,
-                 train_rois_per_image=None,train_roi_positive_ratio=None,max_gt_instance=None,
-                 detection_max_instances=None,detection_min_confidence=None,detection_nms_threshold=None,detection_mask_threshold=None,
-                 gpu_count=None,image_per_gpu=None,
-                 filename=None,**kwargs):
+    def __init__(self,**kwargs):
         super(BaseNetM,self).__init__(**kwargs)
-        # self.coverage_train,self.coverage_predict=4,4 # override previous
         self.is_train=None # will set later
         from c0_backbones import v16, v19
-        self.backbone=backbone or v16 # default backbone
-        self.learning_rate=learning_rate or 1e-3 if self.backbone in [v16,v19] else 1e-2
-        self.learning_continue=learning_continue or 2e-1 # 1-same as first time
+        self.backbone=kwargs.get('backbone', v16) # default backbone
+        self.learning_rate=kwargs.get('learning_rate', 1e-3 if self.backbone in [v16,v19] else 1e-2)
+        self.learning_continue=kwargs.get('learning_continue', 2e-1) # 1-same as first time
         from keras.optimizers import SGD
-        self.optimizer=optimizer or SGD(lr=self.learning_rate, momentum=0.9, clipnorm=5.0)
-        self.loss_weight=loss_weight or { "rpn_class_loss":1., "rpn_bbox_loss":1.,
-                "mrcnn_class_loss":1., "mrcnn_bbox_loss":1., "mrcnn_mask_loss":1.} # Loss weights for more precise optimization.
-        self.indicator=indicator or 'val_loss'
-        self.indicator_trend=indicator_trend or 'min'
+        self.optimizer=kwargs.get('optimizer', SGD(lr=self.learning_rate, momentum=0.9, clipnorm=5.0))
+        self.loss_weight=kwargs.get('loss_weight', { "rpn_class_loss":1., "rpn_bbox_loss":1.,
+                "mrcnn_class_loss":1., "mrcnn_bbox_loss":1., "mrcnn_mask_loss":1.}) # Loss weights for more precise optimization.
+        self.indicator=kwargs.get('indicator', 'val_loss')
+        self.indicator_trend=kwargs.get('indicator_trend', 'min')
         from postprocess import draw_detection
-        self.predict_proc=predict_proc or draw_detection
-        self.trainable_layer_regex=trainable_layer_regex or \
-            ".*" # all
-            # r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)"  # head
-            # r"# (res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 3+
-            # r"# (res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 4+
-            # r"# (res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)" # 5+
+        self.predict_proc=kwargs.get('predict_proc', draw_detection)
+        self.trainlayer_regex=kwargs.get('trainlayer_regex', ".*") # all
+        # self.trainlayer_regex=kwargs.get('trainlayer_regex', r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)")  # head
+        # self.trainlayer_regex=kwargs.get('trainlayer_regex', r"# (res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 3+
+        # self.trainlayer_regex=kwargs.get('trainlayer_regex', r"# (res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 4+
+        # self.trainlayer_regex=kwargs.get('trainlayer_regex', r"# (res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 5+
         self.num_class=1+self.num_targets # plus background
         self.meta_shape=[1+3+3+4+1+self.num_class] # last number is NUM_CLASS
-        self.batch_norm=batch_norm if batch_norm is not None else True # images in small batches also benefit from batchnorm
-        self.backbone_strides=backbone_stride or [4,8,16,32,64] # strides of the FPN Pyramid
-        self.pyramid_size=pyramid_size or 512 # Size of the top-down layers used to build the feature pyramid
-        self.fc_layers_size=fc_layers_size or 1024 # Size of the fully-connected layers in the classification graph
-        self.rpn_anchor_scales=rpn_anchor_scales or (8,16,32,64,128) # Length of square anchor side in pixels
-        # self.rpn_anchor_scales=rpn_anchor_scales or (16,32,64,128,256) # Length of square anchor side in pixels
-        # self.rpn_anchor_scales=rpn_anchor_scales or (32,64,128,256,512) # Length of square anchor side in pixels
-        self.rpn_train_anchors_per_image=rpn_train_anchors_per_image or 512 # How many anchors per image to use for RPN training
-        self.rpn_anchor_ratios=rpn_anchor_ratio or [0.75,1,1.25] # Ratios of anchors at each cell (width/height) 1=square 0.5=wide
-        # self.rpn_anchor_ratios=rpn_anchor_ratio or [0.5,1,2] # Ratios of anchors at each cell (width/height) 1=square 0.5=wide
-        self.rpn_anchor_stride=rpn_anchor_stride or 1 # 1=no-skip cell 2=skip-one
-        self.rpn_nms_threshold=rpn_nms_threshold or 0.9 # Non-max suppression threshold to filter RPN proposals. larger=more propsals.
-        self.rpn_bbox_stdev=rpn_bbox_stdev or np.array([0.1,0.1,0.2,0.2]) # Bounding box refinement standard deviation for RPN and final detections.
-        self.pre_nms_limit=pre_nms_limit or 4000 # ROIs kept after tf.nn.top_k and before non-maximum suppression
-        self.post_mns_train=post_mns_train or 2000 # ROIs kept after non-maximum suppression for train
-        self.post_nms_predict=post_nms_predict or 1000 # ROIs kept after non-maximum suppression for predict
-        self.pool_size=pool_size or 7 # Pooled ROIs
-        self.mask_pool_size=mask_pool_size or 14 # Pooled ROIs for mask
-        self.mini_mask_shape=mini_mask_shape or [28,28,None] # target shape (downsized) of instance masks to reduce memory load.
-        self.train_rois_per_image=train_rois_per_image or 256 # Number of ROIs per image to feed to classifier/mask heads (MRCNN paper 512)
-        self.train_roi_positive_ratio=train_roi_positive_ratio or 0.33 # Percent of positive ROIs used to train classifier/mask heads
-        self.max_gt_instance=max_gt_instance or 200 # Maximum number of ground truth instances to use in one image
-        self.detection_max_instances=detection_max_instances or 400 # Max number of final detections
-        self.detection_min_confidence=detection_min_confidence or 0.7 # Minimum probability to accept a detected instance, skip ROIs if below this threshold
-        self.detection_nms_threshold=detection_nms_threshold or 0.3 # Non-maximum suppression threshold for detection
-        self.detection_mask_threshold=detection_mask_threshold or 0.5 # threshold to determine fore/back-ground
-        self.gpu_count=gpu_count or 1
-        self.images_per_gpu=image_per_gpu or 1
-        self.filename=filename
+        self.batch_norm=kwargs.get('batch_norm', True) # images in small batches also benefit from batchnorm
+        self.backbone_strides=kwargs.get('backbone_stride', [4,8,16,32,64]) # strides of the FPN Pyramid
+        self.pyramid_size=kwargs.get('pyramid_size', 512) # Size of the top-down layers used to build the feature pyramid
+        self.fc_layers_size=kwargs.get('fc_layers_size', 1024) # Size of the fully-connected layers in the classification graph
+        self.rpn_anchor_scales=kwargs.get('rpn_anchor_scales', (8,16,32,64,128)) # Length of square anchor side in pixels
+        # self.rpn_anchor_scales=kwargs.get('rpn_anchor_scales', (16,32,64,128,256)) # Length of square anchor side in pixels
+        # self.rpn_anchor_scales=kwargs.get('rpn_anchor_scales', (32,64,128,256,512)) # Length of square anchor side in pixels
+        self.rpn_train_anchors_per_image=kwargs.get('rpn_train_anchors_per_image', 512) # How many anchors per image to use for RPN training
+        self.rpn_anchor_ratios=kwargs.get('rpn_anchor_ratio', [0.75,1,1.25]) # Ratios of anchors at each cell (width/height) 1=square 0.5=wide
+        # self.rpn_anchor_ratios=kwargs.get('rpn_anchor_ratio', [0.5,1,2]) # Ratios of anchors at each cell (width/height) 1=square 0.5=wide
+        self.rpn_anchor_stride=kwargs.get('rpn_anchor_stride', 1) # 1=no-skip cell 2=skip-one
+        self.rpn_nms_threshold=kwargs.get('rpn_nms_threshold', 0.9) # Non-max suppression threshold to filter RPN proposals. larger=more propsals.
+        self.rpn_bbox_stdev=kwargs.get('rpn_bbox_stdev', np.array([0.1,0.1,0.2,0.2])) # Bounding box refinement standard deviation for RPN and final detections.
+        self.pre_nms_limit=kwargs.get('pre_nms_limit', 4000) # ROIs kept after tf.nn.top_k and before non-maximum suppression
+        self.post_mns_train=kwargs.get('post_mns_train', 2000) # ROIs kept after non-maximum suppression for train
+        self.post_nms_predict=kwargs.get('post_nms_predict', 1000) # ROIs kept after non-maximum suppression for predict
+        self.pool_size=kwargs.get('pool_size', 7) # Pooled ROIs
+        self.mask_pool_size=kwargs.get('mask_pool_size', 14) # Pooled ROIs for mask
+        self.mini_mask_shape=kwargs.get('mini_mask_shape', [28,28,None]) # target shape (downsized) of instance masks to reduce memory load.
+        self.train_rois_per_image=kwargs.get('train_rois_per_image', 256) # Number of ROIs per image to feed to classifier/mask heads (MRCNN paper 512)
+        self.train_roi_positive_ratio=kwargs.get('train_roi_positive_ratio', 0.33) # Percent of positive ROIs used to train classifier/mask heads
+        self.max_gt_instance=kwargs.get('max_gt_instance', 200) # Maximum number of ground truth instances to use in one image
+        self.detection_max_instances=kwargs.get('detection_max_instances', 400) # Max number of final detections
+        self.detection_min_confidence=kwargs.get('detection_min_confidence', 0.7) # Minimum probability to accept a detected instance, skip ROIs if below this threshold
+        self.detection_nms_threshold=kwargs.get('detection_nms_threshold', 0.3) # Non-maximum suppression threshold for detection
+        self.detection_mask_threshold=kwargs.get('detection_mask_threshold', 0.5) # threshold to determine fore/back-ground
+        self.gpu_count=kwargs.get('gpu_count', 1)
+        self.images_per_gpu=kwargs.get('image_per_gpu', 1)
+        self.filename=kwargs.get('filename', None)
         self.net=None
         self._anchor_cache={}
 
@@ -94,12 +84,12 @@ class BaseNetM(Config):
         for layer in layers:
             if layer.__class__.__name__=='Model':
                 print("In model: ",layer.name)
-                print(self.trainable_layer_regex)
+                print(self.trainlayer_regex)
                 self.set_trainable(layer,indent=indent+4)
                 continue
             if not layer.weights:
                 continue
-            trainable=bool(re.fullmatch(self.trainable_layer_regex,layer.name))
+            trainable=bool(re.fullmatch(self.trainlayer_regex,layer.name))
             text='+' if trainable else '-'
             class_name=layer.__class__.__name__
             if class_name=='BatchNormalization':
@@ -319,6 +309,7 @@ class BaseNetM(Config):
                 df['time']=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                 df['repeat']=r+1
                 df.to_csv(self.filename+".csv",mode="a",header=(not os.path.exists(self.filename+".csv")))
+                self.find_best_models(self.filename+'^*^.h5')  # remove unnecessary networks
 
     def eval(self,pair):
         self.build_net(is_train=False)

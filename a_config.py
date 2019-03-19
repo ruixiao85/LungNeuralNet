@@ -15,45 +15,39 @@ def generate_colors(n, shuffle=False):
     return colors
 
 class Config:
-    def __init__(self,num_targets,target_scale,dim_in=None,dim_out=None,image_format=None,feed=None,act=None,out=None,
-                 batch_size=None,coverage_train=None,coverage_predict=None,train_contrast=None,
-                 predict_size=None,call_hardness=None,overlay_color=None,overlay_opacity=None,overlay_textshape_bwif=None,save_ind_raw=None,
-                 ntop=None,train_rep=None,train_epoch=None,train_step=None,train_vali_step=None,
-                 train_vali_split=None,train_aug=None,train_continue=None,train_shuffle=None,indicator=None,indicator_trend=None):
+    def __init__(self,num_targets,target_scale,**kwargs,):
         self.num_targets=num_targets
         self.target_scale=target_scale or 1.0 # pixel scale to target default to 10X=1px/µm (e.g., 40X=4px/µm)
-        self.dim_in=dim_in or (512,512,3)
+        self.dim_in=kwargs.get('dim_in', (768,768,3))
         self.row_in, self.col_in, self.dep_in=self.dim_in
-        self.dim_out=dim_out or (512,512,1)
+        self.dim_out=kwargs.get('dim_out', (768,768,1))
         self.row_out, self.col_out, self.dep_out=self.dim_out
         self.dep_out=min(self.dep_out,num_targets)
-        self.image_format=image_format or "*.jpg"
-        self.feed=feed or 'tanh'
-        self.act=act or 'relu'
-        self.out=out or ('sigmoid' if self.dep_out==1 else 'softmax')
-        self.coverage_train=coverage_train or 2.0
-        self.coverage_predict=coverage_predict or 2.0
-        self.train_contrast=train_contrast or (8.0,0.0) # skip low-contrasts (std<?) for training (image,mask), smaller values train more images/masks
-        self.predict_size=predict_size or self.num_targets # output each target invididually or grouped
-        self.call_hardness=call_hardness or 1.0  # 0-smooth 1-hard binary call
-        self.overlay_color=overlay_color if isinstance(overlay_color, list) else \
-            generate_colors(overlay_color) if isinstance(overlay_color, int) else \
-                generate_colors(self.num_targets)
-        self.overlay_opacity=overlay_opacity if isinstance(overlay_opacity, list) else [0.2]*self.num_targets
-        self.overlay_textshape_bwif=overlay_textshape_bwif or (True,True,False,False) # draw black_legend, white_legend, color_instance_text, fill_shape
-        self.save_ind_raw=save_ind_raw if isinstance(save_ind_raw,tuple) else (True,True)
-        self.ntop=ntop if ntop is not None else 3 # numbers of top networks to keep, delete the networks that are less than ideal
-        self.batch_size=batch_size or 1
-        self.train_rep=train_rep or 1  # times to repeat during training
-        self.train_epoch=train_epoch or 20  # max epoches during training
-        self.train_step=train_step or 1280
-        self.train_vali_step=train_vali_step or 640
-        self.train_vali_split=train_vali_split or 0.33
-        self.train_aug=train_aug or 2  # only to training set, not validation or prediction mode, applies to image-mask set and image+patch
-        self.train_shuffle=train_shuffle if train_shuffle is not None else True  # only to training set, not validation or prediction mode
-        self.train_continue=train_continue if train_continue is not None else True  # continue training by loading previous weights
-        self.indicator=indicator or 'val_acc'
-        self.indicator_trend=indicator_trend or 'max'
+        self.image_format=kwargs.get('image_format', "*.jpg")
+        self.feed=kwargs.get('feed', 'tanh')
+        self.act=kwargs.get('act', 'relu')
+        self.out=kwargs.get('out', ('sigmoid' if self.dep_out==1 else 'softmax'))
+        self.coverage_train=kwargs.get('coverage_train', 3.0)
+        self.coverage_predict=kwargs.get('coverage_predict', 2.0)
+        self.predict_size=kwargs.get('predict_size', self.num_targets) # output each target invididually or grouped
+        self.call_hardness=kwargs.get('call_hardness', 1.0)  # 0-smooth 1-hard binary call
+        self.overlay_color=kwargs.get('overlay_color', generate_colors(self.num_targets))
+        self.overlay_opacity=kwargs.get('overlay_opacity', [0.2]*self.num_targets)
+        self.overlay_textshape_bwif=kwargs.get('overlay_textshape_bwif', (True,True,False,False)) # draw black_legend, white_legend, color_instance_text, fill_shape
+        self.save_ind_raw=kwargs.get('save_ind_raw', (True,True))
+        self.ntop=kwargs.get('ntop', 1) # numbers of top networks to keep, delete the networks that are less than ideal
+        self.batch_size=kwargs.get('batch_size', 1)
+        self.train_rep=kwargs.get('train_rep', 2) # times to repeat during training
+        self.train_epoch=kwargs.get('train_epoch', 20) # max epoches during training
+        self.train_step=kwargs.get('train_step', 1280)
+        self.train_vali_step=kwargs.get('train_vali_step', 640)
+        self.train_vali_split=kwargs.get('train_vali_split', 0.33)
+        self.train_aug=kwargs.get('train_aug', 2)  # only to training set, not validation or prediction mode, applies to image-mask set and image+patch
+        self.train_shuffle=kwargs.get('train_shuffle', True)  # only to training set, not validation or prediction mode
+        self.train_continue=kwargs.get('train_continue', False)  # True to continue training by loading previous weights
+        self.indicator=kwargs.get('indicator', 'val_acc')
+        self.indicator_trend=kwargs.get('indicator_trend', 'max')
+        self.indicator_patience=kwargs.get('indicator_patience', 2) # times to continue training even without improvement
         self._model_cache={}
 
 
@@ -76,10 +70,8 @@ class Config:
                     val_image.add(vc.image_name)
         print("From %d split into train: %d views %d images; validation %d views %d images"%(
         len(view_coords),len(tr_list),len(tr_image),len(val_list),len(val_image)))
-        print("Training Images:");
-        print(tr_image)
-        print("Validation Images:");
-        print(val_image)
+        print("Training Images:"); print(tr_image)
+        print("Validation Images:"); print(val_image)
         # tr_list.sort(key=lambda x: str(x), reverse=False)
         # val_list.sort(key=lambda x: str(x), reverse=False)
         return tr_list,val_list

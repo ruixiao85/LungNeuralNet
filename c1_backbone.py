@@ -9,23 +9,20 @@ from module import cvac, ca3, ca33, cb3, cba3, dmp, uu, ct, sk
 
 class NetUBack(BaseNetU):
     # also base class for U-shaped networks
-    def __init__(self, dim_in=None, dim_out=None, backbone=None, freeze_bn=None, filters=None, poolings=None,
-                 preproc=None, downconv=None,downjoin=None,downsamp=None,downmerge=None,downproc=None,
-                 upconv=None, upjoin=None, upsamp=None, upproc=None, postproc=None, **kwargs
-        ):
-        super(NetUBack,self).__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768, 768, 1), **kwargs)
+    def __init__(self, **kwargs):
+        super(NetUBack,self).__init__(**kwargs)
         # UNET valid padding 572,570,568->284,282,280->140,138,136->68,66,64->32,30,28->56,54,52->104,102,100->200,198,196->392,390,388 388/572=67.8322% center
         # UNET same padding 576->288->144->72->36->72->144->288->576 take central 68% =392
         from c2_backbones import v16
-        self.backbone=backbone or v16
-        self.freeze_bn=freeze_bn or False
-        self.fs=filters or [64, 128, 256, 512, 512, 512]
-        self.ps=poolings or [2]*len(self.fs)
-        self.upconv=upconv or ca3
-        self.upjoin = upjoin or ct
-        self.upsamp=upsamp or uu
-        self.upproc=upproc or sk
-        self.postproc=postproc or ca3
+        self.backbone=kwargs.get('backbone', v16)
+        self.freeze_bn=kwargs.get('freeze_bn', False)
+        self.fs=kwargs.get('filters', [64, 128, 256, 512, 512, 512])
+        self.ps=kwargs.get('poolings', [2]*len(self.fs))
+        self.upconv=kwargs.get('upconv', ca3)
+        self.upjoin=kwargs.get('upjoin', ct)
+        self.upsamp=kwargs.get('upsamp', uu)
+        self.upproc=kwargs.get('upproc', sk)
+        self.postproc=kwargs.get('postproc', ca3)
 
     def build_net(self):
         locals()['in0']=Input((self.row_in, self.col_in, self.dep_in))

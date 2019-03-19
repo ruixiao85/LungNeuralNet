@@ -18,32 +18,30 @@ class NetU_Vgg(BaseNetU):
         'vgg16':(vgg16.VGG16,[2,2,3,3,3]),
         'vgg19':(vgg19.VGG19,[2,2,4,4,4]),
     }
-    def __init__(self, dim_in=None, dim_out=None,filters=None, poolings=None,variation=None,
-            preproc=None, downconv=None, downjoin=None, downsamp=None, downmerge=None, downproc=None,
-             upconv=None, upjoin=None, upsamp=None, upmerge=None, upproc=None, postproc=None, **kwargs
-         ):
-        super(NetU_Vgg,self).__init__(dim_in=dim_in or (768, 768, 3), dim_out=dim_out or (768, 768, 1), **kwargs)
-        self.fs=filters or [64, 128, 256, 512, 512, 512]
-        self.ps=poolings or [2]*len(self.fs)
-        self.variation=variation or "vgg16"
-        self.preproc=preproc or sk
-        self.downconv=downconv or ca33
-        self.downmerge=downmerge or sk # before downsize, ->1st skip connect
-        self.downsamp=downsamp or dmp
-        self.downjoin=downjoin or sk  # after downsize, ->2nd skip connect
-        self.downproc=downproc or sk
-        self.upconv=upconv or ca3
-        self.upjoin=upjoin or ct  # before upsample, 2nd skip connect->
-        self.upsamp=upsamp or uu
-        self.upmerge=upmerge or ct  # after upsample, 1st skip connect->
-        self.upproc=upproc or ca3
-        self.postproc=postproc or ca3
+    def __init__(self,**kwargs):
+        super(NetU_Vgg,self).__init__(**kwargs)
+        self.fs=kwargs.get('filters',[64,128,256,512,768,1024])
+        self.ps=kwargs.get('poolings', [2]*len(self.fs))
+        self.variation=kwargs.get('variation', "vgg16")
+        self.pre_trained=kwargs.get('pre_trained', False)
+        self.preproc=kwargs.get('preproc', sk)
+        # self.downconv=kwargs.get('downconv', ca33)
+        # self.downmerge=kwargs.get('downmerge', sk) # before downsize, ->1st skip connect
+        # self.downsamp=kwargs.get('downsamp', dmp)
+        # self.downjoin=kwargs.get('downjoin', sk) # after downsize, ->2nd skip connect
+        # self.downproc=kwargs.get('downproc', sk)
+        self.upconv=kwargs.get('upconv', ca3)
+        self.upjoin=kwargs.get('upjoin', ct) # before upsample, 2nd skip connect->
+        self.upsamp=kwargs.get('upsamp', uu)
+        self.upmerge=kwargs.get('upmerge', ct) # after upsample, 1st skip connect->
+        self.upproc=kwargs.get('upproc', ca3)
+        self.postproc=kwargs.get('postproc', ca3)
 
     def build_net(self):
         locals()['in0']=Input(shape=(self.row_in, self.col_in, self.dep_in))
         locals()['pre0']=self.preproc(locals()['in0'], 'pre0', 0, self.fs[0], self.act)
         creater,convs=self.config[self.variation]
-        base_model=creater(input_tensor=locals()['pre0'], include_top=False) #, weights=None
+        base_model=creater(input_tensor=locals()['pre0'], include_top=False, weights='imagenet' if self.pre_trained else None)
         for layer in base_model.layers: layer.trainable = True # allow training on pre-trained weights
 
         for i in range(5):

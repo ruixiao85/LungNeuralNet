@@ -29,24 +29,22 @@ class BaseNetU(Config):
 
     #     model_out = 'softmax'   model_loss='categorical_crossentropy'
     #     model_out='sigmoid'    model_loss=[loss_bce_dice] 'binary_crossentropy' "bcedice"
-    def __init__(self,loss=None, metrics=None, learning_rate=None, learning_continue=None, optimizer=None, indicator=None, indicator_trend=None, predict_proc=None,
-                 filename=None, **kwargs):
+    def __init__(self, **kwargs):
         super(BaseNetU,self).__init__(**kwargs)
         from metrics import jac, dice, dice67, dice33, acc, acc67, acc33, loss_bce_dice, custom_function_keras
         custom_function_keras()  # leakyrelu, swish
-        self.loss=loss or (
-            loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy')  # 'binary_crossentropy'
-        self.metrics=metrics or ([jac, dice] if self.dep_out==1 else [acc]) # dice67,dice33  acc67,acc33
-        self.learning_rate=learning_rate or 1e-5
-        self.learning_continue=learning_continue or 2e-1
+        self.loss=kwargs.get('loss', (loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy'))  # 'binary_crossentropy'
+        self.metrics=kwargs.get('metrics', ([jac, dice] if self.dep_out==1 else [acc])) # dice67,dice33  acc67,acc33
+        self.learning_rate=kwargs.get('learning_rate', 1e-5)
+        self.learning_continue=kwargs.get('learning_continue', 2e-1)
         from keras.optimizers import Adam
-        self.optimizer=optimizer or Adam
-        self.indicator=indicator if indicator is not None else ('val_dice' if self.dep_out==1 else 'val_acc')
-        self.indicator_trend=indicator_trend or 'max'
+        self.optimizer=kwargs.get('optimizer', Adam)
+        self.indicator=kwargs.get('indicator', ('val_dice' if self.dep_out==1 else 'val_acc'))
+        self.indicator_trend=kwargs.get('indicator_trend', 'max')
         from postprocess import single_call,multi_call
-        self.predict_proc=predict_proc if predict_proc is not None else single_call
+        self.predict_proc=kwargs.get('predict_proc', single_call)
+        self.filename=kwargs.get('filename', None)
         self.net=None # abstract -> instatiate in subclass
-        self.filename=filename
 
     def load_json(self,filename=None):  # load model from json
         if filename is not None:
@@ -121,15 +119,16 @@ class BaseNetU(Config):
                    callbacks=[
                        ModelCheckpointCustom(weight_file,monitor=self.indicator,mode=self.indicator_trend,
                                              best=best_val,save_weights_only=False,save_best_only=True,verbose=1),
-                       EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=1,verbose=1),
+                       EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=self.indicator_patience,verbose=1),
                        LearningRateScheduler(lambda x: learning_rate*(0.1**(0.2*x)),verbose=1),
                        # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
-                       # TensorBoardTrainVal(log_dir=os.path.join("log", self.filename), write_graph=True, write_grads=False, write_images=True),
+                       TensorBoardTrainVal(log_dir=os.path.join("log", self.filename), write_graph=True, write_grads=False, write_images=True),
                    ]).history
                 df=pd.DataFrame(history)
                 df['time']=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                 df['repeat']=r+1
                 df.to_csv(self.filename+".csv",mode="a",header=(not os.path.exists(self.filename+".csv")))
+                self.find_best_models(self.filename+'^*^.h5')  # remove unnecessary networks
 
     def predict(self,pair,pred_dir):
         self.build_net()
