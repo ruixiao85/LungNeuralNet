@@ -35,8 +35,8 @@ class BaseNetU(Config):
         custom_function_keras()  # leakyrelu, swish
         self.loss=kwargs.get('loss', (loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy'))  # 'binary_crossentropy'
         self.metrics=kwargs.get('metrics', ([jac, dice] if self.dep_out==1 else [acc])) # dice67,dice33  acc67,acc33
-        self.learning_rate=kwargs.get('learning_rate', 1e-5)
-        self.learning_continue=kwargs.get('learning_continue', 2e-1)
+        self.learning_rate=kwargs.get('learning_rate', 1e-5) # initial learning rate
+        self.learning_decay=kwargs.get('learning_decay', 0.3)
         from keras.optimizers import Adam
         self.optimizer=kwargs.get('optimizer', Adam)
         self.indicator=kwargs.get('indicator', ('val_dice' if self.dep_out==1 else 'val_acc'))
@@ -89,21 +89,20 @@ class BaseNetU(Config):
         self.compile_net() # recompile to set optimizers,..
         for tr,val,dir_out in pair.train_generator():
             self.filename=dir_out+'_'+str(self)
-            weight_file="%s^{%s:.2f}^.h5"%(self.filename,self.indicator) # e.g., {epoch:02d}-{val_acc:.2f}
+            weight_file="%s^{epoch:02d}^{%s:.3f}^.h5"%(self.filename,self.indicator)  # e.g., {epoch:02d}-{val_dice:.3f}
             print('Fitting neural net...')
             for r in range(self.train_rep):
-                best_val,learning_rate=None,self.learning_rate # store last best, init lr and reduce if continuing
+                init_epoch,best_value,learning_rate=0,None,self.learning_rate # store last best, init lr and reduce if continuing
                 if self.train_continue:
                     last_saves=self.find_best_models(self.filename+'^*^.h5')
                     if isinstance(last_saves,list) and len(last_saves)>0:
                         last_best=last_saves[0]
-                        best_val=float(last_best.split('^')[1])
+                        init_epoch,best_value=Config.parse_saved_model(last_best)
                         print("Continue from previous weights")
                         self.net.load_weights(last_best)
                         # print("Continue from previous model with weights & optimizer")
                         # self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
-                        learning_rate*=self.learning_continue
-                        print('Lowered learning rate (%f -> %f) for the continued training'%(self.learning_rate,learning_rate))
+                        learning_rate*=self.learning_decay**(1+init_epoch//10)
                 if not os.path.exists(self.filename+".txt"):
                     with open(self.filename+".txt","w") as net_summary:
                         self.net.summary(print_fn=lambda x:net_summary.write(x+'\n'))
@@ -115,12 +114,12 @@ class BaseNetU(Config):
                 history=self.net.fit_generator(tr,validation_data=val,verbose=1,
                    steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
                    validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
-                   epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,
+                   epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
                    callbacks=[
-                       ModelCheckpointCustom(weight_file,monitor=self.indicator,mode=self.indicator_trend,
-                                             best=best_val,save_weights_only=False,save_best_only=True,verbose=1),
+                       ModelCheckpointCustom(weight_file,monitor=self.indicator,mode=self.indicator_trend,best=best_value,
+                                            save_weights_only=True,save_best_only=True,lr_decay=self.learning_decay,verbose=1),
                        EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=self.indicator_patience,verbose=1),
-                       LearningRateScheduler(lambda x: learning_rate*(0.1**(0.2*x)),verbose=1),
+                       # LearningRateScheduler(lambda x: learning_rate*(self.learning_decay**x),verbose=1),
                        # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
                        TensorBoardTrainVal(log_dir=os.path.join("log", self.filename), write_graph=True, write_grads=False, write_images=True),
                    ]).history

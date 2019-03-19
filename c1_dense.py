@@ -19,7 +19,6 @@ class NetU_Dense(BaseNetU):
         self.fs=kwargs.get('filters', [64,128,256,512,768,1024])
         self.ps=kwargs.get('poolings', [2]*len(self.fs))
         self.variation=kwargs.get('variation', 'densenet121')
-        self.pre_trained=kwargs.get('pre_trained', False)
         self.preproc=kwargs.get('preproc', sk)
         # self.downconv=kwargs.get('downconv', ca33)
         # self.downmerge=kwargs.get('downmerge', sk) # before downsize, ->1st skip connect

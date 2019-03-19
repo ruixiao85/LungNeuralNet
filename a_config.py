@@ -37,19 +37,19 @@ class Config:
         self.save_ind_raw=kwargs.get('save_ind_raw', (True,True))
         self.ntop=kwargs.get('ntop', 1) # numbers of top networks to keep, delete the networks that are less than ideal
         self.batch_size=kwargs.get('batch_size', 1)
-        self.train_rep=kwargs.get('train_rep', 2) # times to repeat during training
+        self.pre_trained=kwargs.get('pre_trained', True) # True: load weights pre-trained on imagenet; False: init with random weights
+        self.train_rep=kwargs.get('train_rep', 1) # times to repeat during training
         self.train_epoch=kwargs.get('train_epoch', 20) # max epoches during training
         self.train_step=kwargs.get('train_step', 1280)
         self.train_vali_step=kwargs.get('train_vali_step', 640)
         self.train_vali_split=kwargs.get('train_vali_split', 0.33)
         self.train_aug=kwargs.get('train_aug', 2)  # only to training set, not validation or prediction mode, applies to image-mask set and image+patch
         self.train_shuffle=kwargs.get('train_shuffle', True)  # only to training set, not validation or prediction mode
-        self.train_continue=kwargs.get('train_continue', False)  # True to continue training by loading previous weights
+        self.train_continue=kwargs.get('train_continue', True)  # True to continue training by loading previous weights
         self.indicator=kwargs.get('indicator', 'val_acc')
         self.indicator_trend=kwargs.get('indicator_trend', 'max')
-        self.indicator_patience=kwargs.get('indicator_patience', 2) # times to continue training even without improvement
+        self.indicator_patience=kwargs.get('indicator_patience', 3) # times to continue training even without improvement
         self._model_cache={}
-
 
     def split_train_val_vc(self,view_coords):
         tr_list,val_list=[],[]  # list view_coords, can be from slices
@@ -86,15 +86,20 @@ class Config:
         # print('-> %d %d %d:%d,%d,%d %d:%d,%d,%d'%(ra,ca,ri,ro,ci,co,tri,tro,tci,tco))
         return ri,ro,ci,co,tri,tro,tci,tco
 
+    @staticmethod
+    def parse_saved_model(filename):
+        parts=filename.split('^')
+        return int(parts[1]),float(parts[2]) # epoch, last_best
+
     def find_best_models(self, pattern, allow_cache=False):
         cwd=os.getcwd()
         print("Scanning for files matching %s in %s"%(pattern,cwd))
         if allow_cache:
             if not pattern in self._model_cache:
-                self._model_cache[pattern]=sorted(find_file_pattern_rel(cwd,pattern), key=lambda t: t.split('^')[1], reverse=self.indicator_trend=='max')
+                self._model_cache[pattern]=sorted(find_file_pattern_rel(cwd,pattern),key=lambda t: (float(t.split('^')[2])*(-1.0 if self.indicator_trend=='max' else 1.0), -1*int(t.split('^')[1]))) # best score then highest epoch
             return self._model_cache[pattern]
         else: # search
-            files=sorted(find_file_pattern_rel(cwd,pattern), key=lambda t: t.split('^')[1], reverse=self.indicator_trend=='max')
+            files=sorted(find_file_pattern_rel(cwd,pattern),key=lambda t: (float(t.split('^')[2])*(-1.0 if self.indicator_trend=='max' else 1.0), -1*int(t.split('^')[1]))) # best score then highest epoch
             nfiles=len(files)
             if nfiles>0:
                 print('Found %d previous models, keeping the top %d (%s):'%(nfiles,self.ntop,self.indicator_trend))
