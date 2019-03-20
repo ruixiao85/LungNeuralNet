@@ -94,26 +94,26 @@ class Config:
     def find_best_models(self, pattern, allow_cache=False):
         cwd=os.getcwd()
         print("Scanning for files matching %s in %s"%(pattern,cwd))
-        if allow_cache:
-            if not pattern in self._model_cache:
-                self._model_cache[pattern]=sorted(find_file_pattern_rel(cwd,pattern),key=lambda t: (float(t.split('^')[2])*(-1.0 if self.indicator_trend=='max' else 1.0), -1*int(t.split('^')[1]))) # best score then highest epoch
+        if allow_cache and pattern in self._model_cache:
             return self._model_cache[pattern]
-        else: # search
-            files=sorted(find_file_pattern_rel(cwd,pattern),key=lambda t: (float(t.split('^')[2])*(-1.0 if self.indicator_trend=='max' else 1.0), -1*int(t.split('^')[1]))) # best score then highest epoch
-            nfiles=len(files)
-            if nfiles>0:
-                print('Found %d previous models, keeping the top %d (%s):'%(nfiles,self.ntop,self.indicator_trend))
-                for l in range(nfiles):
-                    if l<self.ntop:
-                        print(('* 'if l==0 else '  '),end='')
-                        print('%d. %s kept'%(l+1,files[l]))
-                    else:
-                        os.remove(files[l])
-                        print('- %d. %s deleted'%(l+1, files[l]))
-                return files
-            else:
-                print('No previus model found, starting fresh')
-                return None
+        files=sorted(find_file_pattern_rel(cwd,pattern),
+             key=lambda t: (float(t.split('^')[2])*(-1.0 if self.indicator_trend=='max' else 1.0), -1*int(t.split('^')[1]))) # best score then highest epoch
+        nfiles=len(files)
+        if nfiles>0:
+            print('Found %d previous models, keeping the top %d (%s):'%(nfiles,self.ntop,self.indicator_trend))
+            for l in range(nfiles):
+                if l<self.ntop:
+                    print(('* ' if l==0 else '  '),end='')
+                    print('%d. %s kept'%(l+1,files[l]))
+                else:
+                    os.remove(files[l])
+                    print('- %d. %s deleted'%(l+1,files[l]))
+            if allow_cache:
+                self._model_cache[pattern]=files
+            return files
+        else:
+            print('No previus model found, starting fresh')
+            return None
 
     @staticmethod
     def join_targets(tgt_list) :
