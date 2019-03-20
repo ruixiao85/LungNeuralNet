@@ -227,7 +227,7 @@ class BaseNetM(Config):
         with open(json_net, "w") as json_file:
             json_file.write(self.net.to_json())
 
-    def compile_net(self,save_net=False,print_summary=True):
+    def compile_net(self,save_net=False,print_summary=False):
         assert self.is_train, 'only applicable to training mode'
         self.net._losses=[]
         self.net._per_input_losses={}
@@ -269,8 +269,8 @@ class BaseNetM(Config):
     def train(self,pair):
         self.build_net(is_train=True)
         self.set_trainable(self.net)
-        self.compile_net() # set optimizers
         for tr,val,dir_out in pair.train_generator():
+            self.compile_net() # set optimizers
             self.filename=dir_out+'_'+str(self)
             print('Fitting neural net...')
             init_epoch,best_value=0,None # store last best

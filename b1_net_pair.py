@@ -60,7 +60,7 @@ class BaseNetU(Config):
     def build_net(self):
         pass
 
-    def compile_net(self,save_net=False,print_summary=True):
+    def compile_net(self,save_net=False,print_summary=False):
         self.net.compile(optimizer=self.optimizer(self.learning_rate), loss=self.loss, metrics=self.metrics)
         print("Model compiled")
         if save_net:
@@ -86,8 +86,8 @@ class BaseNetU(Config):
 
     def train(self,pair):
         self.build_net()
-        self.compile_net() # recompile to set optimizers,..
         for tr,val,dir_out in pair.train_generator():
+            self.compile_net() # recompile to set optimizers,..
             self.filename=dir_out+'_'+str(self)
             print('Fitting neural net...')
             for r in range(self.train_rep):
@@ -119,7 +119,7 @@ class BaseNetU(Config):
                        EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=self.indicator_patience,verbose=1),
                        # LearningRateScheduler(lambda x: learning_rate*(self.learning_decay**x),verbose=1),
                        # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
-                       TensorBoardTrainVal(log_dir=os.path.join("log", self.filename), write_graph=True, write_grads=False, write_images=True),
+                       # TensorBoardTrainVal(log_dir=os.path.join("log", self.filename), write_graph=True, write_grads=False, write_images=True),
                    ]).history
                 df=pd.DataFrame(history)
                 df['time']=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
