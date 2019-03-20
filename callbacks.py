@@ -49,15 +49,16 @@ class TensorBoardTrainVal(TensorBoard):
 
 # adapted from keras callbacks #
 class ModelCheckpointCustom(Callback):
-    def __init__(self, filepath, monitor='val_loss', verbose=0, save_best_only=False, save_weights_only=False, mode='auto', period=1, lr_decay=0.5,best=None):
+    def __init__(self, filepath, monitor='val_loss', verbose=0, save_best_only=False, save_weights_only=False, mode='auto', period=1, lr_decay=0.5, sig_digits=2, best=None):
         super(ModelCheckpointCustom, self).__init__()
+        self.filepath=filepath+"^{epoch:02d}^{%s:.%df}^.h5"%(monitor, sig_digits)
         self.monitor=monitor
         self.verbose=verbose
-        self.filepath=filepath
         self.save_best_only=save_best_only
         self.save_weights_only=save_weights_only
         self.period=period
         self.lr_decay=lr_decay
+        self.sig_digits=sig_digits
         self.epochs_since_last_save=0
 
         if mode not in ['auto', 'min', 'max']:
@@ -88,13 +89,14 @@ class ModelCheckpointCustom(Callback):
         if self.epochs_since_last_save>=self.period:
             self.epochs_since_last_save=0
             filepath=self.filepath.format(epoch=epoch+1, **logs)
-            current=logs.get(self.monitor)
+            current=round(logs.get(self.monitor),self.sig_digits) # round numbers to disregard minor improvements
             if current is None:
                 warnings.warn('Can save best model only with %s available, skipping.'%self.monitor, RuntimeWarning)
             else:
                 if self.monitor_op(current, self.best):
                     if self.verbose>0:
-                        print('\nEpoch %05d: %s improved %0.5f->%0.5f, lr=%.1e, saving to [%s]'%(epoch+1,self.monitor,self.best,current,cur_lr,filepath))
+                        print('\nEpoch %05d: %s improved %0.{0}f->%0.{0}f, lr=%.1e, saving to [%s]'.format(self.sig_digits)%
+                              (epoch+1,self.monitor,self.best,current,cur_lr,filepath))
                     self.best=current
                     if self.save_weights_only:
                         self.model.save_weights(filepath, overwrite=True)
@@ -105,8 +107,8 @@ class ModelCheckpointCustom(Callback):
                     K.set_value(self.model.optimizer.lr,new_lr)
                     if self.save_best_only:
                         if self.verbose>0:
-                            print('\nEpoch %05d: %s %0.5f is no better than %0.5f, lr*%.2f=%.1e, not saved.'%(
-                                epoch+1, self.monitor, current, self.best,self.lr_decay,new_lr))
+                            print('\nEpoch %05d: %s %0.{0}f is no better than %0.{0}f, lr*%.2f=%.1e, not saved.'.format(self.sig_digits)%
+                                  (epoch+1, self.monitor, current, self.best,self.lr_decay,new_lr))
                     else:
                         if self.save_weights_only:
                             self.model.save_weights(filepath,overwrite=True)

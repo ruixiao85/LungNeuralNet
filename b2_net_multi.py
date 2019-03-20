@@ -75,6 +75,7 @@ class BaseNetM(Config):
         self.gpu_count=kwargs.get('gpu_count', 1)
         self.images_per_gpu=kwargs.get('image_per_gpu', 1)
         self.filename=kwargs.get('filename', None)
+        self.ntop=8 # override parent class to keep more top networks for further MRCNN evaluation
         self.net=None
         self._anchor_cache={}
 
@@ -271,9 +272,8 @@ class BaseNetM(Config):
         self.compile_net() # set optimizers
         for tr,val,dir_out in pair.train_generator():
             self.filename=dir_out+'_'+str(self)
-            weight_file="%s^{epoch:02d}^{%s:.3f}^.h5"%(self.filename,self.indicator)  # e.g., {epoch:02d}-{val_loss:.3f}
             print('Fitting neural net...')
-            init_epoch,best_value,learning_rate=0,None,self.learning_rate # store last best model file
+            init_epoch,best_value=0,None # store last best
             for r in range(self.train_rep):
                 if self.train_continue:
                     last_saves=self.find_best_models(self.filename+'^*^.h5')
@@ -284,7 +284,6 @@ class BaseNetM(Config):
                         self.net.load_weights(last_best,by_name=True)
                         # print("Continue from previous model with weights & optimizer")
                         # self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
-                        learning_rate*=self.learning_decay**(1+init_epoch//10)
                 if not os.path.exists(self.filename+".txt"):
                     with open(self.filename+".txt","w") as net_summary:
                         self.net.summary(print_fn=lambda x:net_summary.write(x+'\n'))
@@ -297,8 +296,8 @@ class BaseNetM(Config):
                    validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
                    epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
                    callbacks=[
-                       ModelCheckpointCustom(weight_file, monitor=self.indicator, mode=self.indicator_trend, best=best_value,
-                                            save_weights_only=True,save_best_only=True,lr_decay=self.learning_decay,verbose=1),
+                       ModelCheckpointCustom(self.filename,monitor=self.indicator,mode=self.indicator_trend,best=best_value,
+                                             save_weights_only=True,save_best_only=True,lr_decay=self.learning_decay,sig_digits=2,verbose=1),
                        EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=2,verbose=1),
                        # LearningRateScheduler(lambda x: learning_rate*(self.learning_decay**x),verbose=1),
                        # ReduceLROnPlateau(monitor=self.indicator, mode='min', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
