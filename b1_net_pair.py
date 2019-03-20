@@ -115,7 +115,7 @@ class BaseNetU(Config):
                    epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
                    callbacks=[
                        ModelCheckpointCustom(self.filename,monitor=self.indicator,mode=self.indicator_trend,best=best_value,
-                                    save_weights_only=True,save_best_only=True,lr_decay=self.learning_decay,sig_digits=2,verbose=1),
+                                    save_weights_only=True,save_best_only=True,lr_decay=self.learning_decay,sig_digits=self.sig_digits,verbose=1),
                        EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=self.indicator_patience,verbose=1),
                        # LearningRateScheduler(lambda x: learning_rate*(self.learning_decay**x),verbose=1),
                        # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),

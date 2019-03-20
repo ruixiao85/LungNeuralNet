@@ -48,7 +48,8 @@ class Config:
         self.train_continue=kwargs.get('train_continue', True)  # True to continue training by loading previous weights
         self.indicator=kwargs.get('indicator', 'val_acc')
         self.indicator_trend=kwargs.get('indicator_trend', 'max')
-        self.indicator_patience=kwargs.get('indicator_patience', 3) # times to continue training even without improvement
+        self.indicator_patience=kwargs.get('indicator_patience', 2) # times to continue training even without improvement
+        self.sig_digits=kwargs.get('sig_digits', 3) # significant digits for indicator/score
         self._model_cache={}
 
     def split_train_val_vc(self,view_coords):
