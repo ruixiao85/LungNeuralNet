@@ -49,12 +49,13 @@ class TensorBoardTrainVal(TensorBoard):
 
 # adapted from keras callbacks #
 class ModelCheckpointCustom(Callback):
-    def __init__(self, filepath, monitor='val_loss', verbose=0, save_best_only=False, save_weights_only=False, mode='auto', period=1, lr_decay=0.5, sig_digits=2, best=None):
+    def __init__(self, filepath, monitor='val_loss', verbose=0, save_mode='historical', save_weights_only=False, mode='auto', period=1, lr_decay=0.5, sig_digits=3, hist_best=None):
         super(ModelCheckpointCustom, self).__init__()
         self.filepath=filepath+"^{epoch:02d}^{%s:.%df}^.h5"%(monitor, sig_digits)
         self.monitor=monitor
         self.verbose=verbose
-        self.save_best_only=save_best_only
+        self.save_mode=save_mode.lower()[0] # when achieve All, Current best, Historical best, None
+        assert(self.save_mode in ['a','c','h','n'])
         self.save_weights_only=save_weights_only
         self.period=period
         self.lr_decay=lr_decay
@@ -78,9 +79,11 @@ class ModelCheckpointCustom(Callback):
             else:
                 self.monitor_op=np.less
                 self.best=np.Inf
-        if best is not None:
-            self.best=best
-            print("Starting from previous best value of %s %f"%(self.monitor,best))
+        if hist_best is not None:
+            self.historical_best=hist_best
+            print("Aiming to surpass the historical best value of %s=%f"%(self.monitor,self.historical_best))
+        else:
+            self.historical_best=self.best
 
     def on_epoch_end(self, epoch, logs=None):
         logs=logs or {}
@@ -94,26 +97,43 @@ class ModelCheckpointCustom(Callback):
                 warnings.warn('Can save best model only with %s available, skipping.'%self.monitor, RuntimeWarning)
             else:
                 if self.monitor_op(current, self.best):
-                    if self.verbose>0:
-                        print('\nEpoch %05d: %s improved %0.{0}f->%0.{0}f, lr=%.1e, saving to [%s]'.format(self.sig_digits)%
-                              (epoch+1,self.monitor,self.best,current,cur_lr,filepath))
-                    self.best=current
-                    if self.save_weights_only:
-                        self.model.save_weights(filepath, overwrite=True)
-                    else:
-                        self.model.save(filepath, overwrite=True)
+                    if self.monitor_op(current, self.historical_best): # better than last epoch and the historical best
+                        if self.save_mode in ['h','c','a']: # 'historical' 'current' 'all'  Save
+                            if self.verbose>0:
+                                print('\nEpoch %05d: %s %0.{0}f->%0.{0}f historical best, lr=%.1e, saving to [%s]'.format(self.sig_digits)%
+                                      (epoch+1,self.monitor,self.best,current,cur_lr,filepath))
+                            self.save_network(filepath)
+                        else: # Not saving
+                            if self.verbose>0:
+                                print('\nEpoch %05d: %s %0.{0}f->%0.{0}f historical best, lr=%.1e, not saving to [%s]'.format(self.sig_digits)%
+                                      (epoch+1,self.monitor,self.best,current,cur_lr,filepath))
+                        self.best=self.historical_best=current
+                    else: # better than last epoch, no better than the historical best
+                        if self.save_mode in ['c', 'a']: # 'current' 'all' Save
+                            if self.verbose>0:
+                                print('\nEpoch %05d: %s %0.{0}f->%0.{0}f current best, lr=%.1e, saving to [%s]'.format(self.sig_digits)%(
+                                epoch+1,self.monitor,self.best,current,cur_lr,filepath))
+                            self.save_network(filepath)
+                        else: # 'none' 'historical' Not saving
+                            if self.verbose>0:
+                                print('\nEpoch %05d: %s %0.{0}f->%0.{0}f current best, lr=%.1e, not saving to [%s]'.format(self.sig_digits)%(
+                                epoch+1,self.monitor,self.best,current,cur_lr,filepath))
+                        self.best=current
                 else:
                     new_lr=self.lr_decay*cur_lr
                     K.set_value(self.model.optimizer.lr,new_lr)
-                    if self.save_best_only:
-                        if self.verbose>0:
-                            print('\nEpoch %05d: %s %0.{0}f is no better than %0.{0}f, lr*%.2f=%.1e, not saved.'.format(self.sig_digits)%
-                                  (epoch+1, self.monitor, current, self.best,self.lr_decay,new_lr))
-                    else:
-                        if self.save_weights_only:
-                            self.model.save_weights(filepath,overwrite=True)
-                        else:
-                            self.model.save(filepath,overwrite=True)
+                    if self.save_mode=='a':
                         if self.verbose>0:
                             print('\nEpoch %05d: %s %0.5f is no better than %0.5f, lr*%.2f= %.1e, saving to [%s]'%(
                                 epoch+1,self.monitor,current,self.best,self.lr_decay,new_lr,filepath))
+                        self.save_network(filepath)
+                    else:
+                        if self.verbose>0:
+                            print('\nEpoch %05d: %s %0.{0}f is no better than %0.{0}f, lr*%.2f=%.1e, not saved.'.format(self.sig_digits)%
+                                  (epoch+1, self.monitor, current, self.best,self.lr_decay,new_lr))
+
+    def save_network(self,filepath):
+        if self.save_weights_only:
+            self.model.save_weights(filepath,overwrite=True)
+        else:
+            self.model.save(filepath,overwrite=True)

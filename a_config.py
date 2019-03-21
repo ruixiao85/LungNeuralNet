@@ -38,17 +38,18 @@ class Config:
         self.ntop=kwargs.get('ntop', 1) # numbers of top networks to keep, delete the networks that are less than ideal
         self.batch_size=kwargs.get('batch_size', 1)
         self.pre_trained=kwargs.get('pre_trained', True) # True: load weights pre-trained on imagenet; False: init with random weights
-        self.train_rep=kwargs.get('train_rep', 1) # times to repeat during training
+        self.train_rep=kwargs.get('train_rep', 4) # times to repeat during training
         self.train_epoch=kwargs.get('train_epoch', 20) # max epoches during training
         self.train_step=kwargs.get('train_step', 1280)
         self.train_vali_step=kwargs.get('train_vali_step', 640)
         self.train_vali_split=kwargs.get('train_vali_split', 0.33)
         self.train_aug=kwargs.get('train_aug', 2)  # only to training set, not validation or prediction mode, applies to image-mask set and image+patch
         self.train_shuffle=kwargs.get('train_shuffle', True)  # only to training set, not validation or prediction mode
-        self.train_continue=kwargs.get('train_continue', True)  # True to continue training by loading previous weights
+        self.train_continue=kwargs.get('train_continue', False)  # True to continue training by loading previous weights
         self.indicator=kwargs.get('indicator', 'val_acc')
         self.indicator_trend=kwargs.get('indicator_trend', 'max')
         self.indicator_patience=kwargs.get('indicator_patience', 2) # times to continue training even without improvement
+        self.save_mode=kwargs.get('save_mode', 'h') # decide which network to save: All/CurrentBest/HistoricalBest/None
         self.sig_digits=kwargs.get('sig_digits', 3) # significant digits for indicator/score
         self._model_cache={}
 
