@@ -41,10 +41,10 @@ write.csv(dfa,paste0(fn,".csv"),row.names=F)
 
 
 library(ggplot2)
-pdf(paste0(fn,".pdf"),height=12)
-ggplot(dfa,aes(x=arch,y=value,colour=variable,fill=variable))+geom_boxplot()+
-   facet_grid(tissue~scale+reso+type+param+conv+fun,scales = "free_y")+
-   theme_bw()
+pdf(paste0(fn,".pdf"),width=6.5,height=6)
+ggplot(dfa,aes(x=conv,y=value,colour=variable,fill=variable))+geom_boxplot()+
+   facet_grid(tissue~scale+reso+type+arch+param+fun,scales = "free_y")+
+   theme_bw()+theme(axis.text.x = element_text(angle=90,hjust=1,vjust=0.5))
 dev.off()
 
 
