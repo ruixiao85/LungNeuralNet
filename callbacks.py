@@ -98,39 +98,39 @@ class ModelCheckpointCustom(Callback):
             else:
                 if self.monitor_op(current, self.best):
                     if self.monitor_op(current, self.historical_best): # better than last epoch and the historical best
-                        if self.save_mode in ['h','c','a']: # 'historical' 'current' 'all'  Save
+                        if self.save_mode=='n': # Not saving
                             if self.verbose>0:
-                                print('\nEpoch %05d: %s %0.{0}f->%0.{0}f historical best, lr=%.1e, saving to [%s]'.format(self.sig_digits)%
-                                      (epoch+1,self.monitor,self.best,current,cur_lr,filepath))
+                                print('\nEpoch %05d: %s %0.{0}f->%0.{0}f->%0.{0}f historical best, lr=%.1e, not saving to [%s]'.format(self.sig_digits)%
+                                      (epoch+1,self.monitor,current,self.best,self.historical_best,cur_lr,filepath))
+                        else: # in ['h','c','a'] 'historical' 'current' 'all'  Save
+                            if self.verbose>0:
+                                print('\nEpoch %05d: %s %0.{0}f->%0.{0}f->%0.{0}f historical best, lr=%.1e, saving to [%s]'.format(self.sig_digits)%
+                                      (epoch+1,self.monitor,current,self.best,self.historical_best,cur_lr,filepath))
                             self.save_network(filepath)
-                        else: # Not saving
-                            if self.verbose>0:
-                                print('\nEpoch %05d: %s %0.{0}f->%0.{0}f historical best, lr=%.1e, not saving to [%s]'.format(self.sig_digits)%
-                                      (epoch+1,self.monitor,self.best,current,cur_lr,filepath))
                         self.best=self.historical_best=current
                     else: # better than last epoch, no better than the historical best
-                        if self.save_mode in ['c', 'a']: # 'current' 'all' Save
+                        if self.save_mode in ['n','h']: # 'none' 'historical' Not saving
                             if self.verbose>0:
-                                print('\nEpoch %05d: %s %0.{0}f->%0.{0}f current best, lr=%.1e, saving to [%s]'.format(self.sig_digits)%(
-                                epoch+1,self.monitor,self.best,current,cur_lr,filepath))
+                                print('\nEpoch %05d: %s %0.{0}f->%0.{0}f->%0.{0}f current best, lr=%.1e, not saving to [%s]'.format(self.sig_digits)%(
+                                epoch+1,self.monitor,current,self.best,self.historical_best,cur_lr,filepath))
+                        else: #  in ['c', 'a']: # 'current' 'all' Save
+                            if self.verbose>0:
+                                print('\nEpoch %05d: %s %0.{0}f->%0.{0}f->%0.{0}f current best, lr=%.1e, saving to [%s]'.format(self.sig_digits)%(
+                                epoch+1,self.monitor,current,self.best,self.historical_best,cur_lr,filepath))
                             self.save_network(filepath)
-                        else: # 'none' 'historical' Not saving
-                            if self.verbose>0:
-                                print('\nEpoch %05d: %s %0.{0}f->%0.{0}f current best, lr=%.1e, not saving to [%s]'.format(self.sig_digits)%(
-                                epoch+1,self.monitor,self.best,current,cur_lr,filepath))
                         self.best=current
                 else:
                     new_lr=self.lr_decay*cur_lr
                     K.set_value(self.model.optimizer.lr,new_lr)
                     if self.save_mode=='a':
                         if self.verbose>0:
-                            print('\nEpoch %05d: %s %0.5f is no better than %0.5f, lr*%.2f= %.1e, saving to [%s]'%(
-                                epoch+1,self.monitor,current,self.best,self.lr_decay,new_lr,filepath))
+                            print('\nEpoch %05d: %s %0.{0}f->%0.{0}f->%0.{0}f less than ideal, lr*%.2f=%.1e, saving to [%s]'.format(self.sig_digits)%(
+                            epoch+1,self.monitor,current,self.best,self.historical_best,self.lr_decay,new_lr,filepath))
                         self.save_network(filepath)
                     else:
                         if self.verbose>0:
-                            print('\nEpoch %05d: %s %0.{0}f is no better than %0.{0}f, lr*%.2f=%.1e, not saved.'.format(self.sig_digits)%
-                                  (epoch+1, self.monitor, current, self.best,self.lr_decay,new_lr))
+                            print('\nEpoch %05d: %s %0.{0}f->%0.{0}f->%0.{0}f less than ideal, lr*%.2f=%.1e, not saving to [%s]'.format(self.sig_digits)%
+                                  (epoch+1, self.monitor,current,self.best,self.historical_best,self.lr_decay,new_lr,filepath))
 
     def save_network(self,filepath):
         if self.save_weights_only:
