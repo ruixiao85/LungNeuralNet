@@ -62,10 +62,10 @@ class BaseNetU(Config):
 
     def compile_net(self,save_net=False,print_summary=False):
         self.net.compile(optimizer=self.optimizer(self.learning_rate), loss=self.loss, metrics=self.metrics)
-        print("Model compiled")
+        print("Model compiled.")
         if save_net:
             self.save_net()
-            print('Model saved to file')
+            print('Model saved to file.')
         if print_summary:
             self.net.summary()
 
@@ -87,47 +87,45 @@ class BaseNetU(Config):
     def train(self,pair):
         self.build_net()
         for tr,val,dir_out in pair.train_generator():
+            self.compile_net() # recompile to set optimizers,..
             self.filename=dir_out+'_'+str(self)
-            print('Fitting neural net...')
-            for r in range(self.train_rep):
-                self.compile_net() # recompile to set optimizers,..
-                init_epoch,best_value=0,None # store last best
-                last_saves=self.find_best_models(self.filename+'^*^.h5')
-                if isinstance(last_saves,list) and len(last_saves)>0:
-                    last_best=last_saves[0]
-                    init_epoch,best_value=Config.parse_saved_model(last_best)
-                    if self.train_continue:
-                        print("Continue from previous weights")
-                        self.net.load_weights(last_best)
-                        # print("Continue from previous model with weights & optimizer")
-                        # self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
-                    else:
-                        print("Train with some random weights"); init_epoch=0
-                if not os.path.exists(self.filename+".txt"):
-                    with open(self.filename+".txt","w") as net_summary:
-                        self.net.summary(print_fn=lambda x:net_summary.write(x+'\n'))
-                if not os.path.exists(self.filename+".json"):
-                    self.save_net()
-                print("Training %d/%d for %s"%(r+1,self.train_rep,self.filename))
-                from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau,LearningRateScheduler
-                from callbacks import TensorBoardTrainVal,ModelCheckpointCustom
-                history=self.net.fit_generator(tr,validation_data=val,verbose=1,
-                   steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
-                   validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
-                   epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
-                   callbacks=[
-                       ModelCheckpointCustom(self.filename,monitor=self.indicator,mode=self.indicator_trend,hist_best=best_value,
-                                    save_weights_only=True,save_mode=self.save_mode,lr_decay=self.learning_decay,sig_digits=self.sig_digits,verbose=1),
-                       EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=self.indicator_patience,verbose=1),
-                       # LearningRateScheduler(lambda x: learning_rate*(self.learning_decay**x),verbose=1),
-                       # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
-                       # TensorBoardTrainVal(log_dir=os.path.join("log", self.filename), write_graph=True, write_grads=False, write_images=True),
-                   ]).history
-                df=pd.DataFrame(history)
-                df['time']=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                df['repeat']=r+1
-                df.to_csv(self.filename+".csv",mode="a",header=(not os.path.exists(self.filename+".csv")))
-                self.find_best_models(self.filename+'^*^.h5')  # remove unnecessary networks
+            print("Training for %s"%(self.filename))
+            init_epoch,best_value=0,None # store last best
+            last_saves=self.find_best_models(self.filename+'^*^.h5')
+            if isinstance(last_saves,list) and len(last_saves)>0:
+                last_best=last_saves[0]
+                init_epoch,best_value=Config.parse_saved_model(last_best)
+                if self.train_continue:
+                    print("Continue from previous weights.")
+                    self.net.load_weights(last_best)
+                    # print("Continue from previous model with weights & optimizer")
+                    # self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
+                else:
+                    print("Train with some random weights."); init_epoch=0
+            if not os.path.exists(self.filename+".txt"):
+                with open(self.filename+".txt","w") as net_summary:
+                    self.net.summary(print_fn=lambda x:net_summary.write(x+'\n'))
+            if not os.path.exists(self.filename+".json"):
+                self.save_net()
+            from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau,LearningRateScheduler
+            from callbacks import TensorBoardTrainVal,ModelCheckpointCustom
+            history=self.net.fit_generator(tr,validation_data=val,verbose=1,
+               steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
+               validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
+               epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
+               callbacks=[
+                   ModelCheckpointCustom(self.filename,monitor=self.indicator,mode=self.indicator_trend,hist_best=best_value,
+                                save_weights_only=True,save_mode=self.save_mode,lr_decay=self.learning_decay,sig_digits=self.sig_digits,verbose=1),
+                   EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=self.indicator_patience,verbose=1),
+                   # LearningRateScheduler(lambda x: learning_rate*(self.learning_decay**x),verbose=1),
+                   # ReduceLROnPlateau(monitor=self.indicator, mode='max', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
+                   # TensorBoardTrainVal(log_dir=os.path.join("log", self.filename), write_graph=True, write_grads=False, write_images=True),
+               ]).history
+            df=pd.DataFrame(history)
+            df['time']=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            df.to_csv(self.filename+".csv",mode="a",header=(not os.path.exists(self.filename+".csv")))
+            self.find_best_models(self.filename+'^*^.h5')  # remove unnecessary networks
+        del self.net
 
     def predict(self,pair,pred_dir):
         self.build_net()

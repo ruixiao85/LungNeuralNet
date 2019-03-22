@@ -18,9 +18,9 @@ class Config:
     def __init__(self,num_targets,target_scale,**kwargs,):
         self.num_targets=num_targets
         self.target_scale=target_scale or 1.0 # pixel scale to target default to 10X=1px/µm (e.g., 40X=4px/µm)
-        self.dim_in=kwargs.get('dim_in', (768,768,3))
+        self.dim_in=kwargs.get('dim_in', (512,512,3))
         self.row_in, self.col_in, self.dep_in=self.dim_in
-        self.dim_out=kwargs.get('dim_out', (768,768,1))
+        self.dim_out=kwargs.get('dim_out', (512,512,1))
         self.row_out, self.col_out, self.dep_out=self.dim_out
         self.dep_out=min(self.dep_out,num_targets)
         self.image_format=kwargs.get('image_format', "*.jpg")
@@ -38,7 +38,6 @@ class Config:
         self.ntop=kwargs.get('ntop', 1) # numbers of top networks to keep, delete the networks that are less than ideal
         self.batch_size=kwargs.get('batch_size', 1)
         self.pre_trained=kwargs.get('pre_trained', True) # True: load weights pre-trained on imagenet; False: init with random weights
-        self.train_rep=kwargs.get('train_rep', 4) # times to repeat during training
         self.train_epoch=kwargs.get('train_epoch', 20) # max epoches during training
         self.train_step=kwargs.get('train_step', 1280)
         self.train_vali_step=kwargs.get('train_vali_step', 640)
