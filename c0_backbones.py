@@ -14,7 +14,7 @@ import keras.models as KM
 from keras.engine.saving import model_from_json,load_model
 from a_config import Config
 from b2_net_multi import BaseNetM
-from image_set import PatchSet
+from image_set import ImageSet
 from module import uu
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten

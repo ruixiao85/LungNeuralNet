@@ -18,9 +18,9 @@ class Config:
     def __init__(self,num_targets,target_scale,**kwargs,):
         self.num_targets=num_targets
         self.target_scale=target_scale or 1.0 # pixel scale to target default to 10X=1px/µm (e.g., 40X=4px/µm)
-        self.dim_in=kwargs.get('dim_in', (512,512,3))
+        self.dim_in=kwargs.get('dim_in', (768,768,3))
         self.row_in, self.col_in, self.dep_in=self.dim_in
-        self.dim_out=kwargs.get('dim_out', (512,512,1))
+        self.dim_out=kwargs.get('dim_out', (768,768,1))
         self.row_out, self.col_out, self.dep_out=self.dim_out
         self.dep_out=min(self.dep_out,num_targets)
         self.image_format=kwargs.get('image_format', "*.jpg")
@@ -51,31 +51,6 @@ class Config:
         self.save_mode=kwargs.get('save_mode', 'h') # decide which network to save: All/CurrentBest/HistoricalBest/None
         self.sig_digits=kwargs.get('sig_digits', 3) # significant digits for indicator/score
         self._model_cache={}
-
-    def split_train_val_vc(self,view_coords):
-        tr_list,val_list=[],[]  # list view_coords, can be from slices
-        tr_image,val_image=set(),set()  # set whole images
-        for vc in view_coords:
-            if vc.image_name in tr_image:
-                tr_list.append(vc)
-                tr_image.add(vc.image_name)
-            elif vc.image_name in val_image:
-                val_list.append(vc)
-                val_image.add(vc.image_name)
-            else:
-                if (len(val_list)+0.05)/(len(tr_list)+0.05)>self.train_vali_split:
-                    tr_list.append(vc)
-                    tr_image.add(vc.image_name)
-                else:
-                    val_list.append(vc)
-                    val_image.add(vc.image_name)
-        print("From %d split into train: %d views %d images; validation %d views %d images"%(
-        len(view_coords),len(tr_list),len(tr_image),len(val_list),len(val_image)))
-        print("Training Images:"); print(tr_image)
-        print("Validation Images:"); print(val_image)
-        # tr_list.sort(key=lambda x: str(x), reverse=False)
-        # val_list.sort(key=lambda x: str(x), reverse=False)
-        return tr_list,val_list
 
     @staticmethod
     def get_proper_range(ra,ca,ri,ro,ci,co,tri,tro,tci,tco): # row/col limit of large image, row/col index on large image, row/col index for small image

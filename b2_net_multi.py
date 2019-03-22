@@ -16,7 +16,7 @@ import keras.models as KM
 from keras.engine.saving import model_from_json,load_model
 
 from a_config import Config
-from image_set import PatchSet,ViewSet
+from image_set import ImageSet,ViewSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten,draw_detection
 from mrcnn import utils
@@ -480,7 +480,7 @@ class ImagePatchPair:
 
 
     def train_generator(self):
-        self.pch_set=[PatchSet(self.cfg,self.wd,tgt,self.is_train).prep_folder() for tgt in self.targets]
+        self.pch_set=[ImageSet(self.cfg,self.wd,tgt,self.is_train).prep_folder() for tgt in self.targets]
         self.blend_image_patch(
             additional_weight=[1,1],  # if you have three categories default=[0,1,2] to draw from, here you can add more weights
             patch_per_pixel=[2000,18000],  # patch per pixel, range to randomly select from, larger number: smaller density

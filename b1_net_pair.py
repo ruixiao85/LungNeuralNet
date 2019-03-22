@@ -35,7 +35,7 @@ class BaseNetU(Config):
         custom_function_keras()  # leakyrelu, swish
         self.loss=kwargs.get('loss', (loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy'))  # 'binary_crossentropy'
         self.metrics=kwargs.get('metrics', ([jac, dice] if self.dep_out==1 else [acc])) # dice67,dice33  acc67,acc33
-        self.learning_rate=kwargs.get('learning_rate', 1e-5) # initial learning rate
+        self.learning_rate=kwargs.get('learning_rate', 1e-4) # initial learning rate
         self.learning_decay=kwargs.get('learning_decay', 0.3)
         from keras.optimizers import Adam
         self.optimizer=kwargs.get('optimizer', Adam)
@@ -219,26 +219,29 @@ class ImageMaskPair:
         self.wd=wd
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
-        self.img_set=ViewSet(cfg, wd, origin, is_train).prep_folder()
+        self.img_set=ViewSet(cfg, wd, origin, is_train, channels=3, low_std_ex=False).prep_folder()
         self.msk_set=None
         self.is_train=is_train
 
     def train_generator(self):
-        i = 0; no=self.cfg.dep_out; nt=len(self.targets)
+        i=0; no=self.cfg.dep_out; nt=len(self.targets)
         while i < nt:
             o=min(i+no, nt)
-            views = set(self.img_set.view_coord)
-            self.msk_set = []
+            tr_view,val_view=set(self.img_set.tr_view),set(self.img_set.val_view)
+            tr_view_ex,val_view_ex=None,None
             tgt_list=[]
+            self.msk_set=[]
             for t in self.targets[i:o]:
                 tgt_list.append(t)
-                msk = ViewSet(self.cfg, self.wd, t, is_train=True).prep_folder()
+                msk=ViewSet(self.cfg, self.wd, t, is_train=True, channels=1, low_std_ex=True, tr_val_views=(self.img_set.tr_view,self.img_set.val_view)).prep_folder()
                 self.msk_set.append(msk)
-                views = views.intersection(msk.view_coord)
-            self.img_set.view_coord = sorted(views,key=lambda x:x.file_name)
-            tr_list,val_list=self.cfg.split_train_val_vc(self.img_set.view_coord)
-            yield (ImageMaskGenerator(self,self.cfg.train_aug,tgt_list,tr_list),ImageMaskGenerator(self,0,tgt_list,val_list),
-                    self.img_set.category_detail(self.cfg.join_targets(tgt_list),self.cfg.target_scale,self.cfg.row_out,self.cfg.col_out))
+                tr_view_ex=set(msk.tr_view_ex) if tr_view_ex is None else tr_view_ex.intersection(msk.tr_view_ex)
+                val_view_ex=set(msk.val_view_ex) if val_view_ex is None else val_view_ex.intersection(msk.val_view_ex)
+            print("After low contrast exclusion, train/validation views [%d : %d] - [%d : %d] = [%d : %d]"%
+                  (len(tr_view),len(val_view),len(tr_view_ex),len(val_view_ex),len(tr_view)-len(tr_view_ex),len(val_view)-len(val_view_ex)))
+            yield (ImageMaskGenerator(self,tgt_list,True,list(tr_view-tr_view_ex)),
+                   ImageMaskGenerator(self,tgt_list,True,list(val_view-val_view_ex)),
+                    self.img_set.label_scale_res(self.cfg.join_targets(tgt_list),self.cfg.target_scale,self.cfg.row_out,self.cfg.col_out))
             i=o
 
     def predict_generator_note(self):
@@ -250,16 +253,17 @@ class ImageMaskPair:
             i = o
 
     def predict_generator_partial(self,subset,view):
-        return ImageMaskGenerator(self,0,subset,view),self.cfg.join_targets(subset)
+        return ImageMaskGenerator(self,subset,False,view),self.cfg.join_targets(subset)
 
 
 class ImageMaskGenerator(keras.utils.Sequence):
-    def __init__(self,pair:ImageMaskPair,aug_value,tgt_list,view_coord):
+    def __init__(self,pair:ImageMaskPair,tgt_list,is_train,view_coord):
         self.pair=pair
         self.cfg=pair.cfg
-        self.aug_value=aug_value
         self.target_list=tgt_list
-        self.view_coord=pair.img_set.view_coord if view_coord is None else view_coord
+        self.is_train=is_train
+        self.aug_value=self.cfg.train_aug if is_train else 0
+        self.view_coord=view_coord
         self.indexes=None
         self.on_epoch_end()
 
@@ -273,16 +277,17 @@ class ImageMaskGenerator(keras.utils.Sequence):
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.img_set.target_folder))
+                _img[vi, ...] = self.pair.img_set.get_image(vc)
                 for ti,tgt in enumerate(self.target_list):
-                    _tgt[vi, ..., ti] = vc.get_mask(os.path.join(self.pair.wd, self.pair.msk_set[ti].target_folder))
+                    _tgt[vi, ..., ti] = self.pair.msk_set[ti].get_image(vc)[...,0]
             _img, _tgt = augment_image_pair(_img, _tgt, self.aug_value)  # integer N: a <= N <= b.
-            # cv2.imwrite("pair_img.jpg",_img[0]); cv2.imwrite("pair_tgt.jpg",_tgt[0])
+            # cv2.imwrite("pair_img.jpg",_img[0]); cv2.imwrite("pair_tgt1.jpg",_tgt[0,...,0:3])
+            # cv2.imwrite("pair_tgt2.jpg",_tgt[0,...,3:6])
             return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = vc.get_image(os.path.join(self.pair.wd, self.pair.img_set.target_folder))
+                _img[vi, ...] = self.pair.img_set.get_image(vc)
             # cv2.imwrite("pair_img.jpg",_img[0])
             return prep_scale(_img, self.cfg.feed), None
 

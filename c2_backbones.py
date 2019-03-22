@@ -16,7 +16,7 @@ from keras.engine.saving import model_from_json,load_model
 from a_config import Config
 from b2_net_multi import BaseNetM
 from c0_backbones import v16,v19,res50,incept3,incepres2,xcept,densenet121,densenet169,densenet201,mobile,mobile2,naslarge,nasmobile
-from image_set import PatchSet
+from image_set import ImageSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten
 from mrcnn import utils
