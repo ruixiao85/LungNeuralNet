@@ -103,6 +103,7 @@ def extract_pad_image(lg_img, r0, r1, c0, c1):
     if c1 > _col:
         c1p = c1 - _col; c1 = _col
     if r0p + r1p + c0p + c1p > 0:
+        print("padding %dx%d image by subset [r0 %d r1 %d, c0 %d c1 %d] and padd [r0p %d r1p %d, c0p %d c1p %d]"%(_row,_col,r0,r1,c0,c1,r0p,r1p,c0p,c1p))
         return np.pad(lg_img[r0:r1, c0:c1, ...], ((r0p, r1p), (c0p, c1p), (0, 0)), 'reflect')
     else:
         return lg_img[r0:r1, c0:c1, ...]
@@ -113,14 +114,15 @@ aug_both_1 = iaa.Sequential([
 ])
 aug_both_2 = iaa.Sequential([
     iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
-    iaa.Sometimes(0.7, iaa.Affine(rotate=(-12, 12), mode='constant', cval=0)),
+    iaa.Sometimes(0.3, iaa.PiecewiseAffine(scale=(0.01,0.02))),
 ])
 aug_both_3 = iaa.Sequential([
     iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
-    iaa.Sometimes(0.5, iaa.Affine(
+    iaa.Sometimes(0.4, iaa.PiecewiseAffine(scale=(0.01,0.03))),
+    iaa.Sometimes(0.4, iaa.Affine(
         scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
         rotate=(-20, 20), shear=(-10, 10), order=[0, 1],  mode='constant', cval=0
-    )),
+    ))
 ])
 aug_both_4 = iaa.Sequential([
     iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
