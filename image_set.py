@@ -14,7 +14,7 @@ def parse_float(text):
         return None
 
 class MetaInfo:
-    def __init__(self, file, image, ori_row, ori_col, ri, ro, ci, co, list_num):
+    def __init__(self, file, image, ori_row, ori_col, ri, ro, ci, co):
         self.file_name = file  # direct file can be a slice
         self.image_name = image # can be name of the whole image, can different from file_name (slice)
         self.ori_row = ori_row
@@ -23,11 +23,10 @@ class MetaInfo:
         self.row_end = ro
         self.col_start = ci
         self.col_end = co
-        self.list_num = list_num # the order in the [images]
 
-    def file_name_insert(self, cfg:Config, text=None):
-        ext=cfg.image_format[1:]
-        return self.file_name.replace(ext,'') if text is None else self.file_name.replace(ext,text+ext)
+    # def file_name_insert(self, cfg:Config, text=None):
+    #     ext=cfg.image_format[1:]
+    #     return self.file_name.replace(ext,'') if text is None else self.file_name.replace(ext,text+ext)
 
     # @classmethod
     # def from_single(cls, file):
@@ -38,16 +37,9 @@ class MetaInfo:
     #         return cls(file, "%s.%s" % (ls[0], ext[len(ext) - 1]), int(ss[1]), int(ss[2]), int(ss[3]), int(ss[4]), int(ss[5]), int(ss[6]), None)
     #     return cls(file, file, None, None, None, None, None, None, None)
 
-    @classmethod
-    def from_whole(cls, image_name, lg_row, lg_col, ri, ro, ci, co, i):
-        obj=cls(None,image_name,lg_row,lg_col,ri,ro,ci,co,i)
-        obj.file_name=obj.image_name.replace(obj.image_name, (obj.image_name+"_#%d#%d#%d#%d#%d#%d#")
-                 % (obj.ori_row, obj.ori_col, obj.row_start,obj.row_end,obj.col_start,obj.col_end))
-        return obj
-
-    def update_coord(self, lg_row, lg_col, ri, ro, ci, co):
-        self.ori_row, self.ori_col, self.row_start, self.row_end, self.col_start, self.col_end =\
-            lg_row,lg_col,ri,ro,ci,co
+     # def update_coord(self, lg_row, lg_col, ri, ro, ci, co):
+     #    self.ori_row, self.ori_col, self.row_start, self.row_end, self.col_start, self.col_end =\
+     #        lg_row,lg_col,ri,ro,ci,co
 
        # def get_masks(self, _path, cfg:Config):
     #     import glob
@@ -84,10 +76,8 @@ class ImageSet:
         self.target_folder=self.label_scale()
         self.raw_folder,self.raw_scale,self.resize_ratio=None,None,None
         self.images=None # list names
-        self.image_info=None # list image meta info
-        self.image_data=None # list numpy RGB data
+        self.image_data=None # dict RGB data
         self.tr_list,self.val_list=None,None
-        self.write_disk=False
 
     def label_scale(self,target=None,scale=None):
         return "%s_%.1f"%(target or self.sub_category, scale or self.target_scale)
@@ -117,7 +107,7 @@ class ImageSet:
         input_folder=self.target_folder if self.resize_ratio==1 else self.raw_folder
         self.images=find_file_ext_recursive_rel(os.path.join(self.work_directory,input_folder),self.image_format)
         total=len(self.images)
-        self.image_info,self.image_data=[],[]
+        self.image_data={}
         print("Processing %d images from folder [%s] with resize_ratio of %.1fx ..."%(total,input_folder,self.resize_ratio))
         if self.raw_scale<self.target_scale:
             print("Warning, upsampling from low-res raw images is not recommended!")
@@ -126,58 +116,58 @@ class ImageSet:
             pct10=10*(i+1)//total
             if pct10>10*i//total:
                 print(' %.0f%% ... %s'%(pct10*10,image))
-            lg_row,lg_col,lg_dep=_img.shape
-            self.image_info.append(MetaInfo(image,image,lg_row,lg_col,0,lg_row,0,lg_col,i))
-            self.image_data.append(_img)
+            # lg_row,lg_col,lg_dep=_img.shape
+            self.image_data[image]=_img
 
     def split_tr_val(self):
         self.tr_list,self.val_list=[],[]
-        for i in range(len(self.image_info)):
+        for img in self.images:
             if (len(self.val_list)+0.05)/(len(self.tr_list)+0.05)>self.train_vali_split:
-                self.tr_list.append(i)
+                self.tr_list.append(img)
             else:
-                self.val_list.append(i)
+                self.val_list.append(img)
         print("[%s] was split into training [%d] and validation [%d] set."%(self.sub_category,len(self.tr_list),len(self.val_list)))
 
     def adapt_channel(self,img,channels=None):
         return np.max(img,axis=-1,keepdims=True) if (channels or self.channels)==1 else img
 
     def get_image(self,view):
-        return self.image_data[view.list_num][view.row_start:view.row_end,view.col_start:view.col_end,...]
-        # return extract_pad_image(self.image_data[view.list_num],view.row_start,view.row_end,view.col_start,view.col_end)
+        return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,...]
 
 class ViewSet(ImageSet):
-    def __init__(self,cfg: Config,wd,sf,is_train,channels,low_std_ex,tr_val_views=(None,None)):
+    def __init__(self,cfg: Config,wd,sf,is_train,channels,low_std_ex):
         super(ViewSet,self).__init__(cfg,wd,sf,is_train,channels)
         self.coverage=cfg.coverage_train if self.is_train else cfg.coverage_predict
         self.train_step=cfg.train_step
         self.row,self.col=cfg.row_in,cfg.col_in
         self.low_std_ex=low_std_ex
-        self.tr_view,self.val_view=tr_val_views  # lists -> views with specified size
+        self.tr_view,self.val_view=None,None  # lists -> views with specified size
         self.tr_view_ex,self.val_view_ex=None,None  # views with low contrast
 
     def label_scale_res(self,target=None,scale=None,rows=None,cols=None):
         return "%s_%dx%d"%(self.label_scale(target,scale), rows or self.row, cols or self.col)
+    def scale_res(self,scale=None,rows=None,cols=None):
+        return "%s_%dx%d"%(scale or self.target_scale, rows or self.row, cols or self.col)
 
     def prep_folder(self):
         self.prescreen_folders()
         self.split_tr_val() # tr/val-split only needed for img_set
-        self.tr_view=self.list_to_view(self.tr_list) if self.tr_view is None else self.tr_view
-        self.val_view=self.list_to_view(self.val_list) if self.val_view is None else self.val_view
+        self.tr_view=self.list_to_view(self.tr_list)
+        self.val_view=self.list_to_view(self.val_list)
         if self.low_std_ex:
             self.tr_view_ex=self.low_std_exclusion(self.tr_view)
             self.val_view_ex=self.low_std_exclusion(self.val_view)
         return self
 
-    def list_to_view(self,id_list):
+    def list_to_view(self,img_list):
+        dotext=self.image_format[1:]
         view_list=[]
-        for i in id_list:
-            _img=self.image_data[i]
+        for img in img_list:
+            _img=self.image_data[img]
             lg_row,lg_col,lg_dep=_img.shape
-            image=self.images[i]
             r_len=max(1,1+int(round((lg_row-self.row)/self.row*self.coverage)))
             c_len=max(1,1+int(round((lg_col-self.col)/self.col*self.coverage)))
-            print(" %s target %d x %d (coverage %.1f): original %d x %d ->  row /%d col /%d"%(image,self.row,self.col,self.coverage,lg_row,lg_col,r_len,c_len))
+            print(" %s target %d x %d (coverage %.1f): original %d x %d ->  row /%d col /%d"%(img,self.row,self.col,self.coverage,lg_row,lg_col,r_len,c_len))
             r0,c0,r_step,c_step=0,0,0,0  # start position and step default to (0,0)
             r_step=float(lg_row-self.row)/(r_len-1)
             c_step=float(lg_col-self.col)/(c_len-1)
@@ -187,7 +177,8 @@ class ViewSet(ImageSet):
                     ci=c0+int(min(lg_col-self.col,round(c_index*c_step)))
                     ro=ri+self.row
                     co=ci+self.col
-                    entry=MetaInfo.from_whole(image,lg_row,lg_col,ri,ro,ci,co,i)
+                    entry=MetaInfo(img.replace(dotext,("_#%d#%d#%d#%d#%d#%d#"+dotext)%(lg_row,lg_col,ri,ro,ci,co))
+                        ,img,lg_row,lg_col,ri,ro,ci,co)
                     view_list.append(entry)  # add to either tr or val set
         print("Images were divided into [%d] views"%(len(view_list)))
         return view_list
@@ -203,6 +194,10 @@ class ViewSet(ImageSet):
 
     def view_coord_batch(self):
         view_batch={}
-        for view in itertools.chain(self.tr_list,self.val_list):
-            view_batch.get(view.image_name, []).append(view)
-        return view_batch
+        view_name=[]
+        for view in itertools.chain(self.tr_view,self.val_view):
+            sub=view_batch.get(view.image_name, [])
+            sub.append(view)
+            view_name.append(view.file_name)
+            view_batch[view.image_name]=sub
+        return view_batch, view_name

@@ -131,8 +131,8 @@ class BaseNetU(Config):
         self.build_net()
         xls_file="Result_%s_%s.xlsx"%(pred_dir.replace(os.sep,'_'),repr(self))
         sum_i,sum_g=self.row_out*self.col_out,None
-        batch=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
-        dir_cfg_append=pair.img_set.category_append(None,self.row_out,self.col_out)+'_'+str(self)
+        batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
+        dir_cfg_append=pair.img_set.scale_res(None,self.row_out,self.col_out)+'_'+str(self)
         save_ind,save_raw=pair.cfg.save_ind_raw
         res_ind,res_grp=None,None
         for dir_out,tgt_list in pair.predict_generator_note():
@@ -169,7 +169,7 @@ class BaseNetU(Config):
                     # if i>=len(multi.view_coord): print("skip %d for overrange"%i); break # last batch may have unused entries
                     ind_name=view[i].file_name
                     ind_file=os.path.join(target_dir,ind_name)
-                    origin=view[i].get_image(os.path.join(pair.wd,pair.img_set.target_folder))
+                    origin=pair.img_set.get_image(view[i])
                     print(ind_name); text_list=[ind_name]
                     blend,r_i=self.predict_proc(self,origin,msk,file=None) # ind_file.replace(self.image_format[1:],'')
                     for d in range(len(tgt_list)):
@@ -206,7 +206,7 @@ class BaseNetU(Config):
             res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
             res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
         for i,note in [(0,'_area'),(1,'_count')]:
-            df=pd.DataFrame(res_ind[...,i],index=pair.img_set.images,columns=pair.targets*pair.cfg.dep_out)
+            df=pd.DataFrame(res_ind[...,i],index=view_name,columns=pair.targets*pair.cfg.dep_out)
             to_excel_sheet(df,xls_file,pair.origin+note)  # per slice
         for i,note in [(0,'_area'),(1,'_count')]:
             df=pd.DataFrame(res_grp[...,i],index=batch.keys(),columns=pair.targets*pair.cfg.dep_out)
@@ -233,7 +233,7 @@ class ImageMaskPair:
             self.msk_set=[]
             for t in self.targets[i:o]:
                 tgt_list.append(t)
-                msk=ViewSet(self.cfg, self.wd, t, is_train=True, channels=1, low_std_ex=True, tr_val_views=(self.img_set.tr_view,self.img_set.val_view)).prep_folder()
+                msk=ViewSet(self.cfg, self.wd, t, is_train=True, channels=1, low_std_ex=True).prep_folder()
                 self.msk_set.append(msk)
                 tr_view_ex=set(msk.tr_view_ex) if tr_view_ex is None else tr_view_ex.intersection(msk.tr_view_ex)
                 val_view_ex=set(msk.val_view_ex) if val_view_ex is None else val_view_ex.intersection(msk.val_view_ex)
@@ -282,7 +282,6 @@ class ImageMaskGenerator(keras.utils.Sequence):
                     _tgt[vi, ..., ti] = self.pair.msk_set[ti].get_image(vc)[...,0]
             _img, _tgt = augment_image_pair(_img, _tgt, self.aug_value)  # integer N: a <= N <= b.
             # cv2.imwrite("pair_img.jpg",_img[0]); cv2.imwrite("pair_tgt1.jpg",_tgt[0,...,0:3])
-            # cv2.imwrite("pair_tgt2.jpg",_tgt[0,...,3:6])
             return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
