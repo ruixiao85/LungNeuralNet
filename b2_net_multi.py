@@ -294,7 +294,7 @@ class BaseNetM(Config):
             history=self.net.fit_generator(tr,validation_data=val,verbose=1,
                steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
                validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
-               epochs=self.train_epoch,max_queue_size=3,workers=1,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
+               epochs=self.train_epoch,max_queue_size=5,workers=1,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
                callbacks=[
                    ModelCheckpointCustom(self.filename,monitor=self.indicator,mode=self.indicator_trend,hist_best=best_value,
                                  save_weights_only=True,save_mode=self.save_mode,lr_decay=self.learning_decay,sig_digits=self.sig_digits,verbose=1),
@@ -318,7 +318,7 @@ class BaseNetM(Config):
             for weight_file in weight_files:
                 self.net.load_weights(weight_file,by_name=True)  # weights only
                 steps_done,steps=0,len(val)
-                print("[%d] in %d steps: "%(weight_file,steps))
+                print("[%s] in %d steps: "%(weight_file,steps))
                 val.on_epoch_end() #initialize
                 valiter=iter(val)
                 with open(self.filename+".log","a") as log:
@@ -357,7 +357,7 @@ class BaseNetM(Config):
                 self.net.load_weights(weight_file,by_name=True)  # weights only
                 # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
                 detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=\
-                    self.net.predict_generator(prd,max_queue_size=1,workers=0,use_multiprocessing=False,verbose=1)
+                    self.net.predict_generator(prd,max_queue_size=5,workers=1,use_multiprocessing=False,verbose=1)
                 mrg_in=np.zeros((view[0].ori_row,view[0].ori_col,self.dep_in),dtype=np.float32)
                 for i,(det,msk) in enumerate(zip(detections,mrcnn_mask)): # each view
                     final_rois,final_class_ids,final_scores,final_masks=parse_detections(det,msk,self.dim_in)
@@ -428,6 +428,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
             self.set_pred()
         self.aug_value=aug_value
         self.target_list=tgt_list
+        self.is_val=view_coord[0] in pair.img_set.val_view
         self.view_coord=view_coord
         self.indexes=None
         self.on_epoch_end()
@@ -525,7 +526,6 @@ class ImagePatchGenerator(keras.utils.Sequence):
         # adjacent_std=kwargs.get('adjacent_std',0.2)  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
         img=np.copy(self.pair.img_set.get_image(view))
         pixels=self.cfg.row_in*self.cfg.col_in
-        is_validation=view in self.pair.img_set.val_view  # fewer in val_view, faster to check
         pool=list(range(0,self.cfg.num_targets))+add_weight  # equal chance, + weight to some category
         while True:
             inserted=[0]*self.cfg.num_targets  # track # of inserts per category
@@ -534,7 +534,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
             clss,msks=[],None
             for li in labels:
                 the_pch_set=self.pair.pch_set[li]
-                pch_view=random.choice(the_pch_set.val_view) if is_validation else random.choice(the_pch_set.tr_view)
+                pch_view=random.choice(the_pch_set.val_view) if self.is_val else random.choice(the_pch_set.tr_view)
                 rowpos=random.uniform(0,1)
                 colpos=random.uniform(0,1)
                 p_row,p_col=pch_view.ori_row,pch_view.ori_col
@@ -559,11 +559,11 @@ class ImagePatchGenerator(keras.utils.Sequence):
                     msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
                     inserted[li]+=1
                     if inserted[li]>max_instance: break;
+            if verbose>1:
+                print(" inserted %s for %s"%(inserted,view.file_name),end='')
+            elif verbose>0:
+                print("+",end='')
             if sum(inserted)>0:
-                if verbose>1:
-                    print(" inserted %s for %s"%(inserted,view.file_name),end='')
-                elif verbose>0:
-                    print("+",end='')
                 # cv2.imwrite(view.file_name,img[0],[int(cv2.IMWRITE_JPEG_QUALITY),100])
                 # cv2.imwrite(view.file_name+"_m.jpg",msks[0,...,0:3],[int(cv2.IMWRITE_JPEG_QUALITY),100])
                 return img,np.array(clss,dtype=np.uint8),msks
