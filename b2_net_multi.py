@@ -16,11 +16,11 @@ import keras.models as KM
 from keras.engine.saving import model_from_json,load_model
 
 from a_config import Config
-from image_set import ImageSet,ViewSet
+from image_set import ImageSet,ViewSet,PatchSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,smooth_brighten,draw_detection
 from mrcnn import utils
-from preprocess import prep_scale,augment_image_set,augment_patch,read_image,read_resize,read_resize_pad,read_resize_fit
+from preprocess import prep_scale,augment_image_set,augment_patch,read_image,read_resize,read_resize_pad,read_resize_fit,augment_image_pair
 
 
 class BaseNetM(Config):
@@ -294,7 +294,7 @@ class BaseNetM(Config):
             history=self.net.fit_generator(tr,validation_data=val,verbose=1,
                steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
                validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
-               epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
+               epochs=self.train_epoch,max_queue_size=3,workers=1,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
                callbacks=[
                    ModelCheckpointCustom(self.filename,monitor=self.indicator,mode=self.indicator_trend,hist_best=best_value,
                                  save_weights_only=True,save_mode=self.save_mode,lr_decay=self.learning_decay,sig_digits=self.sig_digits,verbose=1),
@@ -316,10 +316,9 @@ class BaseNetM(Config):
             print('Evaluating neural net...'); val.set_eval()
             weight_files=self.find_best_models(self.filename+'^*^.h5',allow_cache=True)
             for weight_file in weight_files:
-                print(weight_file)
                 self.net.load_weights(weight_file,by_name=True)  # weights only
                 steps_done,steps=0,len(val)
-                print("Total steps: ",steps)
+                print("[%d] in %d steps: "%(weight_file,steps))
                 val.on_epoch_end() #initialize
                 valiter=iter(val)
                 with open(self.filename+".log","a") as log:
@@ -336,24 +335,23 @@ class BaseNetM(Config):
                         steps_done+=1
                     mAP=np.mean(APs)
                     print("\nmAP: ",mAP); log.write(str(mAP)+'\n')
+        del self.net
 
     def predict(self,pair,pred_dir):
         self.build_net(is_train=False)
         xls_file="Result_%s_%s.xlsx"%(pred_dir,repr(self))
-        batch=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
-        dir_cfg_append=pair.img_set.category_append(None,self.row_out,self.col_out)+'_'+str(self)
+        batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
+        dir_cfg_append=pair.img_set.scale_res(None,self.row_out,self.col_out)+'_'+str(self)
         save_ind,save_raw=pair.cfg.save_ind_raw
         res_ind,res_grp=None,None
         for dir_out,tgt_list in pair.predict_generator_note():
             res_i,res_g=None,None
             print('Load model and predict to [%s]...'%dir_out)
-            export_name=dir_out+'_'+dir_cfg_append
-            target_dir=os.path.join(pair.wd,export_name); mkdir_ifexist(target_dir) # dir for invidual images
+            target_dir=os.path.join(pair.wd,dir_out+'_'+dir_cfg_append); mkdir_ifexist(target_dir) # dir for invidual images
             merge_dir=os.path.join(pair.wd,dir_out+'+'+dir_cfg_append); mkdir_ifexist(merge_dir) # dir for grouped/whole images
             for grp,view in batch.items():
                 grp_box,grp_cls,grp_scr,grp_msk=None,None,None,None
                 prd,tgt_name=pair.predict_generator_partial(tgt_list,view)
-                # weight_file=tgt_name+'_'+dir_cfg_append+'.h5'
                 weight_file=self.find_best_models(tgt_name+'_'+dir_cfg_append+'^*^.h5',allow_cache=True)[0]
                 print(weight_file)
                 self.net.load_weights(weight_file,by_name=True)  # weights only
@@ -363,7 +361,7 @@ class BaseNetM(Config):
                 mrg_in=np.zeros((view[0].ori_row,view[0].ori_col,self.dep_in),dtype=np.float32)
                 for i,(det,msk) in enumerate(zip(detections,mrcnn_mask)): # each view
                     final_rois,final_class_ids,final_scores,final_masks=parse_detections(det,msk,self.dim_in)
-                    origin=view[i].get_image(os.path.join(pair.wd,pair.img_set.target_folder))
+                    origin=pair.img_set.get_image(view[i])
                     blend, r_i=self.predict_proc(self,origin,pair.targets,final_rois,final_class_ids,final_scores,final_masks)
                     res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate([res_i,r_i[np.newaxis,...]],axis=0)
                     if save_ind:
@@ -391,10 +389,11 @@ class BaseNetM(Config):
             res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
             res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
         for i,note in [(0,'_count'),(1,'_area'),(2,'_area_pct')]:
-            df=pd.DataFrame(res_ind[...,i::3],index=pair.img_set.images,columns=pair.targets)
+            df=pd.DataFrame(res_ind[...,i::3],index=view_name,columns=pair.targets)
             to_excel_sheet(df,xls_file,pair.origin+note) # per slice
             df=pd.DataFrame(res_grp[...,i::3],index=batch.keys(),columns=pair.targets)
             to_excel_sheet(df,xls_file,pair.origin+note+"_sum") # per whole image
+        del self.net
 
 class ImagePatchPair:
     def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train):
@@ -407,90 +406,10 @@ class ImagePatchPair:
         self.pch_set=None
 
     def train_generator(self):
-        self.pch_set=[ImageSet(self.cfg,self.wd,tgt,self.is_train,channels=4).prep_folder() for tgt in self.targets]
-        self.blend_image_patch(
-            additional_weight=[1,1],  # default=[0,1,2,...] the pool to draw from, equal chance, here you can add more weights to certain categories
-            patch_per_pixel=[2000,18000],  # patch per pixel, range to randomly select from, larger number: smaller density
-            max_instance=20,  # break out if more than this amount was inserted
-            bright_diff=-10,  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
-            max_std=40,  # original area should be clean, standard deviation should be low (< max_std)
-            adjacent_size=3,  # sample times of size adjacent to the patch
-            # adjacent_std=0.2  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
-            adjacent_std=0.0  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
-        )
+        self.pch_set=[PatchSet(self.cfg,self.wd,tgt,self.is_train,channels=3).prep_folder() for tgt in self.targets]
         yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets,view_coord=self.img_set.tr_view),
               ImagePatchGenerator(self, 0, self.targets,view_coord=self.img_set.val_view),
               self.img_set.label_scale_res(self.cfg.join_targets(self.targets)))
-
-    def blend_image_patch(self,additional_weight,patch_per_pixel,max_instance,bright_diff,max_std,adjacent_size,adjacent_std):
-        img_folder=os.path.join(self.wd,self.img_set.label_scale_res('+'.join([self.origin]+self.targets)))
-        img_exist=mkdir_ifexist(img_folder)
-        pch_folder=os.path.join(self.wd, self.img_set.label_scale_res('-'.join([self.origin]+self.targets)))
-        pch_exist=mkdir_ifexist(pch_folder) # tgt_set matchs img_set
-        print('Image folder exist? %r'%img_exist) # e.g., Original+LYM+MONO+PMN
-        print('Patch folder exist? %r' %pch_exist) # e.g., Original_LYM_MONO_PMN
-        if img_exist and pch_exist:
-            print("Skip making image/patch folders since both exist"); return
-        else:
-            print("Create new folders and blend images and patches")
-        pixels=self.cfg.row_in*self.cfg.col_in
-        print('processing %d categories on val #%d vs tr #%d'%(self.cfg.num_targets,len(self.val_list),len(self.tr_list)))
-        with open(img_folder+".csv","w") as csv_class: # cow,0 \n   cat,1 \n  bird,2
-            for ti,tgt in enumerate(self.targets):
-                csv_class.write(tgt+","+str(ti)+"\n")
-        with open(pch_folder+".csv","w") as csv_annot, open(pch_folder+"_val.csv","w") as csv_val: # /data/imgs/img_001.jpg,837,346,981,456,cow,/data/masks/img_001_001.png
-            for vi, vc in enumerate(self.img_set.view_coord):
-                is_validation=vc in self.val_list # fewer in val_list, faster to check
-                pool=list(range(0,self.cfg.num_targets)) + additional_weight # equal chance, + weight to some category
-                nexample=random.randint(pixels//patch_per_pixel[1], pixels//patch_per_pixel[0])
-                labels=random.choices(pool, k=nexample)
-                img=vc.get_image(os.path.join(self.img_set.work_directory, self.img_set.target_folder))
-                # cv2.imwrite(os.path.join(tgt_noise.work_directory,tgt_noise.sub_folder,'_'+vc.image_name),img)
-                inserted=[0]*self.cfg.num_targets # track # of inserts per category
-                for li in labels:
-                    the_tgt=self.pch_set[li]
-                    idx=random.choice(the_tgt.val_list) if is_validation else random.choice(the_tgt.tr_list)
-                    rowpos=random.uniform(0,1)
-                    colpos=random.uniform(0,1)
-                    prev=img.copy()
-                    patch=the_tgt.view_coord[idx]
-                    p_row, p_col, p_ave, p_std=patch.ori_row, patch.ori_col, patch.row_start, patch.row_end
-                    lri=int(self.cfg.row_in*rowpos)-p_row//2  # large row in/start
-                    lci=int(self.cfg.col_in*colpos)-p_col//2  # large col in/start
-                    lro, lco=lri+p_row, lci+p_col  # large row/col out/end
-                    pri=0 if lri>=0 else -lri; lri=max(0, lri)
-                    pci=0 if lci>=0 else -lci; lci=max(0, lci)
-                    pro=p_row if lro<=self.cfg.row_in else p_row-lro+self.cfg.row_in; lro=min(self.cfg.row_in, lro)
-                    pco=p_col if lco<=self.cfg.col_in else p_col-lco+self.cfg.col_in; lco=min(self.cfg.col_in, lco)
-                    # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
-                    if np.min(img[lri:lro, lci:lco])-p_ave>bright_diff \
-                        and np.std(img[lri:lro, lci:lco])<max_std\
-                        and int(np.std(img[lri-p_row*adjacent_size:lro+p_row*adjacent_size,lci-p_col*adjacent_size:lco+p_col*adjacent_size])>adjacent_std*p_std
-                        ):  # target area is brighter, then add patch
-                        # print("large row(%d) %d-%d col(%d) %d-%d  patch row(%d) %d-%d col(%d) %d-%d"%(self.cfg.row_in,lri,lro,self.cfg.col_in,lci,lco,p_row,pri,pro,p_col,pci,pco))
-                        pat=the_tgt.image_data[idx]
-                        # cv2.imwrite('pre.jpg',pat)
-                        pat=augment_patch(pat,0 if is_validation else self.cfg.train_aug)
-                        # cv2.imwrite('post.jpg',pat)
-                        img[lri:lro, lci:lco]=np.minimum(img[lri:lro, lci:lco], pat[pri:pro, pci:pco].astype(np.uint8))
-                        # img[lri:lro, lci:lco]-=pat[pri:pro, pci:pco].astype(np.uint8) # subtract
-                        # cv2.imwrite(os.path.join(self.wd, the_tgt.sub_folder+'+',vc.file_name_insert(cfg,'_'+str(idx)+('' if index>self.cfg.train_vali_split else '^'))),
-                        #             smooth_brighten(prev-img))
-                        cv2.imwrite(os.path.join(pch_folder,vc.file_name_insert(self.cfg,'_%d^%d^'%(idx,li+1))), #+('' if index>self.cfg.train_vali_split else '^'))
-                                    smooth_brighten(prev-img))
-                        annot='%s,%d,%d,%d,%d,%s,%s\n'%(os.path.join(img_folder, vc.file_name),lci,lri,lco,lro,
-                                  self.targets[li],os.path.join(pch_folder,vc.file_name_insert(self.cfg,'_%d^%d^'%(idx,li+1))))
-                        csv_val.write(annot) if is_validation else csv_annot.write(annot)
-                        # lr=(lri+lro)//2
-                        # lc=(lci+lco)//2
-                        # msk[lr:lr+1,lc:lc+1,1]=255
-                        inserted[li]+=1
-                        if inserted[li]>max_instance: break;
-                if sum(inserted)>0:
-                    print("inserted %s for %s"%(inserted,vc.file_name))
-                    cv2.imwrite(os.path.join(img_folder, vc.file_name), img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
-                else:
-                    print("unable to insert for %s"%vc.file_name)
 
     def predict_generator_note(self):
         yield (self.cfg.join_targets(self.targets),self.targets)
@@ -531,8 +450,8 @@ class ImagePatchGenerator(keras.utils.Sequence):
         _img_meta,_rpn_match,_rpn_bbox=None,None,None
         # _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
-            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.img_set.label_scale_res('+'.join([self.pair.origin]+self.pair.targets))))
-            this_msk,this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.img_set.label_scale_res('-'.join([self.pair.origin]+self.pair.targets))),self.cfg)
+            this_img,this_cls,this_msk=self.blend_image_patch(vc,verbose=1) # always regenerate
+            # this_img,this_cls,this_msk=vc.data=vc.data or self.blend_image_patch(vc) # reuse previously generated
             # cv2.imwrite("pre1.jpg",this_img); cv2.imwrite("pre2.jpg",this_msk[...,0:3])
             this_img,this_msk=augment_image_set(this_img,this_msk,_level=self.aug_value)  # integer N: a <= N <= b.
             # cv2.imwrite("post1.jpg",this_img); cv2.imwrite("post2.jpg",this_msk[...,0:3])
@@ -559,26 +478,12 @@ class ImagePatchGenerator(keras.utils.Sequence):
             _img=prep_scale(_img,self.cfg.feed)
         return [_img,_img_meta,_rpn_match,_rpn_bbox,_cls,_bbox,_msk],[]
 
-    def get_pred_item(self,indexes):
-        _img,_img_meta,_anc=None,None,None
-        for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
-            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.img_set.target_folder))
-            this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
-            this_img=this_img[np.newaxis,...]
-            this_img_meta=this_img_meta[np.newaxis,...]
-            this_anchors=self._anchors[np.newaxis,...]
-            _img=this_img if _img is None else np.concatenate((_img,this_img),axis=0)
-            _img_meta=this_img_meta if _img_meta is None else np.concatenate((_img_meta,this_img_meta),axis=0)
-            _anc=this_anchors if _anc is None else np.concatenate((_anc,this_anchors),axis=0)
-            _img=prep_scale(_img,self.cfg.feed)
-        return [_img,_img_meta,_anc], []
-
     def get_eval_item(self,indexes):
         _img,_img_meta,_anc=None,None,None
         _cls,_bbox,_msk=None,None,None
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
-            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.img_set.label_scale_res('+'.join([self.pair.origin]+self.pair.targets))))
-            this_msk,this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.img_set.label_scale_res('-'.join([self.pair.origin]+self.pair.targets))),self.cfg)
+            # this_img,this_cls,this_msk=self.blend_image_patch(vc)  # always regenerate
+            this_img,this_cls,this_msk=vc.data=vc.data or self.blend_image_patch(vc,verbose=0)  # reuse previously generated
             this_bbox=utils.extract_bboxes(this_msk)
             this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
             this_img=this_img[np.newaxis,...]
@@ -595,6 +500,74 @@ class ImagePatchGenerator(keras.utils.Sequence):
             _bbox=this_bbox if _bbox is None else np.concatenate((_bbox,this_bbox),axis=0)
             _msk=this_msk if _msk is None else np.concatenate((_msk,this_msk),axis=0)
         return [_img,_img_meta,_anc], [_cls,_bbox,_msk]
+
+    def get_pred_item(self,indexes):
+        _img,_img_meta,_anc=None,None,None
+        for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
+            this_img=self.pair.img_set.get_image(vc)
+            this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
+            this_img=this_img[np.newaxis,...]
+            this_img_meta=this_img_meta[np.newaxis,...]
+            this_anchors=self._anchors[np.newaxis,...]
+            _img=this_img if _img is None else np.concatenate((_img,this_img),axis=0)
+            _img_meta=this_img_meta if _img_meta is None else np.concatenate((_img_meta,this_img_meta),axis=0)
+            _anc=this_anchors if _anc is None else np.concatenate((_anc,this_anchors),axis=0)
+            _img=prep_scale(_img,self.cfg.feed)
+        return [_img,_img_meta,_anc],[]
+
+    def blend_image_patch(self,view,verbose,**kwargs): # return img,cls,msk for each view, verbose 0:none 1:+ 2:details
+        add_weight=kwargs.get('add_weight',[1,1])  # default=[0,1,2,...] the pool to draw from, equal chance, here you can add more weights to certain categories
+        patch_per_pixel=kwargs.get('patch_per_pixel',[2000,18000])  # patch per pixel, range to randomly select from, larger number: smaller density
+        max_instance=kwargs.get('max_instance',20)  # break out if more than this amount was inserted
+        bright_diff=kwargs.get('bright_diff',-10)  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
+        max_std=kwargs.get('max_std',40)  # original area should be clean, standard deviation should be low (< max_std)
+        # adjacent_size=kwargs.get('adjacent_size',3)  # sample times of size adjacent to the patch
+        # adjacent_std=kwargs.get('adjacent_std',0.2)  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
+        img=np.copy(self.pair.img_set.get_image(view))
+        pixels=self.cfg.row_in*self.cfg.col_in
+        is_validation=view in self.pair.img_set.val_view  # fewer in val_view, faster to check
+        pool=list(range(0,self.cfg.num_targets))+add_weight  # equal chance, + weight to some category
+        while True:
+            inserted=[0]*self.cfg.num_targets  # track # of inserts per category
+            nexample=random.randint(pixels//patch_per_pixel[1],pixels//patch_per_pixel[0])
+            labels=random.choices(pool,k=nexample)
+            clss,msks=[],None
+            for li in labels:
+                the_pch_set=self.pair.pch_set[li]
+                pch_view=random.choice(the_pch_set.val_view) if is_validation else random.choice(the_pch_set.tr_view)
+                rowpos=random.uniform(0,1)
+                colpos=random.uniform(0,1)
+                p_row,p_col=pch_view.ori_row,pch_view.ori_col
+                p_min,p_max,p_ave,p_std=pch_view.min,pch_view.max,pch_view.ave,pch_view.std
+                lri=int(self.cfg.row_in*rowpos)-p_row//2  # large row in/start
+                lci=int(self.cfg.col_in*colpos)-p_col//2  # large col in/start
+                lro,lco=lri+p_row,lci+p_col  # large row/col out/end
+                pri=0 if lri>=0 else -lri; lri=max(0,lri)
+                pci=0 if lci>=0 else -lci; lci=max(0,lci)
+                pro=p_row if lro<=self.cfg.row_in else p_row-lro+self.cfg.row_in; lro=min(self.cfg.row_in,lro)
+                pco=p_col if lco<=self.cfg.col_in else p_col-lco+self.cfg.col_in; lco=min(self.cfg.col_in,lco)
+                # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
+                if np.average(img[lri:lro,lci:lco])-p_ave>bright_diff and np.std(img[lri:lro,lci:lco])<max_std:
+                    # int(np.std(img[lri-p_row*adjacent_size:lro+p_row*adjacent_size,lci-p_col*adjacent_size:lco+p_col*adjacent_size])>adjacent_std*p_std):  # target area is brighter, then add patch
+                    pat_img,pat_msk=the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view,220)
+                    # print("img %s pat_img %s pat_msk %s"%(img.shape,pat_img.shape,pat_msk.shape))
+                    img[lri:lro,lci:lco]=np.minimum(img[lri:lro,lci:lco],pat_img[pri:pro,pci:pco].astype(np.uint8))
+                    # img[lri:lro,lci:lco]-=((255-pat_img[pri:pro,pci:pco]).astype(np.float16)*pat_msk[pri:pro,pci:pco,np.newaxis].astype(np.float16)/65025.0).astype(np.uint8)
+                    clss.append(li+1) #0,1,2 -> 1,2,3 becaue zero is reserved for background
+                    msk=np.zeros((self.cfg.row_in,self.cfg.col_in,1),dtype=np.uint8) # np.uint8 0-255
+                    msk[lri:lro,lci:lco,0]=pat_msk[pri:pro,pci:pco]
+                    msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
+                    inserted[li]+=1
+                    if inserted[li]>max_instance: break;
+            if sum(inserted)>0:
+                if verbose>1:
+                    print(" inserted %s for %s"%(inserted,view.file_name),end='')
+                elif verbose>0:
+                    print("+",end='')
+                # cv2.imwrite(view.file_name,img[0],[int(cv2.IMWRITE_JPEG_QUALITY),100])
+                # cv2.imwrite(view.file_name+"_m.jpg",msks[0,...,0:3],[int(cv2.IMWRITE_JPEG_QUALITY),100])
+                return img,np.array(clss,dtype=np.uint8),msks
+
 
     def __len__(self):  # Denotes the number of batches per epoch
         return int(np.ceil(len(self.view_coord) / self.cfg.batch_size))

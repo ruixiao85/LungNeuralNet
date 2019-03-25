@@ -14,7 +14,7 @@ def parse_float(text):
         return None
 
 class MetaInfo:
-    def __init__(self, file, image, ori_row, ori_col, ri, ro, ci, co):
+    def __init__(self, file, image, ori_row, ori_col, ri, ro, ci, co, min=None, max=None, ave=None, std=None):
         self.file_name = file  # direct file can be a slice
         self.image_name = image # can be name of the whole image, can different from file_name (slice)
         self.ori_row = ori_row
@@ -23,6 +23,14 @@ class MetaInfo:
         self.row_end = ro
         self.col_start = ci
         self.col_end = co
+
+        #PatchSet
+        self.min=min
+        self.max=max
+        self.ave=ave
+        self.std=std
+        self.data=None # add data later for image-patch pair (RGB images, Binary masks, classes)
+
 
     # def file_name_insert(self, cfg:Config, text=None):
     #     ext=cfg.image_format[1:]
@@ -131,10 +139,17 @@ class ImageSet:
         return np.mean(img,axis=-1,keepdims=True) if (channels or self.channels)==1 else img
 
     def get_image(self,view):
-        return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,0:3]
-    def get_mask(self,view):
-        return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,3] if self.channels==4\
-                else self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,0] # 4th alpha channel or just one
+        if isinstance(view,MetaInfo):
+            return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,0:3]
+        return self.image_data[view][:,:,0:3] # can also be a file
+    def get_mask(self,view,threshold=220):
+        if isinstance(view,MetaInfo):
+            return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,3] if self.channels==4\
+                else np.where(self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,1]>threshold,0,255) if self.channels==3\
+                else self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,0] # 4: alpha 3: process further on green
+        return self.image_data[view][:,:,3] if self.channels==4\
+                else np.where(self.image_data[view][:,:,1]>threshold,0,255) if self.channels==3\
+                else self.image_data[view][:,:,0] # 4: alpha 3: process further on green
     # def get_masks(self, _path, cfg:Config):
     #     import glob
     #     import random
@@ -215,3 +230,29 @@ class ViewSet(ImageSet):
             view_name.append(view.file_name)
             view_batch[view.image_name]=sub
         return view_batch, view_name
+
+class PatchSet(ImageSet):
+    def __init__(self,cfg: Config,wd,sf,is_train,channels):
+        super(PatchSet,self).__init__(cfg,wd,sf,is_train,channels)
+        self.tr_view,self.val_view=None,None  # lists -> views with specified size
+        self.tr_view_ex,self.val_view_ex=None,None  # views with low contrast
+
+    def prep_folder(self):
+        self.prescreen_folders()
+        self.split_tr_val() # tr/val-split only needed for img_set
+        self.tr_view=self.list_to_view(self.tr_list)
+        self.val_view=self.list_to_view(self.val_list)
+        return self
+
+    def list_to_view(self,img_list):
+        dotext=self.image_format[1:]
+        view_list=[]
+        for img in img_list:
+            _img=self.image_data[img]
+            lg_row,lg_col,lg_dep=_img.shape
+            ri,ro,ci,co=0,lg_row,0,lg_col
+            entry=MetaInfo(img.replace(dotext,("_#%d#%d#%d#%d#%d#%d#"+dotext)%(lg_row,lg_col,ri,ro,ci,co))
+                ,img,lg_row,lg_col,ri,ro,ci,co,np.min(_img),np.max(_img),np.average(_img),np.std(_img))
+            view_list.append(entry)  # add to either tr or val set
+        print("Images were divided into [%d] views"%(len(view_list)))
+        return view_list
