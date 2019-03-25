@@ -70,7 +70,7 @@ class ImageSet:
         self.sub_category=sf
         self.is_train=is_train
         self.channels=channels
-        self.image_format=cfg.image_format
+        self.image_format=cfg.image_format if channels!=4 else '*.png' # jpg<=3 channels; png<=4 channels (alpha)
         self.target_scale=cfg.target_scale
         self.train_vali_split=cfg.train_vali_split
         self.target_folder=self.label_scale()
@@ -116,7 +116,6 @@ class ImageSet:
             pct10=10*(i+1)//total
             if pct10>10*i//total:
                 print(' %.0f%% ... %s'%(pct10*10,image))
-            # lg_row,lg_col,lg_dep=_img.shape
             self.image_data[image]=_img
 
     def split_tr_val(self):
@@ -129,10 +128,26 @@ class ImageSet:
         print("[%s] was split into training [%d] and validation [%d] set."%(self.sub_category,len(self.tr_list),len(self.val_list)))
 
     def adapt_channel(self,img,channels=None):
-        return np.max(img,axis=-1,keepdims=True) if (channels or self.channels)==1 else img
+        return np.mean(img,axis=-1,keepdims=True) if (channels or self.channels)==1 else img
 
     def get_image(self,view):
-        return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,...]
+        return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,0:3]
+    def get_mask(self,view):
+        return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,3] if self.channels==4\
+                else self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,0] # 4th alpha channel or just one
+    # def get_masks(self, _path, cfg:Config):
+    #     import glob
+    #     import random
+    #     files=glob.glob(os.path.join(_path,self.file_name.replace(cfg.image_format[1:],cfg.image_format)))
+    #     random.shuffle(files) # reorder patches
+    #     print(' found %d files matching %s'%(len(files),self.file_name))
+        # msks,clss=None,[]
+        # for f in files:
+        #     class_split=f.split('^')
+        #     clss.append(class_split[int(len(class_split)-2)])
+        #     msk=self.get_mask(_path, cfg, f)[...,np.newaxis] # np.uint8 0-255
+        #     msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
+        # return msks, np.array(clss,dtype=np.uint8) # 0 ~ 255
 
 class ViewSet(ImageSet):
     def __init__(self,cfg: Config,wd,sf,is_train,channels,low_std_ex):
@@ -168,9 +183,8 @@ class ViewSet(ImageSet):
             r_len=max(1,1+int(round((lg_row-self.row)/self.row*self.coverage)))
             c_len=max(1,1+int(round((lg_col-self.col)/self.col*self.coverage)))
             print(" %s target %d x %d (coverage %.1f): original %d x %d ->  row /%d col /%d"%(img,self.row,self.col,self.coverage,lg_row,lg_col,r_len,c_len))
-            r0,c0,r_step,c_step=0,0,0,0  # start position and step default to (0,0)
-            r_step=float(lg_row-self.row)/(r_len-1)
-            c_step=float(lg_col-self.col)/(c_len-1)
+            r0,r_step=(0,float(lg_row-self.row)/(r_len-1)) if r_len>1 else (int(0.5*(lg_row-self.row)),0)
+            c0,c_step=(0,float(lg_col-self.col)/(c_len-1)) if c_len>1 else (int(0.5*(lg_col-self.col)),0)
             for r_index in range(r_len):
                 for c_index in range(c_len):
                     ri=r0+int(min(lg_row-self.row,round(r_index*r_step)))

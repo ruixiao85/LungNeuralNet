@@ -403,15 +403,29 @@ class ImagePatchPair:
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
         self.is_train=is_train
-        self.img_set=ViewSet(cfg,wd,origin,is_train).prep_folder()
+        self.img_set=ViewSet(cfg,wd,origin,is_train,channels=3,low_std_ex=False).prep_folder()
         self.pch_set=None
-        self.view_coord=sorted(self.img_set.view_coord, key=lambda x: x.file_name)
-        self.tr_list,self.val_list=self.cfg.split_train_val_vc(self.view_coord)
+
+    def train_generator(self):
+        self.pch_set=[ImageSet(self.cfg,self.wd,tgt,self.is_train,channels=4).prep_folder() for tgt in self.targets]
+        self.blend_image_patch(
+            additional_weight=[1,1],  # default=[0,1,2,...] the pool to draw from, equal chance, here you can add more weights to certain categories
+            patch_per_pixel=[2000,18000],  # patch per pixel, range to randomly select from, larger number: smaller density
+            max_instance=20,  # break out if more than this amount was inserted
+            bright_diff=-10,  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
+            max_std=40,  # original area should be clean, standard deviation should be low (< max_std)
+            adjacent_size=3,  # sample times of size adjacent to the patch
+            # adjacent_std=0.2  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
+            adjacent_std=0.0  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
+        )
+        yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets,view_coord=self.img_set.tr_view),
+              ImagePatchGenerator(self, 0, self.targets,view_coord=self.img_set.val_view),
+              self.img_set.label_scale_res(self.cfg.join_targets(self.targets)))
 
     def blend_image_patch(self,additional_weight,patch_per_pixel,max_instance,bright_diff,max_std,adjacent_size,adjacent_std):
-        img_folder=os.path.join(self.wd,self.img_set.category_detail('+'.join([self.origin]+self.targets)))
+        img_folder=os.path.join(self.wd,self.img_set.label_scale_res('+'.join([self.origin]+self.targets)))
         img_exist=mkdir_ifexist(img_folder)
-        pch_folder=os.path.join(self.wd, self.img_set.category_detail('-'.join([self.origin]+self.targets)))
+        pch_folder=os.path.join(self.wd, self.img_set.label_scale_res('-'.join([self.origin]+self.targets)))
         pch_exist=mkdir_ifexist(pch_folder) # tgt_set matchs img_set
         print('Image folder exist? %r'%img_exist) # e.g., Original+LYM+MONO+PMN
         print('Patch folder exist? %r' %pch_exist) # e.g., Original_LYM_MONO_PMN
@@ -478,23 +492,6 @@ class ImagePatchPair:
                 else:
                     print("unable to insert for %s"%vc.file_name)
 
-
-    def train_generator(self):
-        self.pch_set=[ImageSet(self.cfg,self.wd,tgt,self.is_train).prep_folder() for tgt in self.targets]
-        self.blend_image_patch(
-            additional_weight=[1,1],  # if you have three categories default=[0,1,2] to draw from, here you can add more weights
-            patch_per_pixel=[2000,18000],  # patch per pixel, range to randomly select from, larger number: smaller density
-            max_instance=20,  # break out if more than this amount was inserted
-            bright_diff=-10,  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
-            max_std=40,  # original area should be clean, standard deviation should be low (< max_std)
-            adjacent_size=3,  # sample times of size adjacent to the patch
-            # adjacent_std=0.2  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
-            adjacent_std=0.0  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
-        )
-        yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets,view_coord=self.tr_list),
-              ImagePatchGenerator(self, 0, self.targets,view_coord=self.val_list),
-              self.img_set.category_detail(self.cfg.join_targets(self.targets)))
-
     def predict_generator_note(self):
         yield (self.cfg.join_targets(self.targets),self.targets)
 
@@ -502,7 +499,7 @@ class ImagePatchPair:
         return ImagePatchGenerator(self,0,subset,view_coord=view),self.cfg.join_targets(subset)
 
 class ImagePatchGenerator(keras.utils.Sequence):
-    def __init__(self, pair:ImagePatchPair, aug_value, tgt_list, view_coord=None):
+    def __init__(self, pair:ImagePatchPair, aug_value, tgt_list, view_coord):
         self.pair=pair
         self.cfg=pair.cfg
         self.getitemfun,self._active_class_ids,self._anchors=None,None,None
@@ -512,7 +509,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
             self.set_pred()
         self.aug_value=aug_value
         self.target_list=tgt_list
-        self.view_coord=pair.view_coord if view_coord is None else view_coord
+        self.view_coord=view_coord
         self.indexes=None
         self.on_epoch_end()
 
@@ -534,8 +531,8 @@ class ImagePatchGenerator(keras.utils.Sequence):
         _img_meta,_rpn_match,_rpn_bbox=None,None,None
         # _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
-            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.img_set.category_detail('+'.join([self.pair.origin]+self.pair.targets))))
-            this_msk,this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.img_set.category_detail('-'.join([self.pair.origin]+self.pair.targets))),self.cfg)
+            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.img_set.label_scale_res('+'.join([self.pair.origin]+self.pair.targets))))
+            this_msk,this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.img_set.label_scale_res('-'.join([self.pair.origin]+self.pair.targets))),self.cfg)
             # cv2.imwrite("pre1.jpg",this_img); cv2.imwrite("pre2.jpg",this_msk[...,0:3])
             this_img,this_msk=augment_image_set(this_img,this_msk,_level=self.aug_value)  # integer N: a <= N <= b.
             # cv2.imwrite("post1.jpg",this_img); cv2.imwrite("post2.jpg",this_msk[...,0:3])
@@ -580,8 +577,8 @@ class ImagePatchGenerator(keras.utils.Sequence):
         _img,_img_meta,_anc=None,None,None
         _cls,_bbox,_msk=None,None,None
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
-            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.img_set.category_detail('+'.join([self.pair.origin]+self.pair.targets))))
-            this_msk,this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.img_set.category_detail('-'.join([self.pair.origin]+self.pair.targets))),self.cfg)
+            this_img=vc.get_image(os.path.join(self.pair.wd,self.pair.img_set.label_scale_res('+'.join([self.pair.origin]+self.pair.targets))))
+            this_msk,this_cls=vc.get_masks(os.path.join(self.pair.wd,self.pair.img_set.label_scale_res('-'.join([self.pair.origin]+self.pair.targets))),self.cfg)
             this_bbox=utils.extract_bboxes(this_msk)
             this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
             this_img=this_img[np.newaxis,...]

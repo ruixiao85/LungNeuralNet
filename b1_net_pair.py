@@ -219,9 +219,9 @@ class ImageMaskPair:
         self.wd=wd
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
+        self.is_train=is_train
         self.img_set=ViewSet(cfg, wd, origin, is_train, channels=3, low_std_ex=False).prep_folder()
         self.msk_set=None
-        self.is_train=is_train
 
     def train_generator(self):
         i=0; no=self.cfg.dep_out; nt=len(self.targets)
@@ -279,7 +279,7 @@ class ImageMaskGenerator(keras.utils.Sequence):
             for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
                 _img[vi, ...] = self.pair.img_set.get_image(vc)
                 for ti,tgt in enumerate(self.target_list):
-                    _tgt[vi, ..., ti] = self.pair.msk_set[ti].get_image(vc)[...,0]
+                    _tgt[vi, ..., ti] = self.pair.msk_set[ti].get_mask(vc)
             _img, _tgt = augment_image_pair(_img, _tgt, self.aug_value)  # integer N: a <= N <= b.
             # cv2.imwrite("pair_img.jpg",_img[0]); cv2.imwrite("pair_tgt1.jpg",_tgt[0,...,0:3])
             return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
