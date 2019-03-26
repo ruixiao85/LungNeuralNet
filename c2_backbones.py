@@ -19,7 +19,6 @@ from c0_backbones import v16,v19,res50,incept3,incepres2,xcept,densenet121,dense
 from image_set import ImageSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text
-from mrcnn import utils
 
 
 class MRCNN_Vgg16(BaseNetM):

@@ -4,6 +4,11 @@ import cv2
 from preprocess import prep_scale,rev_scale
 from math import floor,log,sqrt
 
+def fill_contour(_img):
+    contour,hier = cv2.findContours(_img,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
+    for cnt in contour:
+        cv2.drawContours(_img,[cnt],0,255,-1)
+    return _img
 
 def gaussian_smooth(_img,size=5,sigma=None):
     # return cv2.blur(_img,(size,size))

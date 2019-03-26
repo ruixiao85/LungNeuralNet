@@ -18,7 +18,6 @@ from image_set import ImageSet
 from module import uu
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text
-from mrcnn import utils
 
 # VGG 224x224 # kera-applications
 ## (/1) b1_c2 , (/2) b1_mp, b2_c2, (/4) b2_mp, b3_c3, (/8) b3_mp, b4_c3, (/16) b4_mp, b5_c3, (/32) b5_mp

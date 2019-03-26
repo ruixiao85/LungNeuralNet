@@ -5,7 +5,7 @@ import numpy as np
 
 from a_config import Config
 from osio import mkdir_ifexist,find_file_pattern,find_file_pattern_rel,find_folder_prefix,find_file_ext_recursive,find_file_ext_recursive_rel
-from postprocess import morph_close
+from postprocess import morph_close,morph_open,gaussian_smooth,fill_contour
 from preprocess import read_image,read_resize,read_resize_pad,read_resize_fit,extract_pad_image
 
 def parse_float(text):
@@ -111,7 +111,7 @@ class ImageSet:
         if isinstance(view,MetaInfo):
             return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,0:3]
         return self.image_data[view][:,:,0:3] # can also be a file
-    def get_mask(self,view,threshold=15):
+    def get_mask(self,view,threshold=50):
         if isinstance(view,MetaInfo):
             msk=self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,3] if self.channels==4\
                 else 255-self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,1] if self.channels==3\
@@ -120,8 +120,10 @@ class ImageSet:
             msk=self.image_data[view][:,:,3] if self.channels==4\
                 else 255-self.image_data[view.image_name][:,:,1] if self.channels==3\
                 else self.image_data[view][:,:,0] # 4: alpha 3: process further on green
-        _,bin=cv2.threshold(msk,threshold,255,cv2.THRESH_BINARY)
-        return morph_close(bin,erode=3,dilate=3)
+        # _,bin=cv2.threshold(msk,threshold,255,cv2.THRESH_BINARY)
+        _,bin=cv2.threshold(gaussian_smooth(msk,3),threshold,255,cv2.THRESH_BINARY)
+        return fill_contour(bin)
+        # return morph_close(bin,erode=5,dilate=5)
 
     # def get_masks(self, _path, cfg:Config):
     #     import glob
