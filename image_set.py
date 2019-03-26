@@ -5,6 +5,7 @@ import numpy as np
 
 from a_config import Config
 from osio import mkdir_ifexist,find_file_pattern,find_file_pattern_rel,find_folder_prefix,find_file_ext_recursive,find_file_ext_recursive_rel
+from postprocess import morph_close
 from preprocess import read_image,read_resize,read_resize_pad,read_resize_fit,extract_pad_image
 
 def parse_float(text):
@@ -30,38 +31,6 @@ class MetaInfo:
         self.ave=ave
         self.std=std
         self.data=None # add data later for image-patch pair (RGB images, Binary masks, classes)
-
-
-    # def file_name_insert(self, cfg:Config, text=None):
-    #     ext=cfg.image_format[1:]
-    #     return self.file_name.replace(ext,'') if text is None else self.file_name.replace(ext,text+ext)
-
-    # @classmethod
-    # def from_single(cls, file):
-    #     ls = file.split("_#")
-    #     ext = file.split(".")
-    #     ss = file.split("#")
-    #     if len(ls) == 2 and len(ss) == 8:  # slice
-    #         return cls(file, "%s.%s" % (ls[0], ext[len(ext) - 1]), int(ss[1]), int(ss[2]), int(ss[3]), int(ss[4]), int(ss[5]), int(ss[6]), None)
-    #     return cls(file, file, None, None, None, None, None, None, None)
-
-     # def update_coord(self, lg_row, lg_col, ri, ro, ci, co):
-     #    self.ori_row, self.ori_col, self.row_start, self.row_end, self.col_start, self.col_end =\
-     #        lg_row,lg_col,ri,ro,ci,co
-
-       # def get_masks(self, _path, cfg:Config):
-    #     import glob
-    #     import random
-    #     files=glob.glob(os.path.join(_path,self.file_name.replace(cfg.image_format[1:],cfg.image_format)))
-    #     random.shuffle(files) # avaible same order of files
-    #     print(' found %d files matching %s'%(len(files),self.file_name))
-        # msks,clss=None,[]
-        # for f in files:
-        #     class_split=f.split('^')
-        #     clss.append(class_split[int(len(class_split)-2)])
-        #     msk=self.get_mask(_path, f)[...,np.newaxis] # np.uint8 0-255
-        #     msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
-        # return msks, np.array(clss,dtype=np.uint8) # 0 ~ 255
 
     def __str__(self):
         return self.file_name
@@ -142,14 +111,18 @@ class ImageSet:
         if isinstance(view,MetaInfo):
             return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,0:3]
         return self.image_data[view][:,:,0:3] # can also be a file
-    def get_mask(self,view,threshold=220):
+    def get_mask(self,view,threshold=15):
         if isinstance(view,MetaInfo):
-            return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,3] if self.channels==4\
-                else np.where(self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,1]>threshold,0,255) if self.channels==3\
+            msk=self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,3] if self.channels==4\
+                else 255-self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,1] if self.channels==3\
                 else self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,0] # 4: alpha 3: process further on green
-        return self.image_data[view][:,:,3] if self.channels==4\
-                else np.where(self.image_data[view][:,:,1]>threshold,0,255) if self.channels==3\
+        else:
+            msk=self.image_data[view][:,:,3] if self.channels==4\
+                else 255-self.image_data[view.image_name][:,:,1] if self.channels==3\
                 else self.image_data[view][:,:,0] # 4: alpha 3: process further on green
+        _,bin=cv2.threshold(msk,threshold,255,cv2.THRESH_BINARY)
+        return morph_close(bin,erode=3,dilate=3)
+
     # def get_masks(self, _path, cfg:Config):
     #     import glob
     #     import random

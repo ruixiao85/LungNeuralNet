@@ -17,7 +17,7 @@ from b2_net_multi import BaseNetM
 from image_set import ImageSet
 from module import uu
 from osio import mkdir_ifexist,to_excel_sheet
-from postprocess import g_kern_rect,draw_text,smooth_brighten
+from postprocess import g_kern_rect,draw_text
 from mrcnn import utils
 
 # VGG 224x224 # kera-applications

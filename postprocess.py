@@ -5,13 +5,6 @@ from preprocess import prep_scale,rev_scale
 from math import floor,log,sqrt
 
 
-def smooth_brighten(img):
-    blur=np.average(gaussian_smooth(img),axis=-1).astype(np.uint8)
-    _,bin=cv2.threshold(blur,20,255, cv2.THRESH_BINARY)
-    # bin=cv2.adaptiveThreshold(blur,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,353,-50)
-    # return cv2.morphologyEx(bin, cv2.MORPH_OPEN, (5,5))
-    return morph_close(bin)
-
 def gaussian_smooth(_img,size=5,sigma=None):
     # return cv2.blur(_img,(size,size))
     return cv2.GaussianBlur(_img,(size,size),sigma or size)

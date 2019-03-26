@@ -18,7 +18,7 @@ from keras.engine.saving import model_from_json,load_model
 from a_config import Config
 from image_set import ImageSet,ViewSet,PatchSet
 from osio import mkdir_ifexist,to_excel_sheet
-from postprocess import g_kern_rect,draw_text,smooth_brighten,draw_detection
+from postprocess import g_kern_rect,draw_text,draw_detection,morph_close
 from mrcnn import utils
 from preprocess import prep_scale,augment_image_set,augment_patch,read_image,read_resize,read_resize_pad,read_resize_fit,augment_image_pair
 
@@ -549,7 +549,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
                 # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
                 if np.average(img[lri:lro,lci:lco])-p_ave>bright_diff and np.std(img[lri:lro,lci:lco])<max_std:
                     # int(np.std(img[lri-p_row*adjacent_size:lro+p_row*adjacent_size,lci-p_col*adjacent_size:lco+p_col*adjacent_size])>adjacent_std*p_std):  # target area is brighter, then add patch
-                    pat_img,pat_msk=the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view,220)
+                    pat_img,pat_msk=the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view,20)
                     # print("img %s pat_img %s pat_msk %s"%(img.shape,pat_img.shape,pat_msk.shape))
                     img[lri:lro,lci:lco]=np.minimum(img[lri:lro,lci:lco],pat_img[pri:pro,pci:pco].astype(np.uint8))
                     # img[lri:lro,lci:lco]-=((255-pat_img[pri:pro,pci:pco]).astype(np.float16)*pat_msk[pri:pro,pci:pco,np.newaxis].astype(np.float16)/65025.0).astype(np.uint8)
@@ -563,9 +563,11 @@ class ImagePatchGenerator(keras.utils.Sequence):
                 print(" inserted %s for %s"%(inserted,view.file_name),end='')
             elif verbose>0:
                 print("+",end='')
-            if sum(inserted)>0:
-                # cv2.imwrite(view.file_name,img[0],[int(cv2.IMWRITE_JPEG_QUALITY),100])
-                # cv2.imwrite(view.file_name+"_m.jpg",msks[0,...,0:3],[int(cv2.IMWRITE_JPEG_QUALITY),100])
+            total_inserted=sum(inserted)
+            if total_inserted>0:
+                # cv2.imwrite(view.file_name,img,[int(cv2.IMWRITE_JPEG_QUALITY),100])
+                # for i in range(0,total_inserted//3*3,3):
+                #     cv2.imwrite("%s_mask%d_%s.jpg"%(view.file_name,i,clss[i:i+3]),msks[...,i:i+3],[int(cv2.IMWRITE_JPEG_QUALITY),100])
                 return img,np.array(clss,dtype=np.uint8),msks
 
 
