@@ -38,9 +38,9 @@ class Config:
         self.ntop=kwargs.get('ntop', 1) # numbers of top networks to keep, delete the networks that are less than ideal
         self.batch_size=kwargs.get('batch_size', 1)
         self.pre_trained=kwargs.get('pre_trained', True) # True: load weights pre-trained on imagenet; False: init with random weights
-        self.train_epoch=kwargs.get('train_epoch', 20) # max epoches during training
-        self.train_step=kwargs.get('train_step', 1280)
-        self.train_vali_step=kwargs.get('train_vali_step', 640)
+        self.train_epoch=kwargs.get('train_epoch', 50) # max epoches during training
+        self.train_step=kwargs.get('train_step', 768)
+        self.train_vali_step=kwargs.get('train_vali_step', 256)
         self.train_vali_split=kwargs.get('train_vali_split', 0.33)
         self.train_aug=kwargs.get('train_aug', 2)  # only to training set, not validation or prediction mode, applies to image-mask set and image+patch
         self.train_shuffle=kwargs.get('train_shuffle', True)  # only to training set, not validation or prediction mode
