@@ -521,7 +521,8 @@ class ImagePatchGenerator(keras.utils.Sequence):
         return [_img,_img_meta,_anc],[]
 
     def blend_image_patch(self,view,verbose,**kwargs): # return img,cls,msk for each view, verbose 0:none 1:+ 2:details
-        add_weight=kwargs.get('add_weight',[1,1])  # default=[0,1,2,...] the pool to draw from, equal chance, here you can add more weights to certain categories
+        add_weight=kwargs.get('add_weight',[1])  # default=[0,1,2,...] the pool to draw from, equal chance, here you can add more weights to certain categories
+        random_weight=kwargs.get('random_weight', 4) # random weight for each category will be added
         patch_per_pixel=kwargs.get('patch_per_pixel',[2000,18000])  # patch per pixel, range to randomly select from, larger number: smaller density
         max_instance=kwargs.get('max_instance',20)  # break out if more than this amount was inserted
         bright_diff=kwargs.get('bright_diff',-10)  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
@@ -530,7 +531,8 @@ class ImagePatchGenerator(keras.utils.Sequence):
         # adjacent_std=kwargs.get('adjacent_std',0.2)  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
         img=np.copy(self.pair.img_set.get_image(view))
         pixels=self.cfg.row_in*self.cfg.col_in
-        pool=list(range(0,self.cfg.num_targets))+add_weight  # equal chance, + weight to some category
+        pool=list(range(0,self.cfg.num_targets))+add_weight # equal chance, +weight to some category
+        for r in range(random_weight): pool+=random.randint(-1,self.cfg.num_targets-1) # +random weight
         while True:
             inserted=[0]*self.cfg.num_targets  # track # of inserts per category
             nexample=random.randint(pixels//patch_per_pixel[1],pixels//patch_per_pixel[0])
@@ -554,7 +556,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
                 if np.average(img[lri:lro,lci:lco])-p_ave>bright_diff and np.std(img[lri:lro,lci:lco])<max_std:
                     # int(np.std(img[lri-p_row*adjacent_size:lro+p_row*adjacent_size,lci-p_col*adjacent_size:lco+p_col*adjacent_size])>adjacent_std*p_std):  # target area is brighter, then add patch
                     # pat_img,pat_msk=the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view)[...,np.newaxis]
-                    pat_img,pat_msk=augment_image_set(the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view)[...,np.newaxis],self.cfg.train_aug)
+                    pat_img,pat_msk=augment_image_set(the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view)[...,np.newaxis],0 if self.is_val else self.cfg.train_aug)
                     img[lri:lro,lci:lco]=np.minimum(img[lri:lro,lci:lco],pat_img[pri:pro,pci:pco].astype(np.uint8))
                     # img[lri:lro,lci:lco]-=((255-pat_img[pri:pro,pci:pco]).astype(np.float16)*pat_msk[pri:pro,pci:pco,np.newaxis].astype(np.float16)/65025.0).astype(np.uint8)
                     clss.append(li+1) #0,1,2 -> 1,2,3 becaue zero is reserved for background
