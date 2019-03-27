@@ -78,7 +78,7 @@ class BaseNetM(Config):
         self.gpu_count=kwargs.get('gpu_count', 1)
         self.images_per_gpu=kwargs.get('image_per_gpu', 1)
         self.filename=kwargs.get('filename', None)
-        self.ntop=8 # override parent class to keep more top networks for further MRCNN evaluation
+        self.ntop=15 # override parent class to keep more top networks for further MRCNN evaluation
         self.net=None
         self._anchor_cache={}
 
@@ -310,35 +310,35 @@ class BaseNetM(Config):
             df['time']=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
             df.to_csv(self.filename+".csv",mode="a",header=(not os.path.exists(self.filename+".csv")))
             self.find_best_models(self.filename+'^*^.h5')  # remove unnecessary networks
-        del self.net
 
     def eval(self,pair):
         self.build_net(is_train=False)
         for tr,val,dir_out in pair.train_generator():
             self.filename=dir_out+'_'+str(self)
-            print('Evaluating neural net...'); val.set_eval()
+            print('Evaluating neural net...')
             weight_files=self.find_best_models(self.filename+'^*^.h5',allow_cache=True)
             for weight_file in weight_files:
-                self.net.load_weights(weight_file,by_name=True)  # weights only
-                steps_done,steps=0,len(val)
-                print("[%s] in %d steps: "%(weight_file,steps))
-                val.on_epoch_end() #initialize
-                valiter=iter(val)
                 with open(self.filename+".log","a") as log:
-                    log.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
-                    APs=[]; print("AP:",end=''); log.write(weight_file+',')
-                    while steps_done<steps:
-                        img,gt=next(valiter)
-                        detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=self.net.predict_on_batch(img)
-                        for i in range(np.shape(detections)[0]):
-                            final_rois,final_class_ids,final_scores,final_masks=parse_detections(detections[i],mrcnn_mask[i],self.dim_in,full_mask=True) # first element
-                            AP,precisions,recalls,overlaps=compute_ap(gt[1][i],gt[0][i],gt[2][i],final_rois,final_class_ids,final_scores,
-                                np.transpose(final_masks,(1,2,0)))
-                            APs.append(AP); print(' %.2f'%AP,end='',flush=True)
-                        steps_done+=1
-                    mAP=np.mean(APs)
-                    print("\nmAP: ",mAP); log.write(str(mAP)+'\n')
-        del self.net
+                    log.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M")+','+weight_file+',')
+                    self.net.load_weights(weight_file,by_name=True)  # weights only
+                    for part in [tr,val]:
+                        part.set_eval()
+                        steps_done,steps=0,min(64,len(part))
+                        print("[%s] is_val=%r running %d/%d steps:\nAP:"%(weight_file,part.is_val,steps,len(part)),end='')
+                        part.on_epoch_end() #initialize
+                        valiter=iter(part); APs=[]
+                        while steps_done<steps:
+                            img,gt=next(valiter)
+                            detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=self.net.predict_on_batch(img)
+                            for i in range(np.shape(detections)[0]):
+                                final_rois,final_class_ids,final_scores,final_masks=parse_detections(detections[i],mrcnn_mask[i],self.dim_in,full_mask=True) # first element
+                                AP,precisions,recalls,overlaps=compute_ap(gt[1][i],gt[0][i],gt[2][i],final_rois,final_class_ids,final_scores,
+                                    np.transpose(final_masks,(1,2,0)))
+                                APs.append(AP); print(' %.2f'%AP,end='',flush=True)
+                            steps_done+=1
+                        mAP=np.mean(APs)
+                        print("\nmAP: ",mAP); log.write(str(mAP)+',')
+                    print(); log.write('\n')
 
     def predict(self,pair,pred_dir):
         self.build_net(is_train=False)
@@ -396,7 +396,6 @@ class BaseNetM(Config):
             to_excel_sheet(df,xls_file,pair.origin+note) # per slice
             df=pd.DataFrame(res_grp[...,i::3],index=batch.keys(),columns=pair.targets)
             to_excel_sheet(df,xls_file,pair.origin+note+"_sum") # per whole image
-        del self.net
 
 class ImagePatchPair:
     def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train):
@@ -532,7 +531,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
         img=np.copy(self.pair.img_set.get_image(view))
         pixels=self.cfg.row_in*self.cfg.col_in
         pool=list(range(0,self.cfg.num_targets))+add_weight # equal chance, +weight to some category
-        for r in range(random_weight): pool+=random.randint(-1,self.cfg.num_targets-1) # +random weight
+        for _ in range(random_weight): pool.append(random.randint(-1,self.cfg.num_targets-1)) # +random weight
         while True:
             inserted=[0]*self.cfg.num_targets  # track # of inserts per category
             nexample=random.randint(pixels//patch_per_pixel[1],pixels//patch_per_pixel[0])
