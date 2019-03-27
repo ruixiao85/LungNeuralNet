@@ -146,7 +146,7 @@ def draw_detection(cfg,image,class_names,box,cls,scr,msk,sel=None):
         y1,x1,y2,x2=box[i]
         mask=np.zeros((ori_row,ori_col),dtype=np.uint8)
         ri,ro,ci,co,tri,tro,tci,tco=cfg.get_proper_range(ori_row,ori_col, y1,y2,x1,x2, 0,y2-y1,0,x2-x1)
-        patch=cv2.resize(np.where(gaussian_smooth(msk[i],5,5)>=0.5,1,0).astype(np.uint8),(x2-x1,y2-y1),interpolation=cv2.INTER_AREA)[tri:tro,tci:tco]
+        patch=gaussian_smooth(cv2.resize(np.where(msk[i]>=0.5,1,0).astype(np.uint8),(x2-x1,y2-y1),interpolation=cv2.INTER_AREA)[tri:tro,tci:tco],5,5)
         mask[ri:ro,ci:co]=patch  # range(0,1) -> (y2-y1,x2-x1))
         area=np.sum(patch,keepdims=False)
         for c in range(3):  # mask per channel
