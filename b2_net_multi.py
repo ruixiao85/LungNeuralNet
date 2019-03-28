@@ -71,8 +71,8 @@ class BaseNetM(Config):
         self.train_roi_positive_ratio=kwargs.get('train_roi_positive_ratio', 0.33) # Percent of positive ROIs used to train classifier/mask heads
         self.max_gt_instance=kwargs.get('max_gt_instance', 200) # Maximum number of ground truth instances to use in one image
         self.detection_max_instances=kwargs.get('detection_max_instances', 400) # Max number of final detections
-        # self.detection_min_confidence=kwargs.get('detection_min_confidence', 0.7) # Minimum probability to accept a detected instance, skip ROIs if below this threshold
-        self.detection_min_confidence=kwargs.get('detection_min_confidence', 0.0) # Minimum probability to accept a detected instance, skip ROIs if below this threshold, lower if fewer classes
+        self.detection_min_confidence=kwargs.get('detection_min_confidence', 0.7) # Minimum probability to accept a detected instance, skip ROIs if below this threshold
+        # self.detection_min_confidence=kwargs.get('detection_min_confidence', 0.0) # Minimum probability to accept a detected instance, skip ROIs if below this threshold, lower if fewer classes
         self.detection_nms_threshold=kwargs.get('detection_nms_threshold', 0.3) # Non-maximum suppression threshold for detection
         self.detection_mask_threshold=kwargs.get('detection_mask_threshold', 0.5) # threshold to determine fore/back-ground
         self.gpu_count=kwargs.get('gpu_count', 1)
@@ -323,7 +323,7 @@ class BaseNetM(Config):
                     self.net.load_weights(weight_file,by_name=True)  # weights only
                     for part in [tr,val]:
                         part.set_eval()
-                        steps_done,steps=0,min(64,len(part))
+                        steps_done,steps=0,min(48,len(part)) # limit number of evaluation images
                         print("[%s] is_val=%r running %d/%d steps:\nAP:"%(weight_file,part.is_val,steps,len(part)),end='')
                         part.on_epoch_end() #initialize
                         valiter=iter(part); APs=[]
@@ -342,7 +342,7 @@ class BaseNetM(Config):
 
     def predict(self,pair,pred_dir):
         self.build_net(is_train=False)
-        xls_file="Result_%s_%s.xlsx"%(pred_dir,repr(self))
+        xls_file=os.path.join(pred_dir,"%s_%s_%s.xlsx"%(pair.origin,pred_dir.split(os.path.sep)[-1],repr(self)))
         batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
         dir_cfg_append=pair.img_set.scale_res(None,self.row_out,self.col_out)+'_'+str(self)
         save_ind,save_raw=pair.cfg.save_ind_raw
@@ -350,12 +350,12 @@ class BaseNetM(Config):
         for dir_out,tgt_list in pair.predict_generator_note():
             res_i,res_g=None,None
             print('Load model and predict to [%s]...'%dir_out)
-            target_dir=os.path.join(pair.wd,dir_out+'_'+dir_cfg_append); mkdir_ifexist(target_dir) # dir for invidual images
-            merge_dir=os.path.join(pair.wd,dir_out+'+'+dir_cfg_append); mkdir_ifexist(merge_dir) # dir for grouped/whole images
+            target_dir=os.path.join(pred_dir,"%s-%s_%s"%(pair.origin,dir_out,dir_cfg_append)); mkdir_ifexist(target_dir) # dir for invidual images
+            merge_dir=os.path.join(pred_dir,"%s-%s+%s"%(pair.origin,dir_out,dir_cfg_append)); mkdir_ifexist(merge_dir) # dir for grouped/whole images
             for grp,view in batch.items():
                 grp_box,grp_cls,grp_scr,grp_msk=None,None,None,None
                 prd,tgt_name=pair.predict_generator_partial(tgt_list,view)
-                weight_file=self.find_best_models(tgt_name+'_'+dir_cfg_append+'^*^.h5',allow_cache=True)[0]
+                weight_file=self.find_best_models("%s_%s^*^.h5"%(tgt_name,dir_cfg_append),allow_cache=True)[0]
                 print(weight_file)
                 self.net.load_weights(weight_file,by_name=True)  # weights only
                 # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
@@ -368,8 +368,8 @@ class BaseNetM(Config):
                     blend, r_i=self.predict_proc(self,origin,pair.targets,final_rois,final_class_ids,final_scores,final_masks)
                     res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate([res_i,r_i[np.newaxis,...]],axis=0)
                     if save_ind:
-                        # cv2.imwrite(os.path.join(target_dir,view[i].file_name),origin)
-                        cv2.imwrite(os.path.join(target_dir,view[i].file_name),blend)
+                        # cv2.imwrite(os.path.join(target_dir,view[i].file_name.replace(os.path.sep,'_')),origin)
+                        cv2.imwrite(os.path.join(target_dir,view[i].file_name.replace(os.path.sep,'_')),blend)
                     y_d=view[i].row_start; x_d=view[i].col_start
                     overall_rois=final_rois.copy() # otherwise will update individual coordinates
                     overall_rois[:,0]+=y_d; overall_rois[:,2]+=y_d
@@ -381,14 +381,14 @@ class BaseNetM(Config):
                     ri,ro,ci,co,tri,tro,tci,tco=self.get_proper_range(view[i].ori_row,view[i].ori_col,
                             view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
                     mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
-                sel_index=non_max_suppression(grp_box,grp_scr,threshold=self.detection_nms_threshold) if grp_box.shape[0]>0 and self.coverage_predict>1 else None
+                sel_index=non_max_suppression(grp_box,grp_scr,threshold=self.detection_nms_threshold) if self.coverage_predict>1 and grp_box.shape[0]>0 else None
                 if save_raw and pair.img_set.resize_ratio!=1:  # high-res raw group image
-                    mrg_in=read_image(os.path.join(pair.wd,pair.img_set.raw_folder,view[0].image_name))
+                    mrg_in=read_image(os.path.join(pred_dir,pair.img_set.raw_folder,view[0].image_name))
                     grp_box=(grp_box.astype(np.float32)/pair.img_set.resize_ratio).astype(np.int32)
-                # cv2.imwrite(os.path.join(merge_dir,view[0].image_name),mrg_in)
+                # cv2.imwrite(os.path.join(merge_dir,view[0].image_name.replace(os.path.sep,'_')),mrg_in)
                 blend,r_g=self.predict_proc(self,mrg_in,pair.targets,grp_box,grp_cls,grp_scr,grp_msk,sel_index)
                 res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
-                cv2.imwrite(os.path.join(merge_dir,view[0].image_name),blend)
+                cv2.imwrite(os.path.join(merge_dir,view[0].image_name.replace(os.path.sep,'_')),blend)
             res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
             res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
         for i,note in [(0,'_count'),(1,'_area'),(2,'_area_pct')]:
@@ -457,7 +457,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
             this_img,this_cls,this_msk=self.blend_image_patch(vc,verbose=1) # always regenerate
             # this_img,this_cls,this_msk=vc.data=vc.data or self.blend_image_patch(vc) # reuse previously generated
             # cv2.imwrite("pre1.jpg",this_img); cv2.imwrite("pre2.jpg",this_msk[...,0:3])
-            this_img,this_msk=augment_image_set(this_img,this_msk,_level=self.aug_value)  # integer N: a <= N <= b.
+            this_img,this_msk=augment_image_set(this_img,this_msk,_level=min(1,self.aug_value))  # integer N: a <= N <= b.
             # cv2.imwrite("post1.jpg",this_img); cv2.imwrite("post2.jpg",this_msk[...,0:3])
             this_bbox=extract_bboxes(this_msk)
             if self.cfg.mini_mask_shape is not None:

@@ -112,7 +112,7 @@ class BaseNetU(Config):
             history=self.net.fit_generator(tr,validation_data=val,verbose=1,
                steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
                validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
-               epochs=self.train_epoch,max_queue_size=1,workers=0,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
+               epochs=self.train_epoch,max_queue_size=5,workers=1,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
                callbacks=[
                    ModelCheckpointCustom(self.filename,monitor=self.indicator,mode=self.indicator_trend,hist_best=best_value,
                                 save_weights_only=True,save_mode=self.save_mode,lr_decay=self.learning_decay,sig_digits=self.sig_digits,verbose=1),
@@ -129,7 +129,7 @@ class BaseNetU(Config):
 
     def predict(self,pair,pred_dir):
         self.build_net()
-        xls_file="Result_%s_%s.xlsx"%(pred_dir.replace(os.sep,'_'),repr(self))
+        xls_file=os.path.join(pred_dir,"%s_%s_%s.xlsx"%(pair.origin,pred_dir.split(os.path.sep)[-1],repr(self)))
         sum_i,sum_g=self.row_out*self.col_out,None
         batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
         dir_cfg_append=pair.img_set.scale_res(None,self.row_out,self.col_out)+'_'+str(self)
@@ -138,8 +138,8 @@ class BaseNetU(Config):
         for dir_out,tgt_list in pair.predict_generator_note():
             res_i,res_g=None,None
             print('Load model and predict to [%s]...'%dir_out)
-            target_dir=os.path.join(pair.wd,dir_out+'_'+dir_cfg_append); mkdir_ifexist(target_dir) # folder to save individual slices
-            merge_dir=os.path.join(pair.wd,dir_out+'+'+dir_cfg_append); mkdir_ifexist(merge_dir) # folder to save grouped/whole images
+            target_dir=os.path.join(pred_dir,"%s-%s_%s"%(pair.origin,dir_out,dir_cfg_append)); mkdir_ifexist(target_dir) # dir for invidual images
+            merge_dir=os.path.join(pred_dir,"%s-%s+%s"%(pair.origin,dir_out,dir_cfg_append)); mkdir_ifexist(merge_dir) # dir for grouped/whole images
             mask_wt=g_kern_rect(self.row_out,self.col_out)
             for grp,view in batch.items():
                 msks=None
@@ -148,14 +148,14 @@ class BaseNetU(Config):
                     o=min(i+self.dep_out,nt)
                     tgt_sub=tgt_list[i:o]
                     prd,tgt_name=pair.predict_generator_partial(tgt_sub,view)
-                    weight_file=self.find_best_models(tgt_name+'_'+dir_cfg_append+'^*^.h5',allow_cache=True)[0]
+                    weight_file=self.find_best_models("%s_%s^*^.h5"%(tgt_name,dir_cfg_append),allow_cache=True)[0]
                     # weight_file_overall=self.find_best_models(tgt_name+'_*^.h5',allow_cache=True)[0]
                     # if weight_file_overall!=weight_file: # load best regardless of archtecture
                     #     self.load_json(weight_file_overall)
                     print(weight_file)
                     self.net.load_weights(weight_file)  # weights only
                     # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
-                    msk=self.net.predict_generator(prd,max_queue_size=1,workers=0,use_multiprocessing=False,verbose=1)
+                    msk=self.net.predict_generator(prd,max_queue_size=5,workers=1,use_multiprocessing=False,verbose=1)
                     msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
                     i=o
                 print('Saving predicted results [%s] to folder [%s]...'%(grp,target_dir))
@@ -168,7 +168,7 @@ class BaseNetU(Config):
                 for i,msk in enumerate(msks):
                     # if i>=len(multi.view_coord): print("skip %d for overrange"%i); break # last batch may have unused entries
                     ind_name=view[i].file_name
-                    ind_file=os.path.join(target_dir,ind_name)
+                    ind_file=os.path.join(target_dir,ind_name.replace(os.path.sep,'_'))
                     origin=pair.img_set.get_image(view[i])
                     print(ind_name); text_list=[ind_name]
                     blend,r_i=self.predict_proc(self,origin,msk,file=None) # ind_file.replace(self.image_format[1:],'')
@@ -189,10 +189,9 @@ class BaseNetU(Config):
                 for d in range(len(tgt_list)):
                     mrg_out[...,d]/=mrg_out_wt
                 print(grp); text_list=[grp]
-                merge_name=view[0].image_name
-                merge_file=os.path.join(merge_dir,merge_name)
+                merge_file=os.path.join(merge_dir,view[0].image_name.replace(os.path.sep,'_'))
                 if save_raw and pair.img_set.resize_ratio<1.0: # high-res raw group image
-                    mrg_in=read_image(os.path.join(pair.wd,pair.img_set.raw_folder,view[0].image_name))
+                    mrg_in=read_image(os.path.join(pred_dir,pair.img_set.raw_folder,view[0].image_name))
                     mrg_r, mrg_c, _=mrg_in.shape
                     mrg_out=cv2.resize(mrg_out, (mrg_c,mrg_r))
                     sum_g=mrg_r*mrg_c
@@ -211,7 +210,7 @@ class BaseNetU(Config):
         for i,note in [(0,'_area'),(1,'_count')]:
             df=pd.DataFrame(res_grp[...,i],index=batch.keys(),columns=pair.targets*pair.cfg.dep_out)
             to_excel_sheet(df,xls_file,pair.origin+note+"_sum")
-
+        del self.net
 
 class ImageMaskPair:
     def __init__(self,cfg:BaseNetU,wd,origin,targets,is_train):
