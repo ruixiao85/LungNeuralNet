@@ -192,7 +192,7 @@ def augment_image_pair(_img, _tgt, _level):
             return aug_img_4.augment_images(aug_det.augment_images(_img)), aug_det.augment_images(_tgt)
 
 
-def augment_image_set(_img,_msks,_level):
+def augment_image_set(_img,_msks,_level): # TODO consider imgaug augment_segmentation_maps
     if _level<1:
         return _img,_msks
     else:
@@ -220,21 +220,23 @@ aug_pat_1 = iaa.Sequential([
 ])
 aug_pat_2 = iaa.Sequential([
     iaa.Fliplr(0.5), iaa.Flipud(0.5),
-    iaa.Sometimes(0.7, iaa.Affine(rotate=(-12, 12), mode='constant', cval=255)),
+    iaa.Sometimes(0.6, iaa.Affine(rotate=(-45, 45), mode='constant', cval=255)),
 ])
 aug_pat_3 = iaa.Sequential([
     iaa.Fliplr(0.5), iaa.Flipud(0.5),
     iaa.Sometimes(0.7, iaa.Affine(
         scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
-        rotate=(-20, 20), shear=(-10, 10), order=[0, 1],  mode='constant', cval=255
+        rotate=(-45,45), shear=(-10, 10), order=[0, 1],  mode='constant', cval=255
     )),
 ])
 aug_pat_4 = iaa.Sequential([
     iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
-    iaa.Sometimes(0.7, iaa.Affine(
-        scale={"x": (0.85, 1.15), "y": (0.85, 1.15)},
-        rotate=(-45, 45), shear=(-15, 15), order=[0, 1], mode='constant',cval=255
+    iaa.Sometimes(0.7,iaa.Affine(
+        scale={"x":(0.9,1.1),"y":(0.9,1.1)},
+        rotate=(-45,45),shear=(-10,10),order=[0,1],mode='constant',cval=255
     )),
+    iaa.Sometimes(0.4,iaa.Sharpen((0.0, 1.0))),
+    iaa.Sometimes(0.2,iaa.ElasticTransformation(alpha=50, sigma=5)),
 ])
 
 def augment_patch(_pat,_level):

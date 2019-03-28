@@ -522,19 +522,18 @@ class ImagePatchGenerator(keras.utils.Sequence):
     def blend_image_patch(self,view,verbose,**kwargs): # return img,cls,msk for each view, verbose 0:none 1:+ 2:details
         add_weight=kwargs.get('add_weight',[1])  # default=[0,1,2,...] the pool to draw from, equal chance, here you can add more weights to certain categories
         random_weight=kwargs.get('random_weight', 4) # random weight for each category will be added
-        patch_per_pixel=kwargs.get('patch_per_pixel',[2000,18000])  # patch per pixel, range to randomly select from, larger number: smaller density
-        max_instance=kwargs.get('max_instance',20)  # break out if more than this amount was inserted
-        bright_diff=kwargs.get('bright_diff',-10)  # original area should be clean, brighter than patch (original_brightness-patch_brightness>diff)
-        max_std=kwargs.get('max_std',40)  # original area should be clean, standard deviation should be low (< max_std)
-        # adjacent_size=kwargs.get('adjacent_size',3)  # sample times of size adjacent to the patch
-        # adjacent_std=kwargs.get('adjacent_std',0.2)  # std of adjacent area > x of patch std (>0: only add patch near existing object, 0: add regardless)
+        patch_per_area=kwargs.get('patch_per_area',[2000,18000])  # divided by area, larger number -> fewer patches, smaller density
+        max_instance=kwargs.get('max_instance',30)  # break out if more than this amount was inserted
+        bright_diff=kwargs.get('bright_diff',-20)  # original area should be brighter (spot_brightness-patch_brightness>diff), neg-val: accept dim images
+        smooth_diff=kwargs.get('smooth_diff',-20)  # original area should be cleaner, lower std (spot_std-patch_std<diff), pos-val: accept contrasty background
         img=np.copy(self.pair.img_set.get_image(view))
-        pixels=self.cfg.row_in*self.cfg.col_in
+        # cv2.imwrite(view.file_name+"_preinsert.jpg",img)
+        area=self.cfg.row_in*self.cfg.col_in/self.cfg.target_scale
         pool=list(range(0,self.cfg.num_targets))+add_weight # equal chance, +weight to some category
         for _ in range(random_weight): pool.append(random.randint(-1,self.cfg.num_targets-1)) # +random weight
         while True:
             inserted=[0]*self.cfg.num_targets  # track # of inserts per category
-            nexample=random.randint(pixels//patch_per_pixel[1],pixels//patch_per_pixel[0])
+            nexample=random.randint(area//patch_per_area[1],area//patch_per_area[0])
             labels=random.choices(pool,k=nexample)
             clss,msks=[],None
             for li in labels:
@@ -551,19 +550,21 @@ class ImagePatchGenerator(keras.utils.Sequence):
                 pci=0 if lci>=0 else -lci; lci=max(0,lci)
                 pro=p_row if lro<=self.cfg.row_in else p_row-lro+self.cfg.row_in; lro=min(self.cfg.row_in,lro)
                 pco=p_col if lco<=self.cfg.col_in else p_col-lco+self.cfg.col_in; lco=min(self.cfg.col_in,lco)
-                # if np.average(img[lri:lro,lci:lco])-p_ave > self.bright_diff and \
-                if np.average(img[lri:lro,lci:lco])-p_ave>bright_diff and np.std(img[lri:lro,lci:lco])<max_std:
-                    # int(np.std(img[lri-p_row*adjacent_size:lro+p_row*adjacent_size,lci-p_col*adjacent_size:lco+p_col*adjacent_size])>adjacent_std*p_std):  # target area is brighter, then add patch
-                    # pat_img,pat_msk=the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view)[...,np.newaxis]
-                    pat_img,pat_msk=augment_image_set(the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view)[...,np.newaxis],0 if self.is_val else self.cfg.train_aug)
-                    img[lri:lro,lci:lco]=np.minimum(img[lri:lro,lci:lco],pat_img[pri:pro,pci:pco].astype(np.uint8))
-                    # img[lri:lro,lci:lco]-=((255-pat_img[pri:pro,pci:pco]).astype(np.float16)*pat_msk[pri:pro,pci:pco,np.newaxis].astype(np.float16)/65025.0).astype(np.uint8)
+                s_gray=np.mean(img[lri:lro,lci:lco],axis=-1)
+                s_ave,s_std=np.average(s_gray),np.std(s_gray)
+                pat_img,pat_msk=the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view)[...,np.newaxis]
+                if s_ave>p_ave+bright_diff and np.mean(s_std)<p_std+smooth_diff:
+                    # cv2.imwrite("spot_acepted.jpg",img[lri:lro,lci:lco]); cv2.imwrite("patch_acepted.jpg",pat_img)
+                    pat_img,pat_msk=augment_image_set(pat_img,pat_msk,0 if self.is_val else self.cfg.train_aug)
+                    # img[lri:lro,lci:lco]=np.minimum(img[lri:lro,lci:lco],pat_img[pri:pro,pci:pco].astype(np.uint8)) # darken
+                    img[lri:lro,lci:lco]=((img[lri:lro,lci:lco]).astype(np.float16)*pat_img[pri:pro,pci:pco]/255.0).astype(np.uint8)
                     clss.append(li+1) #0,1,2 -> 1,2,3 becaue zero is reserved for background
                     msk=np.zeros((self.cfg.row_in,self.cfg.col_in,1),dtype=np.uint8) # np.uint8 0-255
                     msk[lri:lro,lci:lco,0]=pat_msk[pri:pro,pci:pco,0]
                     msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
                     inserted[li]+=1
                     if inserted[li]>max_instance: break;
+                # else: cv2.imwrite("spot_rejected.jpg",img[lri:lro,lci:lco])
             if verbose>1:
                 print(" inserted %s for %s"%(inserted,view.file_name),end='')
             elif verbose>0:
@@ -571,7 +572,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
             total_inserted=sum(inserted)
             if total_inserted>0:
                 # cv2.imwrite(view.file_name,img,[int(cv2.IMWRITE_JPEG_QUALITY),100])
-                # for i in range(0,total_inserted//3*3,3):
+                # for i in range(0,9,3):
                 #     cv2.imwrite("%s_mask%d_%s.jpg"%(view.file_name,i,clss[i:i+3]),msks[...,i:i+3],[int(cv2.IMWRITE_JPEG_QUALITY),100])
                 return img,np.array(clss,dtype=np.uint8),msks
 

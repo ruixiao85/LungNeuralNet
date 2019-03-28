@@ -226,8 +226,9 @@ class PatchSet(ImageSet):
             _img=self.image_data[img]
             lg_row,lg_col,lg_dep=_img.shape
             ri,ro,ci,co=0,lg_row,0,lg_col
+            _gray=np.mean(_img,axis=-1,keepdims=True) # stats based on grayscale
             entry=MetaInfo(img.replace(dotext,("_#%d#%d#%d#%d#%d#%d#"+dotext)%(lg_row,lg_col,ri,ro,ci,co))
-                ,img,lg_row,lg_col,ri,ro,ci,co,np.min(_img),np.max(_img),np.average(_img),np.std(_img))
+                ,img,lg_row,lg_col,ri,ro,ci,co,np.min(_gray),np.max(_gray),np.average(_gray),np.std(_gray))
             view_list.append(entry)  # add to either tr or val set
         print("Images were divided into [%d] views"%(len(view_list)))
         return view_list
