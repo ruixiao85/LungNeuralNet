@@ -138,7 +138,7 @@ aug_img_1 = iaa.Sequential([  # only apply to original images not the mask
 ])
 aug_img_2 = iaa.Sequential([  # only apply to original images not the mask
     iaa.Sometimes(0.6, iaa.OneOf([
-          iaa.ContrastNormalization((0.8, 1.2)),  # improve or worsen the contrast
+          iaa.ContrastNormalization((0.9, 1.2)),  # improve or worsen the contrast
           iaa.Grayscale(alpha=(0.0, 0.3)), iaa.AddToHueAndSaturation()
         ]),
     ),
@@ -192,23 +192,26 @@ def augment_image_pair(_img, _tgt, _level):
             return aug_img_4.augment_images(aug_det.augment_images(_img)), aug_det.augment_images(_tgt)
 
 
-def augment_image_set(_img,_msks,_level): # TODO consider imgaug augment_segmentation_maps
+def augment_image_set(_img,_msks,_level):
     if _level<1:
         return _img,_msks
     else:
-        aug_det=aug_pat_1.to_deterministic()  # paired aug
         if 1<=_level<2:
+            aug_det=aug_pat_1.to_deterministic()
             return aug_img_1.augment_image(aug_det.augment_image(_img)),augment_per_channel(aug_det,_msks)
         elif 2<=_level<3:
+            aug_det=aug_pat_2.to_deterministic()
             return aug_img_2.augment_image(aug_det.augment_image(_img)),augment_per_channel(aug_det,_msks)
         elif 3<=_level<4:
+            aug_det=aug_pat_3.to_deterministic()
             return aug_img_3.augment_image(aug_det.augment_image(_img)),augment_per_channel(aug_det,_msks)
         else:
+            aug_det=aug_pat_4.to_deterministic()
             return aug_img_4.augment_image(aug_det.augment_image(_img)),augment_per_channel(aug_det,_msks)
 
 def augment_per_channel(_aug,_msks):
     for i in range(_msks.shape[-1]):
-        _msks[...,i]=_aug.augment_image(_msks[...,i])
+        _msks[...,i]=255-_aug.augment_image(255-_msks[...,i]) # inverse background to 255, pad 255, and reverse back
     return _msks
 
 
