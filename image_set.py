@@ -60,11 +60,10 @@ class ImageSet:
         return "%s_%.1f"%(target or self.sub_category, scale or self.target_scale)
 
     def prep_folder(self):
-        self.prescreen_folders()
-        self.split_tr_val()
+        self.folder_screen_split()
         return self
 
-    def prescreen_folders(self):
+    def folder_screen_split(self):
         initial_folders=find_folder_prefix(self.work_directory,self.sub_category+'_')
         folders=initial_folders.copy()
         for folder in initial_folders:
@@ -84,24 +83,33 @@ class ImageSet:
         input_folder=self.target_folder if self.resize_ratio==1 else self.raw_folder
         self.images=find_file_ext_recursive_rel(os.path.join(self.work_directory,input_folder),self.image_format)
         total=len(self.images)
+        explicit_val=False # init as False until at least one "`.ext" was found
         self.image_data={}
         print("Processing %d images from folder [%s] with resize_ratio of %.1fx ..."%(total,input_folder,self.resize_ratio))
         if self.raw_scale<self.target_scale:
             print("Warning, upsampling from low-res raw images is not recommended!")
         for i,image in enumerate(self.images):
             _img=self.adapt_channel(read_resize(os.path.join(self.work_directory,input_folder,image),self.resize_ratio))
+            if "`." in image: explicit_val=True # first pass to look at explicitly marked validation images
             pct10=10*(i+1)//total
             if pct10>10*i//total:
                 print(' %.0f%% ... %s'%(pct10*10,image))
             self.image_data[image]=_img
-
-    def split_tr_val(self):
         self.tr_list,self.val_list=[],[]
-        for img in self.images:
-            if (len(self.val_list)+0.05)/(len(self.tr_list)+0.05)>self.train_vali_split:
-                self.tr_list.append(img)
-            else:
-                self.val_list.append(img)
+        if explicit_val:
+            print("[*`.%s] files found, using explicit image split method."%(self.image_format[2:]))
+            for img in self.images:
+                if "`." in img:
+                    self.val_list.append(img)
+                else:
+                    self.tr_list.append(img)
+        else:
+            print("No [*`.%s] files found, splitting images with [%.2f] ratio."%(self.image_format[2:],self.train_vali_split))
+            for img in self.images:
+                if (len(self.val_list)+0.05)/(len(self.tr_list)+0.05)>self.train_vali_split:
+                    self.tr_list.append(img)
+                else:
+                    self.val_list.append(img)
         print("[%s] was split into training [%d] and validation [%d] set."%(self.sub_category,len(self.tr_list),len(self.val_list)))
 
     def adapt_channel(self,img,channels=None):
@@ -125,19 +133,6 @@ class ImageSet:
         return fill_contour(bin)
         # return morph_close(bin,erode=5,dilate=5)
 
-    # def get_masks(self, _path, cfg:Config):
-    #     import glob
-    #     import random
-    #     files=glob.glob(os.path.join(_path,self.file_name.replace(cfg.image_format[1:],cfg.image_format)))
-    #     random.shuffle(files) # reorder patches
-    #     print(' found %d files matching %s'%(len(files),self.file_name))
-        # msks,clss=None,[]
-        # for f in files:
-        #     class_split=f.split('^')
-        #     clss.append(class_split[int(len(class_split)-2)])
-        #     msk=self.get_mask(_path, cfg, f)[...,np.newaxis] # np.uint8 0-255
-        #     msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
-        # return msks, np.array(clss,dtype=np.uint8) # 0 ~ 255
 
 class ViewSet(ImageSet):
     def __init__(self,cfg: Config,wd,sf,is_train,channels,low_std_ex):
@@ -155,8 +150,7 @@ class ViewSet(ImageSet):
         return "%s_%dx%d"%(scale or self.target_scale, rows or self.row, cols or self.col)
 
     def prep_folder(self):
-        self.prescreen_folders()
-        self.split_tr_val() # tr/val-split only needed for img_set
+        self.folder_screen_split()
         self.tr_view=self.list_to_view(self.tr_list)
         self.val_view=self.list_to_view(self.val_list)
         if self.low_std_ex:
@@ -213,8 +207,7 @@ class PatchSet(ImageSet):
         self.tr_view_ex,self.val_view_ex=None,None  # views with low contrast
 
     def prep_folder(self):
-        self.prescreen_folders()
-        self.split_tr_val() # tr/val-split only needed for img_set
+        self.folder_screen_split()
         self.tr_view=self.list_to_view(self.tr_list)
         self.val_view=self.list_to_view(self.val_list)
         return self
