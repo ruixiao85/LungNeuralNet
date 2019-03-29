@@ -24,6 +24,7 @@ class Config:
         self.row_out, self.col_out, self.dep_out=self.dim_out
         self.dep_out=min(self.dep_out,num_targets)
         self.image_format=kwargs.get('image_format', "*.jpg")
+        self.image_val_format=kwargs.get('image_val_format', "*.jpeg")
         self.feed=kwargs.get('feed', 'tanh')
         self.act=kwargs.get('act', 'relu')
         self.out=kwargs.get('out', ('sigmoid' if self.dep_out==1 else 'softmax'))

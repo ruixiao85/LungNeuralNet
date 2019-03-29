@@ -48,11 +48,11 @@ class ImageSet:
         self.is_train=is_train
         self.channels=channels
         self.image_format=cfg.image_format if channels!=4 else '*.png' # jpg<=3 channels; png<=4 channels (alpha)
+        self.image_val_format=cfg.image_val_format if channels!=4 else '*.png' # jpg<=3 channels; png<=4 channels (alpha)
         self.target_scale=cfg.target_scale
         self.train_vali_split=cfg.train_vali_split
         self.target_folder=self.label_scale()
         self.raw_folder,self.raw_scale,self.resize_ratio=None,None,None
-        self.images=None # list names
         self.image_data=None # dict RGB data
         self.tr_list,self.val_list=None,None
 
@@ -81,36 +81,30 @@ class ImageSet:
         self.raw_scale=float(self.raw_folder.split('_')[1])
         self.resize_ratio=round(self.target_scale/self.raw_scale,2)
         input_folder=self.target_folder if self.resize_ratio==1 else self.raw_folder
-        self.images=find_file_ext_recursive_rel(os.path.join(self.work_directory,input_folder),self.image_format)
-        total=len(self.images)
-        explicit_val=False # init as False until at least one "`.ext" was found
-        self.image_data={}
-        print("Processing %d images from folder [%s] with resize_ratio of %.1fx ..."%(total,input_folder,self.resize_ratio))
+        print("Processing images from folder [%s] with resize_ratio of %.1fx ..."%(input_folder,self.resize_ratio))
         if self.raw_scale<self.target_scale:
             print("Warning, upsampling from low-res raw images is not recommended!")
-        for i,image in enumerate(self.images):
-            _img=self.adapt_channel(read_resize(os.path.join(self.work_directory,input_folder,image),self.resize_ratio))
-            if "`." in image: explicit_val=True # first pass to look at explicitly marked validation images
-            pct10=10*(i+1)//total
-            if pct10>10*i//total:
-                print(' %.0f%% ... %s'%(pct10*10,image))
-            self.image_data[image]=_img
-        self.tr_list,self.val_list=[],[]
-        if explicit_val:
-            print("[*`.%s] files found, using explicit image split method."%(self.image_format[2:]))
-            for img in self.images:
-                if "`." in img:
-                    self.val_list.append(img)
-                else:
-                    self.tr_list.append(img)
+        self.val_list=find_file_ext_recursive_rel(os.path.join(self.work_directory,input_folder),self.image_val_format) # may find explicit val files
+        if len(self.val_list)>0:
+            self.tr_list=find_file_ext_recursive_rel(os.path.join(self.work_directory,input_folder),self.image_format) # complete the training set
         else:
-            print("No [*`.%s] files found, splitting images with [%.2f] ratio."%(self.image_format[2:],self.train_vali_split))
-            for img in self.images:
+            print("No [%s] files found, splitting [%s] images with [%.2f] ratio."%(self.image_val_format,self.image_format,self.train_vali_split))
+            self.tr_list,self.val_list=[],[]
+            images=find_file_ext_recursive_rel(os.path.join(self.work_directory,input_folder),self.image_format) # need more splitting work
+            for img in images:
                 if (len(self.val_list)+0.05)/(len(self.tr_list)+0.05)>self.train_vali_split:
                     self.tr_list.append(img)
                 else:
                     self.val_list.append(img)
         print("[%s] was split into training [%d] and validation [%d] set."%(self.sub_category,len(self.tr_list),len(self.val_list)))
+        print("Loading image files (train/val) to memory...")
+        self.image_data={}
+        for sel_list in [self.tr_list,self.val_list]:
+            for image in sel_list:
+                _img=self.adapt_channel(read_resize(os.path.join(self.work_directory,input_folder,image),self.resize_ratio))
+                print("  "+image,end='')
+                self.image_data[image]=_img
+            print()
 
     def adapt_channel(self,img,channels=None):
         return np.mean(img,axis=-1,keepdims=True) if (channels or self.channels)==1 else img
