@@ -114,65 +114,34 @@ aug_both_1 = iaa.Sequential([
 ])
 aug_both_2 = iaa.Sequential([
     iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
-    iaa.Sometimes(0.3, iaa.PiecewiseAffine(scale=(0.01,0.02))),
+    iaa.Affine(rotate=(-12,12),shear=(-8,8),order=[0,1],mode='constant',cval=0),
 ])
 aug_both_3 = iaa.Sequential([
     iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
-    iaa.Sometimes(0.4, iaa.PiecewiseAffine(scale=(0.01,0.03))),
-    iaa.Sometimes(0.4, iaa.Affine(
-        scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
-        rotate=(-20, 20), shear=(-10, 10), order=[0, 1],  mode='constant', cval=0
-    ))
+    iaa.Affine(rotate=(-25,25),shear=(-12,12),scale={"x":(0.9,1.15),"y":(0.9,1.15)},order=[0,1],mode='constant',cval=0),
 ])
 aug_both_4 = iaa.Sequential([
     iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
-    iaa.Sometimes(0.7, iaa.Affine(
-        scale={"x": (0.85, 1.15), "y": (0.85, 1.15)},
-        rotate=(-45, 45), shear=(-15, 15), order=[0, 1], mode='constant',cval=0
-    )),
+    iaa.Affine(rotate=(-45,45),shear=(-15,15),scale={"x":(0.85,1.2),"y":(0.85,1.2)},order=[0,1],mode='constant',cval=0),
+    iaa.PiecewiseAffine(scale=(0.00,0.02)),
 ])
-
 
 aug_img_1 = iaa.Sequential([  # only apply to original images not the mask
-    iaa.Sometimes(0.6, iaa.Multiply((0.75,1.25))),
+    iaa.Multiply((0.83,1.16), per_channel=False),
 ])
 aug_img_2 = iaa.Sequential([  # only apply to original images not the mask
-    iaa.Sometimes(0.6, iaa.OneOf([
-          iaa.ContrastNormalization((0.9, 1.2)),  # improve or worsen the contrast
-          iaa.Grayscale(alpha=(0.0, 0.3)), iaa.AddToHueAndSaturation()
-        ]),
-    ),
+    iaa.Multiply((0.83,1.16), per_channel=False),
+    iaa.OneOf([iaa.ContrastNormalization((0.87, 1.12), per_channel=True), iaa.Grayscale(alpha=(0.0, 0.35)), iaa.AddToHueAndSaturation((-12, 12)),]),
 ])
 aug_img_3 = iaa.Sequential([  # only apply to original images not the mask
-    iaa.Sometimes(0.6, iaa.OneOf([
-            iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
-            iaa.Grayscale(alpha=(0.0, 0.4)),
-        ]),
-    ),
-    iaa.Sometimes(0.6, iaa.OneOf([
-            iaa.GaussianBlur((0, 1.3)),  # blur sigma
-            iaa.AverageBlur(k=(1, 3)),  # blur image using local means with kernel sizes between 2 and 7
-            iaa.Sharpen((0, 1.0), lightness=(0.8, 1.3))  # sharpen
-        ]),
-    ),
+    iaa.Multiply((0.83,1.16),per_channel=False),
+    iaa.OneOf([iaa.ContrastNormalization((0.87,1.12),per_channel=True), iaa.Grayscale(alpha=(0.0,0.35)), iaa.AddToHueAndSaturation((-12,12))]),
+    iaa.OneOf([iaa.GaussianBlur((0,1.6)), iaa.Sharpen((0,0.7),lightness=(0.85,1.25)), iaa.Emboss(alpha=(0,0.5),strength=(0,1.2)),]),
 ])
 aug_img_4 = iaa.Sequential([  # only apply to original images not the mask
-    iaa.Sometimes(0.5, iaa.OneOf([
-            iaa.ContrastNormalization((0.8, 1.2), per_channel=0.5),  # improve or worsen the contrast
-            iaa.Grayscale(alpha=(0.0, 0.5))
-        ]),
-    ),
-    iaa.Sometimes(0.5, iaa.OneOf([
-            iaa.GaussianBlur((0, 1.5)),  # blur sigma
-            iaa.AverageBlur(k=(1, 4)),  # blur image using local means with kernel sizes between 2 and 7
-            iaa.Sharpen((0, 1.0), lightness=(0.8, 1.3))  # sharpen
-        ]),
-    ),
-    iaa.Sometimes(0.5, iaa.OneOf([
-          iaa.Dropout((0.01, 0.05), per_channel=0.5),  # randomly remove pixels
-          iaa.SaltAndPepper(p=(0.01, 0.03)),  # same white same black
-        ]),
-    ),
+    iaa.Multiply((0.8,1.18),per_channel=False),
+    iaa.OneOf([iaa.ContrastNormalization((0.82,1.18),per_channel=True),iaa.Grayscale(alpha=(0.0,0.4)),iaa.AddToHueAndSaturation((-14,14))]),
+    iaa.OneOf([iaa.GaussianBlur((0,1.8)),iaa.Sharpen((0,0.9),lightness=(0.82,1.28)),iaa.Emboss(alpha=(0,0.6),strength=(0,1.4)),]),
 ])
 def augment_image_pair(_img, _tgt, _level):
     if _level<1:
