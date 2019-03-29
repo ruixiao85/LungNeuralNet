@@ -41,6 +41,7 @@ class NetU_Vgg(BaseNetU):
         locals()['pre0']=self.preproc(locals()['in0'], 'pre0', 0, self.fs[0], self.act)
         creater,convs=self.config[self.variation]
         base_model=creater(input_tensor=locals()['pre0'], include_top=False, weights='imagenet' if self.pre_trained else None)
+        # print(base_model.summary())
         for layer in base_model.layers: layer.trainable = True # allow training on pre-trained weights
 
         for i in range(5):

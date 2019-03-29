@@ -37,7 +37,7 @@ class NetU_Dense(BaseNetU):
         locals()['pre0']=self.preproc(locals()['in0'],'pre0',0,self.fs[0],self.act)
         creater,blocks=self.config[self.variation]
         base_model=creater(input_tensor=locals()['pre0'],include_top=False,weights='imagenet' if self.pre_trained else None)
-        print(base_model.summary())
+        # print(base_model.summary())
         for layer in base_model.layers: layer.trainable=True  # allow training on pre-trained weights
         locals()['dmerge0']=locals()['dconv0']=None
         locals()['dproc1']=locals()['djoin1']=locals()['dsamp1']=base_model.get_layer("conv1/relu").output
