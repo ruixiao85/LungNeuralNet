@@ -1,4 +1,5 @@
 import itertools
+import math
 import os
 from cv2 import cv2
 import numpy as np
@@ -101,9 +102,8 @@ class ImageSet:
         self.image_data={}
         for sel_list in [self.tr_list,self.val_list]:
             for image in sel_list:
-                _img=self.adapt_channel(read_resize(os.path.join(self.work_directory,input_folder,image),self.resize_ratio))
+                self.image_data[image]=self.adapt_channel(read_resize(os.path.join(self.work_directory,input_folder,image),self.resize_ratio))
                 print("  "+image,end='')
-                self.image_data[image]=_img
             print()
 
     def adapt_channel(self,img,channels=None):
@@ -113,20 +113,15 @@ class ImageSet:
         if isinstance(view,MetaInfo):
             return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,0:3]
         return self.image_data[view][:,:,0:3] # can also be a file
-    def get_mask(self,view,threshold=50):
+    def get_mask(self,view):
         if isinstance(view,MetaInfo):
-            msk=self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,3] if self.channels==4\
+            return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,3] if self.channels==4\
                 else 255-self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,1] if self.channels==3\
                 else self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,0] # 4: alpha 3: process further on green
         else:
-            msk=self.image_data[view][:,:,3] if self.channels==4\
+            return self.image_data[view][:,:,3] if self.channels==4\
                 else 255-self.image_data[view.image_name][:,:,1] if self.channels==3\
                 else self.image_data[view][:,:,0] # 4: alpha 3: process further on green
-        # _,bin=cv2.threshold(msk,threshold,255,cv2.THRESH_BINARY)
-        _,bin=cv2.threshold(gaussian_smooth(msk,3),threshold,255,cv2.THRESH_BINARY)
-        return fill_contour(bin)
-        # return morph_close(bin,erode=5,dilate=5)
-
 
 class ViewSet(ImageSet):
     def __init__(self,cfg: Config,wd,sf,is_train,channels,low_std_ex):
@@ -145,12 +140,21 @@ class ViewSet(ImageSet):
 
     def prep_folder(self):
         self.folder_screen_split()
-        self.tr_view=self.list_to_view(self.tr_list)
-        self.val_view=self.list_to_view(self.val_list)
+        self.ext_image(self.tr_list); self.ext_image(self.val_list) # in case the original image is even smaller than the size of one view
+        self.tr_view,self.val_view=self.list_to_view(self.tr_list),self.list_to_view(self.val_list)
         if self.low_std_ex:
-            self.tr_view_ex=self.low_std_exclusion(self.tr_view)
-            self.val_view_ex=self.low_std_exclusion(self.val_view)
+            self.tr_view_ex,self.val_view_ex=self.low_std_exclusion(self.tr_view),self.low_std_exclusion(self.val_view)
         return self
+
+    def ext_image(self,img_list):
+        for name in img_list:
+            data=self.image_data[name]
+            row,col,_=data.shape
+            if row<self.row or col<self.col: # pad needed
+                row_pad=int(math.ceil(self.row-row)/2.0)
+                col_pad=int(math.ceil(self.col-col)/2.0)
+                print("  pad[%d,%d]@%s"%(row_pad,col_pad,name),end='')
+                self.image_data[name]=np.pad(data,((row_pad,row_pad),(col_pad,col_pad),(0,0)), 'reflect')
 
     def list_to_view(self,img_list):
         dotext=self.image_format[1:]
@@ -219,3 +223,8 @@ class PatchSet(ImageSet):
             view_list.append(entry)  # add to either tr or val set
         print("Images were divided into [%d] views"%(len(view_list)))
         return view_list
+
+    def get_mask(self,view,threshold=50):
+        msk=super(PatchSet,self).get_mask(view)
+        _,binary=cv2.threshold(gaussian_smooth(msk,3),threshold,255,cv2.THRESH_BINARY)
+        return fill_contour(binary)
