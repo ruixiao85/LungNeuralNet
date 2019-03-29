@@ -234,12 +234,16 @@ class ImageMaskPair:
                 tgt_list.append(t)
                 msk=ViewSet(self.cfg, self.wd, t, is_train=True, channels=1, low_std_ex=True).prep_folder()
                 self.msk_set.append(msk)
+                tr_view=tr_view.intersection(msk.tr_view)
+                val_view=val_view.intersection(msk.tr_view)
                 tr_view_ex=set(msk.tr_view_ex) if tr_view_ex is None else tr_view_ex.intersection(msk.tr_view_ex)
                 val_view_ex=set(msk.val_view_ex) if val_view_ex is None else val_view_ex.intersection(msk.val_view_ex)
-            print("After low contrast exclusion, train/validation views [%d : %d] - [%d : %d] = [%d : %d]"%
-                  (len(tr_view),len(val_view),len(tr_view_ex),len(val_view_ex),len(tr_view)-len(tr_view_ex),len(val_view)-len(val_view_ex)))
-            yield (ImageMaskGenerator(self,tgt_list,True,list(tr_view-tr_view_ex)),
-                   ImageMaskGenerator(self,tgt_list,True,list(val_view-val_view_ex)),
+            print("After pairing intersections, train/validation views [%d : %d] -> [%d : %d]"%
+                  (len(self.img_set.tr_view),len(self.img_set.val_view),len(tr_view),len(val_view)))
+            tr_view_filtered,val_view_filtered=list(tr_view-tr_view_ex),list(val_view-val_view_ex)
+            print("After low contrast exclusion [%d : %d], train/validation views [%d : %d] ->  [%d : %d]"%
+                  (len(tr_view_ex),len(val_view_ex),len(tr_view),len(val_view),len(tr_view_filtered),len(val_view_filtered)))
+            yield (ImageMaskGenerator(self,tgt_list,True,tr_view_filtered),ImageMaskGenerator(self,tgt_list,True,val_view_filtered),
                     self.img_set.label_scale_res(self.cfg.join_targets(tgt_list),self.cfg.target_scale,self.cfg.row_out,self.cfg.col_out))
             i=o
 
