@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 
 from osio import mkdir_ifexist,to_excel_sheet
-from preprocess import augment_image_pair,prep_scale,read_image
+from preprocess import augment_image_mask_pair,prep_scale,read_image
 from postprocess import g_kern_rect,draw_text
 
 class BaseNetU(Config):
@@ -283,8 +283,9 @@ class ImageMaskGenerator(keras.utils.Sequence):
                 _img[vi, ...] = self.pair.img_set.get_image(vc)
                 for ti,tgt in enumerate(self.target_list):
                     _tgt[vi, ..., ti] = self.pair.msk_set[ti].get_mask(vc)
-            _img, _tgt = augment_image_pair(_img, _tgt, self.aug_value)  # integer N: a <= N <= b.
-            # cv2.imwrite("pair_img.jpg",_img[0]); cv2.imwrite("pair_tgt1.jpg",_tgt[0,...,0:3])
+            # cv2.imwrite("%s_pair_img_0.jpg"%self.view_coord[indexes[0]].file_name,_img[0]); cv2.imwrite("%s_pair_msk_0.jpg"%self.view_coord[indexes[0]].file_name,_tgt[0,...,0:3])
+            _img, _tgt = augment_image_mask_pair(_img, _tgt, self.aug_value)  # integer N: a <= N <= b.
+            # cv2.imwrite("%s_pair_img_%d.jpg"%self.view_coord[indexes[0]].file_name,self.aug_value,_img[0]); cv2.imwrite("%s_pair_msk_%d.jpg"%self.view_coord[indexes[0]].file_name,self.aug_value,_tgt[0,...,0:3])
             return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)

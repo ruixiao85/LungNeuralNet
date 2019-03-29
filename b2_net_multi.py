@@ -22,7 +22,7 @@ from c2_mrcnn_matterport import norm_boxes_graph,parse_image_meta_graph,Detectio
 from image_set import ImageSet,ViewSet,PatchSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,draw_detection,morph_close
-from preprocess import prep_scale,augment_image_set,augment_patch,read_image,read_resize,read_resize_pad,read_resize_fit,augment_image_pair
+from preprocess import prep_scale,read_image,read_resize,augment_image_mask_pair,augment_patch_mask_pair,augment_single_decor,augment_single_shift
 
 
 class BaseNetM(Config):
@@ -425,14 +425,14 @@ class ImagePatchGenerator(keras.utils.Sequence):
         self.pair=pair
         self.cfg=pair.cfg
         self.getitemfun,self._active_class_ids,self._anchors=None,None,None
+        self.aug_value=aug_value
+        self.target_list=tgt_list
+        self.view_coord=view_coord
+        self.is_val=view_coord[0] in pair.img_set.val_view
         if self.cfg.is_train: # train
             self.set_train()
         else: # prediction
             self.set_pred()
-        self.aug_value=aug_value
-        self.target_list=tgt_list
-        self.is_val=view_coord[0] in pair.img_set.val_view
-        self.view_coord=view_coord
         self.indexes=None
         self.on_epoch_end()
 
@@ -456,9 +456,9 @@ class ImagePatchGenerator(keras.utils.Sequence):
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
             this_img,this_cls,this_msk=self.blend_image_patch(vc,verbose=1) # always regenerate
             # this_img,this_cls,this_msk=vc.data=vc.data or self.blend_image_patch(vc) # reuse previously generated
-            # cv2.imwrite("pre1.jpg",this_img); cv2.imwrite("pre2.jpg",this_msk[...,0:3])
-            this_img,this_msk=augment_image_set(this_img,this_msk,_level=min(1,self.aug_value))  # integer N: a <= N <= b.
-            # cv2.imwrite("post1.jpg",this_img); cv2.imwrite("post2.jpg",this_msk[...,0:3])
+            # cv2.imwrite("mult_pre_img.jpg",this_img); cv2.imwrite("mult_pre_msk.jpg",this_msk[...,0:3])
+            this_img=augment_single_decor(this_img,_level=self.aug_value)  # integer N: a <= N <= b.
+            # cv2.imwrite("mult_post_img.jpg",this_img); cv2.imwrite("mult_post_msk.jpg",this_msk[...,0:3])
             this_bbox=extract_bboxes(this_msk)
             if self.cfg.mini_mask_shape is not None:
                 this_msk=minimize_mask(this_bbox,this_msk,tuple(self.cfg.mini_mask_shape[0:2]))
@@ -522,12 +522,15 @@ class ImagePatchGenerator(keras.utils.Sequence):
     def blend_image_patch(self,view,verbose,**kwargs): # return img,cls,msk for each view, verbose 0:none 1:+ 2:details
         add_weight=kwargs.get('add_weight',[1])  # default=[0,1,2,...] the pool to draw from, equal chance, here you can add more weights to certain categories
         random_weight=kwargs.get('random_weight', 4) # random weight for each category will be added
-        patch_per_area=kwargs.get('patch_per_area',[2000,18000])  # divided by area, larger number -> fewer patches, smaller density
+        patch_per_area=kwargs.get('patch_per_area',[4000,20000])  # divided by area, larger number -> fewer patches/smaller density
         max_instance=kwargs.get('max_instance',30)  # break out if more than this amount was inserted
-        bright_diff=kwargs.get('bright_diff',-20)  # original area should be brighter (spot_brightness-patch_brightness>diff), neg-val: accept dim images
-        smooth_diff=kwargs.get('smooth_diff',-20)  # original area should be cleaner, lower std (spot_std-patch_std<diff), pos-val: accept contrasty background
+        ave_diff=kwargs.get('ave_diff',10)  # original area should be brighter (spot_ave-brightness-patch_ave-brightness>diff), neg-val: accept dim images
+        min_diff=kwargs.get('min_diff',0)  # original area should be brighter (spot_min-brightness-patch_min-brightness>diff), neg-val: accept dim images
+        std_diff=kwargs.get('std_diff',10)  # original area should be cleaner, lower std (spot_std-patch_std<diff), pos-val: accept contrasty background
         img=np.copy(self.pair.img_set.get_image(view))
-        # cv2.imwrite(view.file_name+"_preinsert.jpg",img)
+        # cv2.imwrite("multi_%s_pre.jpg"%view.file_name,img)
+        img=augment_single_shift(img,self.aug_value)
+        # cv2.imwrite("multi_%s_shift.jpg"%view.file_name,img)
         area=self.cfg.row_in*self.cfg.col_in/self.cfg.target_scale
         pool=list(range(0,self.cfg.num_targets))+add_weight # equal chance, +weight to some category
         for _ in range(random_weight): pool.append(random.randint(-1,self.cfg.num_targets-1)) # +random weight
@@ -541,8 +544,13 @@ class ImagePatchGenerator(keras.utils.Sequence):
                 pch_view=random.choice(the_pch_set.val_view) if self.is_val else random.choice(the_pch_set.tr_view)
                 rowpos=random.uniform(0,1)
                 colpos=random.uniform(0,1)
-                p_row,p_col=pch_view.ori_row,pch_view.ori_col
-                p_min,p_max,p_ave,p_std=pch_view.min,pch_view.max,pch_view.ave,pch_view.std
+                pat_img,pat_msk=the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view)[...,np.newaxis]
+                # cv2.imwrite(pch_view.image_name+"_pimg_0.jpg",pat_img);cv2.imwrite(pch_view.image_name+"_pmsk_0.jpg",pat_msk)
+                pat_img,pat_msk=augment_patch_mask_pair(pat_img,pat_msk,self.aug_value) # only allow minimal augmentation, preverse [H,W,C]
+                # cv2.imwrite(pch_view.image_name+"_pimg_%d.jpg"%self.aug_value,pat_img);cv2.imwrite(pch_view.image_name+"_pmsk_%d.jpg"%self.aug_value,pat_msk)
+                p_row,p_col,_=pat_img.shape # insure fit may change image size, so get the updated size
+                p_gray=np.mean(pat_img,axis=-1,keepdims=True)  # stats based on grayscale
+                p_min,p_max,p_ave,p_std=np.min(p_gray),np.max(p_gray),np.average(p_gray),np.std(p_gray)
                 lri=int(self.cfg.row_in*rowpos)-p_row//2  # large row in/start
                 lci=int(self.cfg.col_in*colpos)-p_col//2  # large col in/start
                 lro,lco=lri+p_row,lci+p_col  # large row/col out/end
@@ -551,11 +559,9 @@ class ImagePatchGenerator(keras.utils.Sequence):
                 pro=p_row if lro<=self.cfg.row_in else p_row-lro+self.cfg.row_in; lro=min(self.cfg.row_in,lro)
                 pco=p_col if lco<=self.cfg.col_in else p_col-lco+self.cfg.col_in; lco=min(self.cfg.col_in,lco)
                 s_gray=np.mean(img[lri:lro,lci:lco],axis=-1)
-                s_ave,s_std=np.average(s_gray),np.std(s_gray)
-                pat_img,pat_msk=the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view)[...,np.newaxis]
-                if s_ave>p_ave+bright_diff and np.mean(s_std)<p_std+smooth_diff:
+                s_ave,s_min,s_std=np.average(s_gray),np.min(s_gray),np.std(s_gray)
+                if s_ave>p_ave+ave_diff and s_min>p_min+min_diff and np.mean(s_std)<p_std+std_diff:
                     # cv2.imwrite("spot_acepted.jpg",img[lri:lro,lci:lco]); cv2.imwrite("patch_acepted.jpg",pat_img)
-                    pat_img,pat_msk=augment_image_set(pat_img,pat_msk,0 if self.is_val else self.cfg.train_aug)
                     # img[lri:lro,lci:lco]=np.minimum(img[lri:lro,lci:lco],pat_img[pri:pro,pci:pco].astype(np.uint8)) # darken
                     img[lri:lro,lci:lco]=((img[lri:lro,lci:lco]).astype(np.float16)*pat_img[pri:pro,pci:pco]/255.0).astype(np.uint8)
                     clss.append(li+1) #0,1,2 -> 1,2,3 becaue zero is reserved for background
@@ -571,9 +577,9 @@ class ImagePatchGenerator(keras.utils.Sequence):
                 print("+",end='')
             total_inserted=sum(inserted)
             if total_inserted>0:
-                # cv2.imwrite(view.file_name,img,[int(cv2.IMWRITE_JPEG_QUALITY),100])
-                # for i in range(0,9,3):
-                #     cv2.imwrite("%s_mask%d_%s.jpg"%(view.file_name,i,clss[i:i+3]),msks[...,i:i+3],[int(cv2.IMWRITE_JPEG_QUALITY),100])
+                # cv2.imwrite("multi_"+view.file_name,img,[int(cv2.IMWRITE_JPEG_QUALITY),100])
+                # for i in range(0,6,3):
+                #     cv2.imwrite("multi_%s_mask%d_%s.jpg"%(view.file_name,i,clss[i:i+3]),msks[...,i:i+3],[int(cv2.IMWRITE_JPEG_QUALITY),100])
                 return img,np.array(clss,dtype=np.uint8),msks
 
 

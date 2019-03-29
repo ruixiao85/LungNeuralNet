@@ -16,7 +16,7 @@ def parse_float(text):
         return None
 
 class MetaInfo:
-    def __init__(self, file, image, ori_row, ori_col, ri, ro, ci, co, min=None, max=None, ave=None, std=None):
+    def __init__(self, file, image, ori_row, ori_col, ri, ro, ci, co):
         self.file_name = file  # direct file can be a slice
         self.image_name = image # can be name of the whole image, can different from file_name (slice)
         self.ori_row = ori_row
@@ -25,13 +25,6 @@ class MetaInfo:
         self.row_end = ro
         self.col_start = ci
         self.col_end = co
-
-        #PatchSet
-        self.min=min
-        self.max=max
-        self.ave=ave
-        self.std=std
-        self.data=None # add data later for image-patch pair (RGB images, Binary masks, classes)
 
     def __str__(self):
         return self.file_name
@@ -217,9 +210,8 @@ class PatchSet(ImageSet):
             _img=self.image_data[img]
             lg_row,lg_col,lg_dep=_img.shape
             ri,ro,ci,co=0,lg_row,0,lg_col
-            _gray=np.mean(_img,axis=-1,keepdims=True) # stats based on grayscale
             entry=MetaInfo(img.replace(dotext,("_#%d#%d#%d#%d#%d#%d#"+dotext)%(lg_row,lg_col,ri,ro,ci,co))
-                ,img,lg_row,lg_col,ri,ro,ci,co,np.min(_gray),np.max(_gray),np.average(_gray),np.std(_gray))
+                ,img,lg_row,lg_col,ri,ro,ci,co)
             view_list.append(entry)  # add to either tr or val set
         print("Images were divided into [%d] views"%(len(view_list)))
         return view_list
