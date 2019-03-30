@@ -24,7 +24,8 @@ class NetUBack(BaseNetU):
         self.upproc=kwargs.get('upproc', sk)
         self.postproc=kwargs.get('postproc', ca3)
 
-    def build_net(self):
+    def build_net(self,is_train):
+        super(NetUBack,self).build_net(is_train)
         locals()['in0']=Input((self.row_in, self.col_in, self.dep_in))
         # locals()['pre0']=self.preproc(locals()['in0'],'pre0',0,self.fs[0],self.act)
         # for i in range(len(self.fs)-1):

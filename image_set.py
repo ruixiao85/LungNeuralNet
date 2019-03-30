@@ -46,7 +46,7 @@ class ImageSet:
         self.image_format=cfg.image_format if channels!=4 else '*.png' # jpg<=3 channels; png<=4 channels (alpha)
         self.image_val_format=cfg.image_val_format if channels!=4 else '*.png' # jpg<=3 channels; png<=4 channels (alpha)
         self.target_scale=cfg.target_scale
-        self.train_vali_split=cfg.train_vali_split
+        self.train_val_split=cfg.train_val_split
         self.target_folder=self.label_scale()
         self.raw_folder,self.raw_scale,self.resize_ratio=None,None,None
         self.image_data=None # dict RGB data
@@ -84,11 +84,11 @@ class ImageSet:
         if len(self.val_list)>0:
             self.tr_list=find_file_ext_recursive_rel(os.path.join(self.work_directory,input_folder),self.image_format) # complete the training set
         else:
-            print("No [%s] files found, splitting [%s] images with [%.2f] ratio."%(self.image_val_format,self.image_format,self.train_vali_split))
+            print("No [%s] files found, splitting [%s] images with [%.2f] ratio."%(self.image_val_format,self.image_format,self.train_val_split))
             self.tr_list,self.val_list=[],[]
             images=find_file_ext_recursive_rel(os.path.join(self.work_directory,input_folder),self.image_format) # need more splitting work
             for img in images:
-                if (len(self.val_list)+0.05)/(len(self.tr_list)+0.05)>self.train_vali_split:
+                if (len(self.val_list)+0.05)/(len(self.tr_list)+0.05)>self.train_val_split:
                     self.tr_list.append(img)
                 else:
                     self.val_list.append(img)

@@ -28,7 +28,6 @@ from preprocess import prep_scale,read_image,read_resize,augment_image_mask_pair
 class BaseNetM(Config):
     def __init__(self,**kwargs):
         super(BaseNetM,self).__init__(**kwargs)
-        self.is_train=None # will set later
         from c0_backbones import v16, v19
         self.backbone=kwargs.get('backbone', v16) # default backbone
         self.learning_rate=kwargs.get('learning_rate', 1e-3 if self.backbone in [v16,v19] else 1e-2) # initial learning rate
@@ -295,10 +294,10 @@ class BaseNetM(Config):
             from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau,LearningRateScheduler
             from callbacks import TensorBoardTrainVal, ModelCheckpointCustom
             history=self.net.fit_generator(tr,validation_data=val,verbose=1,
-               steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
-               validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
-               epochs=self.train_epoch,max_queue_size=5,workers=1,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
-               callbacks=[
+                                           steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
+                                           validation_steps=min(self.train_val_step,len(val.view_coord)) if isinstance(self.train_val_step,int) else len(val.view_coord),
+                                           epochs=self.train_epoch,max_queue_size=5,workers=1,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
+                                           callbacks=[
                    ModelCheckpointCustom(self.filename,monitor=self.indicator,mode=self.indicator_trend,hist_best=best_value,
                                  save_weights_only=True,save_mode=self.save_mode,lr_decay=self.learning_decay,sig_digits=self.sig_digits,verbose=1),
                    EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=2,verbose=1),
@@ -409,19 +408,19 @@ class ImagePatchPair:
 
     def train_generator(self):
         self.pch_set=[PatchSet(self.cfg,self.wd,tgt,self.is_train,channels=3).prep_folder() for tgt in self.targets]
-        yield(ImagePatchGenerator(self, self.cfg.train_aug, self.targets,view_coord=self.img_set.tr_view),
-              ImagePatchGenerator(self, 0, self.targets,view_coord=self.img_set.val_view),
+        yield(ImagePatchGenerator(self,self.targets,view_coord=self.img_set.tr_view,aug_value=self.cfg.train_val_aug[0]),
+              ImagePatchGenerator(self,self.targets,view_coord=self.img_set.val_view,aug_value=self.cfg.train_val_aug[1]),
               self.img_set.label_scale_res(self.cfg.join_targets(self.targets)))
 
     def predict_generator_note(self):
         yield (self.cfg.join_targets(self.targets),self.targets)
 
     def predict_generator_partial(self,subset,view):
-        return ImagePatchGenerator(self,0,subset,view_coord=view),self.cfg.join_targets(subset)
+        return ImagePatchGenerator(self,subset,view_coord=view,aug_value=0),self.cfg.join_targets(subset)
 
 
 class ImagePatchGenerator(keras.utils.Sequence):
-    def __init__(self, pair:ImagePatchPair, aug_value, tgt_list, view_coord):
+    def __init__(self,pair: ImagePatchPair,tgt_list,view_coord,aug_value):
         self.pair=pair
         self.cfg=pair.cfg
         self.getitemfun,self._active_class_ids,self._anchors=None,None,None

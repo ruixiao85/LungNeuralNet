@@ -57,8 +57,8 @@ class BaseNetU(Config):
         with open(json_net, "w") as json_file:
             json_file.write(self.net.to_json())
 
-    def build_net(self):
-        pass
+    def build_net(self,is_train):
+        self.is_train=is_train # build the rest in the subclasses
 
     def compile_net(self,save_net=False,print_summary=False):
         self.net.compile(optimizer=self.optimizer(self.learning_rate), loss=self.loss, metrics=self.metrics)
@@ -85,7 +85,7 @@ class BaseNetU(Config):
         return ''.join(test_list)
 
     def train(self,pair):
-        self.build_net()
+        self.build_net(is_train=True)
         for tr,val,dir_out in pair.train_generator():
             self.compile_net() # recompile to set optimizers,..
             self.filename=dir_out+'_'+str(self)
@@ -110,10 +110,10 @@ class BaseNetU(Config):
             from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau,LearningRateScheduler
             from callbacks import TensorBoardTrainVal,ModelCheckpointCustom
             history=self.net.fit_generator(tr,validation_data=val,verbose=1,
-               steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
-               validation_steps=min(self.train_vali_step,len(val.view_coord)) if isinstance(self.train_vali_step,int) else len(val.view_coord),
-               epochs=self.train_epoch,max_queue_size=5,workers=1,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
-               callbacks=[
+                                           steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
+                                           validation_steps=min(self.train_val_step,len(val.view_coord)) if isinstance(self.train_val_step,int) else len(val.view_coord),
+                                           epochs=self.train_epoch,max_queue_size=5,workers=1,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
+                                           callbacks=[
                    ModelCheckpointCustom(self.filename,monitor=self.indicator,mode=self.indicator_trend,hist_best=best_value,
                                 save_weights_only=True,save_mode=self.save_mode,lr_decay=self.learning_decay,sig_digits=self.sig_digits,verbose=1),
                    EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=self.indicator_patience,verbose=1),
@@ -128,7 +128,7 @@ class BaseNetU(Config):
         del self.net
 
     def predict(self,pair,pred_dir):
-        self.build_net()
+        self.build_net(is_train=False)
         xls_file=os.path.join(pred_dir,"%s_%s_%s.xlsx"%(pair.origin,pred_dir.split(os.path.sep)[-1],repr(self)))
         sum_i,sum_g=self.row_out*self.col_out,None
         batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
@@ -243,8 +243,9 @@ class ImageMaskPair:
             tr_view_filtered,val_view_filtered=list(tr_view-tr_view_ex),list(val_view-val_view_ex)
             print("After low contrast exclusion [%d : %d], train/validation views [%d : %d] ->  [%d : %d]"%
                   (len(tr_view_ex),len(val_view_ex),len(tr_view),len(val_view),len(tr_view_filtered),len(val_view_filtered)))
-            yield (ImageMaskGenerator(self,tgt_list,True,tr_view_filtered),ImageMaskGenerator(self,tgt_list,True,val_view_filtered),
-                    self.img_set.label_scale_res(self.cfg.join_targets(tgt_list),self.cfg.target_scale,self.cfg.row_out,self.cfg.col_out))
+            yield (ImageMaskGenerator(self,tgt_list,tr_view_filtered,self.cfg.train_val_aug[0]),
+                   ImageMaskGenerator(self,tgt_list,val_view_filtered,self.cfg.train_val_aug[1]),
+                   self.img_set.label_scale_res(self.cfg.join_targets(tgt_list),self.cfg.target_scale,self.cfg.row_out,self.cfg.col_out))
             i=o
 
     def predict_generator_note(self):
@@ -256,16 +257,16 @@ class ImageMaskPair:
             i = o
 
     def predict_generator_partial(self,subset,view):
-        return ImageMaskGenerator(self,subset,False,view),self.cfg.join_targets(subset)
+        return ImageMaskGenerator(self,subset,view,0),self.cfg.join_targets(subset)
 
 
 class ImageMaskGenerator(keras.utils.Sequence):
-    def __init__(self,pair:ImageMaskPair,tgt_list,is_train,view_coord):
+    def __init__(self,pair: ImageMaskPair,tgt_list,view_coord,aug_value):
         self.pair=pair
         self.cfg=pair.cfg
         self.target_list=tgt_list
-        self.is_train=is_train
-        self.aug_value=self.cfg.train_aug if is_train else 0
+        self.is_train=self.cfg.is_train
+        self.aug_value=aug_value
         self.view_coord=view_coord
         self.indexes=None
         self.on_epoch_end()
