@@ -35,7 +35,7 @@ class BaseNetU(Config):
         custom_function_keras()  # leakyrelu, swish
         self.loss=kwargs.get('loss', (loss_bce_dice if self.dep_out==1 else 'categorical_crossentropy'))  # 'binary_crossentropy'
         self.metrics=kwargs.get('metrics', ([jac, dice] if self.dep_out==1 else [acc])) # dice67,dice33  acc67,acc33
-        self.learning_rate=kwargs.get('learning_rate', 1e-4) # initial learning rate
+        self.learning_rate=kwargs.get('learning_rate', 5e-5) # initial learning rate
         self.learning_decay=kwargs.get('learning_decay', 0.3)
         from keras.optimizers import Adam
         self.optimizer=kwargs.get('optimizer', Adam)
@@ -283,9 +283,9 @@ class ImageMaskGenerator(keras.utils.Sequence):
                 _img[vi, ...] = self.pair.img_set.get_image(vc)
                 for ti,tgt in enumerate(self.target_list):
                     _tgt[vi, ..., ti] = self.pair.msk_set[ti].get_mask(vc)
-            # cv2.imwrite("%s_pair_img_0.jpg"%self.view_coord[indexes[0]].file_name,_img[0]); cv2.imwrite("%s_pair_msk_0.jpg"%self.view_coord[indexes[0]].file_name,_tgt[0,...,0:3])
+            # cv2.imwrite("pair_img_0.jpg",_img[0]); cv2.imwrite("pair_msk_0.jpg",_tgt[0,...,0:3])
             _img, _tgt = augment_image_mask_pair(_img, _tgt, self.aug_value)  # integer N: a <= N <= b.
-            # cv2.imwrite("%s_pair_img_%d.jpg"%(self.view_coord[indexes[0]].file_name,self.aug_value),_img[0]); cv2.imwrite("%s_pair_msk_%d.jpg"%(self.view_coord[indexes[0]].file_name,self.aug_value),_tgt[0,...,0:3])
+            # cv2.imwrite("pair_img_1.jpg",_img[0]); cv2.imwrite("pair_msk_1.jpg",_tgt[0,...,0:3])
             return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)

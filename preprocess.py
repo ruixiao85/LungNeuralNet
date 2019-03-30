@@ -114,18 +114,17 @@ def extract_pad_image(lg_img, r0, r1, c0, c1):
 # padkwargs={'mode':'reflect'}
 # symkwargs={'mode':'symmetric'}
 def aug_shift_1(**kwargs)->list: return [iaa.Fliplr(0.5),iaa.Flipud(0.5)]
-def aug_shift_2(**kwargs)->list: return aug_shift_1(**kwargs)+[iaa.Affine(rotate=(-12,12),shear=(-8,8),order=[0,1],**kwargs)]
-def aug_shift_3(**kwargs)->list: return aug_shift_1(**kwargs)+[iaa.Affine(rotate=(-25,25),shear=(-12,12),scale={"x":(0.9,1.15),"y":(0.9,1.15)},order=[0,1],**kwargs)]
+def aug_shift_2(**kwargs)->list: return aug_shift_1(**kwargs)+[iaa.Affine(scale={"x":(0.95,1.1),"y":(0.95,1.1)},order=[0,1],**kwargs)]
+def aug_shift_3(**kwargs)->list: return aug_shift_2(**kwargs)+[iaa.OneOf([iaa.Affine(rotate=(-25,25),**kwargs), iaa.Affine(shear=(-5,5),**kwargs)])]
 def aug_shift_4(**kwargs)->list:
     # filtered_kwargs={k:v for k,v in kwargs.items() if k not in ['backend','fit_output']} # PiecewiseAffine does not support these
-    return aug_shift_1(**kwargs)+[iaa.Affine(rotate=(-45,45),shear=(-15,15),scale={"x":(0.85,1.2),"y":(0.85,1.2)},order=[0,1],**kwargs),
-        iaa.PiecewiseAffine(scale=(0.00,0.03),**kwargs)]
+    return aug_shift_2(**kwargs)+[iaa.OneOf([iaa.Affine(rotate=(-45,45),**kwargs), iaa.Affine(shear=(-8,8),**kwargs), iaa.PiecewiseAffine(scale=(0.00,0.02),**kwargs)])]
 
 ## decorative, not moving/shifting places. suitable for original RGB image ##
-def aug_decor_1(**kwargs)->list: return [iaa.Multiply((0.9,1.1))]
-def aug_decor_2(**kwargs)->list: return [iaa.OneOf([iaa.Multiply((0.8,1.2)),iaa.ContrastNormalization((0.9,1.1),per_channel=True),iaa.Grayscale(alpha=(0.0,0.25)),iaa.AddToHueAndSaturation((-14,14))])]
-def aug_decor_3(**kwargs)->list: return aug_decor_2()+[iaa.OneOf([iaa.GaussianBlur((0,0.6)),iaa.Sharpen((0,0.5),lightness=(0.9,1.2)),iaa.Emboss(alpha=(0,0.4),strength=(0.8,1.2))])]
-def aug_decor_4(**kwargs)->list: return aug_decor_2()+[iaa.OneOf([iaa.GaussianBlur((0,1.2)),iaa.Sharpen((0,0.7),lightness=(0.85,1.25)),iaa.Emboss(alpha=(0,0.6),strength=(0.7,1.3))])]
+def aug_decor_1(**kwargs)->list: return [iaa.Multiply((0.9,1.12))]
+def aug_decor_2(**kwargs)->list: return [iaa.OneOf([iaa.Multiply((0.9,1.12)),iaa.ContrastNormalization((0.93,1.1),per_channel=True),iaa.Grayscale(alpha=(0.0,0.14)),iaa.AddToHueAndSaturation((-9,9))])]
+def aug_decor_3(**kwargs)->list: return aug_decor_2()+[iaa.OneOf([iaa.GaussianBlur((0,0.3)),iaa.Sharpen((0,0.3),lightness=(0.95,1.1)),iaa.Emboss(alpha=(0,0.2),strength=(0.9,1.1))])]
+def aug_decor_4(**kwargs)->list: return aug_decor_2()+[iaa.OneOf([iaa.GaussianBlur((0,0.6)),iaa.Sharpen((0,0.3),lightness=(0.9,1.1)),iaa.Emboss(alpha=(0,0.3),strength=(0.9,1.1))])]
 # def aug_decor_4(**kwargs)->list: return aug_decor_3()+[iaa.JpegCompression((0,50))]
 
 def augment_single(_img,_level,_list,_kwargs):
@@ -153,13 +152,14 @@ def augment_dual_shift(_img,_msk,_level,_kwargs=None):
     return augment_dual(_img,_msk,_level,_list=[aug_shift_1,aug_shift_2,aug_shift_3,aug_shift_4],_kwargs=_kwargs)
 
 def augment_image_mask_pair(_img,_msk,_level):
-    _img,_msk=augment_dual_shift(_img,_msk,_level,_kwargs={'mode':'reflect'})
+    _img,_msk=augment_dual_shift(_img,_msk,_level,_kwargs={'mode':'reflect'}) # white padding is equivalent to background
+    # _img,_msk=augment_dual_shift(_img,255-_msk,_level,_kwargs={'mode':'constant','cval':255})
     _img=augment_single_decor(_img,_level)
-    return _img,_msk
+    return _img,_msk # reflect
+    # return _img,255-_msk # constant
 
 def augment_patch_mask_pair(_img,_msk,_level):
-    _msk=255-_msk # inverse to pad 255 to the outer edge
-    _img,_msk=augment_dual_shift(_img,_msk,min(1,_level),_kwargs={'mode':'constant','cval':255}) # pad white to RGB patches, and insure fit
+    _img,_msk=augment_dual_shift(_img,255-_msk,min(1,_level),_kwargs={'mode':'constant','cval':255}) # pad white to RGB patches, inversed mask, and insure fit
     _img=augment_single_decor(_img,min(2,_level)) # milder augmentations on patches
     _img_max=np.max(_img)
     # if _img_max!=255: print(_img_max)
