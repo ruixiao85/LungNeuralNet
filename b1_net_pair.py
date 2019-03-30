@@ -235,7 +235,7 @@ class ImageMaskPair:
                 msk=ViewSet(self.cfg, self.wd, t, is_train=True, channels=1, low_std_ex=True).prep_folder()
                 self.msk_set.append(msk)
                 tr_view=tr_view.intersection(msk.tr_view)
-                val_view=val_view.intersection(msk.tr_view)
+                val_view=val_view.intersection(msk.val_view)
                 tr_view_ex=set(msk.tr_view_ex) if tr_view_ex is None else tr_view_ex.intersection(msk.tr_view_ex)
                 val_view_ex=set(msk.val_view_ex) if val_view_ex is None else val_view_ex.intersection(msk.val_view_ex)
             print("After pairing intersections, train/validation views [%d : %d] -> [%d : %d]"%
@@ -285,7 +285,7 @@ class ImageMaskGenerator(keras.utils.Sequence):
                     _tgt[vi, ..., ti] = self.pair.msk_set[ti].get_mask(vc)
             # cv2.imwrite("%s_pair_img_0.jpg"%self.view_coord[indexes[0]].file_name,_img[0]); cv2.imwrite("%s_pair_msk_0.jpg"%self.view_coord[indexes[0]].file_name,_tgt[0,...,0:3])
             _img, _tgt = augment_image_mask_pair(_img, _tgt, self.aug_value)  # integer N: a <= N <= b.
-            # cv2.imwrite("%s_pair_img_%d.jpg"%self.view_coord[indexes[0]].file_name,self.aug_value,_img[0]); cv2.imwrite("%s_pair_msk_%d.jpg"%self.view_coord[indexes[0]].file_name,self.aug_value,_tgt[0,...,0:3])
+            # cv2.imwrite("%s_pair_img_%d.jpg"%(self.view_coord[indexes[0]].file_name,self.aug_value),_img[0]); cv2.imwrite("%s_pair_msk_%d.jpg"%(self.view_coord[indexes[0]].file_name,self.aug_value),_tgt[0,...,0:3])
             return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
         else:
             _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
