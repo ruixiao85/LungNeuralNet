@@ -108,118 +108,59 @@ def extract_pad_image(lg_img, r0, r1, c0, c1):
     else:
         return lg_img[r0:r1, c0:c1, ...]
 
-# image-mask pair # pad black 0
-aug_both_1 = iaa.Sequential([
-    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
-])
-aug_both_2 = iaa.Sequential([
-    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
-    iaa.Affine(rotate=(-12,12),shear=(-8,8),order=[0,1],mode='constant',cval=0),
-])
-aug_both_3 = iaa.Sequential([
-    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
-    iaa.Affine(rotate=(-25,25),shear=(-12,12),scale={"x":(0.9,1.15),"y":(0.9,1.15)},order=[0,1],mode='constant',cval=0),
-])
-aug_both_4 = iaa.Sequential([
-    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
-    iaa.Affine(rotate=(-45,45),shear=(-15,15),scale={"x":(0.85,1.2),"y":(0.85,1.2)},order=[0,1],mode='constant',cval=0),
-    iaa.PiecewiseAffine(scale=(0.00,0.02)),
-])
 
-aug_img_1 = iaa.Sequential([  # only apply to original images not the mask
-    iaa.Multiply((0.83,1.16), per_channel=False),
-])
-aug_img_2 = iaa.Sequential([  # only apply to original images not the mask
-    iaa.Multiply((0.83,1.16), per_channel=False),
-    iaa.OneOf([iaa.ContrastNormalization((0.87, 1.12), per_channel=True), iaa.Grayscale(alpha=(0.0, 0.35)), iaa.AddToHueAndSaturation((-12, 12)),]),
-])
-aug_img_3 = iaa.Sequential([  # only apply to original images not the mask
-    iaa.Multiply((0.83,1.16),per_channel=False),
-    iaa.OneOf([iaa.ContrastNormalization((0.87,1.12),per_channel=True), iaa.Grayscale(alpha=(0.0,0.35)), iaa.AddToHueAndSaturation((-12,12))]),
-    iaa.OneOf([iaa.GaussianBlur((0,1.6)), iaa.Sharpen((0,0.7),lightness=(0.85,1.25)), iaa.Emboss(alpha=(0,0.5),strength=(0,1.2)),]),
-])
-aug_img_4 = iaa.Sequential([  # only apply to original images not the mask
-    iaa.Multiply((0.8,1.18),per_channel=False),
-    iaa.OneOf([iaa.ContrastNormalization((0.82,1.18),per_channel=True),iaa.Grayscale(alpha=(0.0,0.4)),iaa.AddToHueAndSaturation((-14,14))]),
-    iaa.OneOf([iaa.GaussianBlur((0,1.8)),iaa.Sharpen((0,0.9),lightness=(0.82,1.28)),iaa.Emboss(alpha=(0,0.6),strength=(0,1.4)),]),
-])
-def augment_image_pair(_img, _tgt, _level):
-    if _level<1:
-        return _img, _tgt
+## shifting, suitable to apply to image-mask pairs ##
+# padblack={'mode':'constant','cval':0} # default black pad
+# padkwargs={'mode':'reflect'}
+# symkwargs={'mode':'symmetric'}
+def aug_shift_1(**kwargs)->list: return [iaa.Fliplr(0.5),iaa.Flipud(0.5)]
+def aug_shift_2(**kwargs)->list: return aug_shift_1(**kwargs)+[iaa.Affine(rotate=(-12,12),shear=(-8,8),order=[0,1],**kwargs)]
+def aug_shift_3(**kwargs)->list: return aug_shift_1(**kwargs)+[iaa.Affine(rotate=(-25,25),shear=(-12,12),scale={"x":(0.9,1.15),"y":(0.9,1.15)},order=[0,1],**kwargs)]
+def aug_shift_4(**kwargs)->list:
+    # filtered_kwargs={k:v for k,v in kwargs.items() if k not in ['backend','fit_output']} # PiecewiseAffine does not support these
+    return aug_shift_1(**kwargs)+[iaa.Affine(rotate=(-45,45),shear=(-15,15),scale={"x":(0.85,1.2),"y":(0.85,1.2)},order=[0,1],**kwargs),
+        iaa.PiecewiseAffine(scale=(0.00,0.03),**kwargs)]
+
+## decorative, not moving/shifting places. suitable for original RGB image ##
+def aug_decor_1(**kwargs)->list: return [iaa.Multiply((0.9,1.1))]
+def aug_decor_2(**kwargs)->list: return [iaa.OneOf([iaa.Multiply((0.8,1.2)),iaa.ContrastNormalization((0.9,1.1),per_channel=True),iaa.Grayscale(alpha=(0.0,0.25)),iaa.AddToHueAndSaturation((-14,14))])]
+def aug_decor_3(**kwargs)->list: return aug_decor_2()+[iaa.OneOf([iaa.GaussianBlur((0,0.6)),iaa.Sharpen((0,0.5),lightness=(0.9,1.2)),iaa.Emboss(alpha=(0,0.4),strength=(0.8,1.2))])]
+def aug_decor_4(**kwargs)->list: return aug_decor_2()+[iaa.OneOf([iaa.GaussianBlur((0,1.2)),iaa.Sharpen((0,0.7),lightness=(0.85,1.25)),iaa.Emboss(alpha=(0,0.6),strength=(0.7,1.3))])]
+# def aug_decor_4(**kwargs)->list: return aug_decor_3()+[iaa.JpegCompression((0,50))]
+
+def augment_single(_img,_level,_list,_kwargs):
+    if _level<1: return _img
     else:
-        if 1<=_level<2:
-            aug_det = aug_both_1.to_deterministic() # paired aug
-            return aug_img_1.augment_images(aug_det.augment_images(_img)), aug_det.augment_images(_tgt)
-        elif 2<=_level<3:
-            aug_det=aug_both_2.to_deterministic()  # paired aug
-            return aug_img_2.augment_images(aug_det.augment_images(_img)), aug_det.augment_images(_tgt)
-        elif 3<=_level<4:
-            aug_det=aug_both_3.to_deterministic()  # paired aug
-            return aug_img_3.augment_images(aug_det.augment_images(_img)), aug_det.augment_images(_tgt)
-        else:
-            aug_det=aug_both_4.to_deterministic()  # paired aug
-            return aug_img_4.augment_images(aug_det.augment_images(_img)), aug_det.augment_images(_tgt)
-
-
-def augment_image_set(_img,_msks,_level):
-    if _level<1:
-        return _img,_msks
+        level_id=min(math.floor(_level),len(_list))-1
+        return iaa.Sequential(_list[level_id](**_kwargs)).augment_images(_img) if _img.ndim==4 else iaa.Sequential(_list[level_id](**_kwargs)).augment_image(_img)
+def augment_dual(_img,_msk,_level,_list,_kwargs):
+    if _level<1: return _img,_msk
     else:
-        if 1<=_level<2:
-            aug_det=aug_pat_1.to_deterministic()
-            return aug_img_1.augment_image(aug_det.augment_image(_img)),augment_per_channel(aug_det,_msks)
-        elif 2<=_level<3:
-            aug_det=aug_pat_2.to_deterministic()
-            return aug_img_2.augment_image(aug_det.augment_image(_img)),augment_per_channel(aug_det,_msks)
-        elif 3<=_level<4:
-            aug_det=aug_pat_3.to_deterministic()
-            return aug_img_3.augment_image(aug_det.augment_image(_img)),augment_per_channel(aug_det,_msks)
-        else:
-            aug_det=aug_pat_4.to_deterministic()
-            return aug_img_4.augment_image(aug_det.augment_image(_img)),augment_per_channel(aug_det,_msks)
-
-def augment_per_channel(_aug,_msks):
-    for i in range(_msks.shape[-1]):
-        _msks[...,i]=255-_aug.augment_image(255-_msks[...,i]) # inverse background to 255, pad 255, and reverse back
-    return _msks
+        level_id=min(math.floor(_level),len(_list))-1
+        aug_det=iaa.Sequential(_list[level_id](**_kwargs)).to_deterministic()
+        return (aug_det.augment_images(_img),aug_det.augment_images(_msk)) if _img.ndim==4 else\
+               (aug_det.augment_image(_img),aug_det.augment_image(_msk))
 
 
+def augment_single_decor(_img,_level,_kwargs=None):
+    _kwargs=_kwargs or {'None':'None'}
+    return augment_single(_img,_level,_list=[aug_decor_1,aug_decor_2,aug_decor_3,aug_decor_4],_kwargs=_kwargs)
+def augment_single_shift(_img,_level,_kwargs=None):
+    _kwargs=_kwargs or {'mode':'reflect'}
+    return augment_single(_img,_level,_list=[aug_shift_1,aug_shift_2,aug_shift_3,aug_shift_4],_kwargs=_kwargs)
+def augment_dual_shift(_img,_msk,_level,_kwargs=None):
+    _kwargs=_kwargs or {'mode':'reflect'}
+    return augment_dual(_img,_msk,_level,_list=[aug_shift_1,aug_shift_2,aug_shift_3,aug_shift_4],_kwargs=_kwargs)
 
-# Patch # padding white 255
+def augment_image_mask_pair(_img,_msk,_level):
+    _img,_msk=augment_dual_shift(_img,_msk,_level,_kwargs={'mode':'reflect'})
+    _img=augment_single_decor(_img,_level)
+    return _img,_msk
 
-aug_pat_1 = iaa.Sequential([
-    iaa.Fliplr(0.5), iaa.Flipud(0.5),
-])
-aug_pat_2 = iaa.Sequential([
-    iaa.Fliplr(0.5), iaa.Flipud(0.5),
-    iaa.Sometimes(0.6, iaa.Affine(rotate=(-45, 45), mode='constant', cval=255)),
-])
-aug_pat_3 = iaa.Sequential([
-    iaa.Fliplr(0.5), iaa.Flipud(0.5),
-    iaa.Sometimes(0.7, iaa.Affine(
-        scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},
-        rotate=(-45,45), shear=(-10, 10), order=[0, 1],  mode='constant', cval=255
-    )),
-])
-aug_pat_4 = iaa.Sequential([
-    iaa.Fliplr(0.5), iaa.Flipud(0.5),  # flip left-right up-down 50% chance
-    iaa.Sometimes(0.7,iaa.Affine(
-        scale={"x":(0.9,1.1),"y":(0.9,1.1)},
-        rotate=(-45,45),shear=(-10,10),order=[0,1],mode='constant',cval=255
-    )),
-    iaa.Sometimes(0.4,iaa.Sharpen((0.0, 1.0))),
-    iaa.Sometimes(0.2,iaa.ElasticTransformation(alpha=50, sigma=5)),
-])
-
-def augment_patch(_pat,_level):
-    if _level<1:
-        return _pat
-    else:
-        if 1<=_level<2:
-            return aug_pat_1.augment_image(_pat)
-        elif 2<=_level<3:
-            return aug_pat_2.augment_image(_pat)
-        elif 3<=_level<4:
-            return aug_pat_3.augment_image(_pat)
-        else:
-            return aug_pat_4.augment_image(_pat)
+def augment_patch_mask_pair(_img,_msk,_level):
+    _msk=255-_msk # inverse to pad 255 to the outer edge
+    _img,_msk=augment_dual_shift(_img,_msk,min(1,_level),_kwargs={'mode':'constant','cval':255}) # pad white to RGB patches, and insure fit
+    _img=augment_single_decor(_img,min(2,_level)) # milder augmentations on patches
+    _img_max=np.max(_img)
+    # if _img_max!=255: print(_img_max)
+    return 255-_img_max+_img, 255-_msk

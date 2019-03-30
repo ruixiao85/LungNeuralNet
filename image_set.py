@@ -26,6 +26,8 @@ class MetaInfo:
         self.col_start = ci
         self.col_end = co
 
+        self.data=None
+
     def __str__(self):
         return self.file_name
 
