@@ -172,20 +172,21 @@ def augment_image_mask_pair(_img,_msk,_level):
 
 def augment_patch_mask_pair(_img,_msk,_level):
     # milder simplier approach
-    _img,_msk=augment_dual_shift(_img,255-_msk,min(1,_level),_pad_type=1) # 1 white pad RGB patches and inversed mask, and insure fit
-    _img=augment_single_decor(_img,min(2,_level)) # milder augmentations on patches
+    # _img,_msk=augment_dual_shift(_img,255-_msk,min(1,_level),_pad_type=1) # 1 white pad RGB patches and inversed mask, and insure fit
+    # _img=augment_single_decor(_img,min(2,_level)) # milder augmentations on patches
+    # if _img_max!=255: print(_img_max)
+    # return 255-_img_max+_img, 255-_msk
 
     # normal but pad->crop approach
-    # row,col,_=_img.shape
-    # length=(row**2+col**2)**0.5
-    # rp,cp=(length-row)//2,(length-col)//2
-    # _img=np.pad(_img,((rp,length-row-rp),(cp,length-col-cp)),mode='constant',constant_values=255)
-    # _msk=np.pad(_msk,((rp,length-row-rp),(cp,length-col-cp)),mode='constant',constant_values=0)
-    # _img,_msk=augment_dual_shift(_img,255-_msk,_level,_pad_type=1) # 1 white pad RGB patches and inversed mask, and insure fit
-    # _img=augment_single_decor(_img,_level) # milder augmentations on patches
-    # y1,x1,y2,x2=extract_bboxes(_msk)[0]
-    # _img,_msk=_img[y1:y2,x1:x2,...],_msk[y1:y2,x1:x2,...]
-
+    row,col,_=_img.shape
+    length=math.ceil((row**2+col**2)**0.5)
+    rp,cp=(length-row)//2,(length-col)//2
+    _img=np.pad(_img,pad_width=((rp,rp),(cp,cp),(0,0)),mode='constant',constant_values=255)
+    _msk=np.pad(_msk,pad_width=((rp,rp),(cp,cp),(0,0)),mode='constant',constant_values=0)
+    _img,_msk=augment_dual_shift(_img,(255-_msk).astype(np.bool),_level,_pad_type=1) # 1 white pad RGB patches and inversed mask, and insure fit
+    _img=augment_single_decor(_img,_level) # milder augmentations on patches
+    _msk=255-255*(_msk.astype(np.uint8)) # inverse back
+    y1,x1,y2,x2=extract_bboxes(_msk)[0]
+    _img,_msk=_img[y1:y2,x1:x2,...],_msk[y1:y2,x1:x2,...]
     _img_max=np.max(_img)
-    # if _img_max!=255: print(_img_max)
-    return 255-_img_max+_img, 255-_msk
+    return 255-_img_max+_img, _msk
