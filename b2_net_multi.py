@@ -22,7 +22,7 @@ from c2_mrcnn_matterport import norm_boxes_graph,parse_image_meta_graph,Detectio
 from image_set import ImageSet,ViewSet,PatchSet
 from osio import mkdir_ifexist,to_excel_sheet
 from postprocess import g_kern_rect,draw_text,draw_detection,morph_close
-from preprocess import prep_scale,read_image,read_resize,augment_image_mask_pair,augment_patch_mask_pair,augment_single_decor,augment_single_shift
+from preprocess import prep_scale,read_image,read_resize,AugPatchMask
 
 
 class BaseNetM(Config):
@@ -424,7 +424,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
         self.pair=pair
         self.cfg=pair.cfg
         self.getitemfun,self._active_class_ids,self._anchors=None,None,None
-        self.aug_value=aug_value
+        self.aug=AugPatchMask(aug_value)
         self.target_list=tgt_list
         self.view_coord=view_coord
         self.is_val=view_coord[0] in pair.img_set.val_view
@@ -456,7 +456,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
             this_img,this_cls,this_msk=self.blend_image_patch(vc,verbose=1) # always regenerate
             # this_img,this_cls,this_msk=vc.data=vc.data or self.blend_image_patch(vc) # reuse previously generated
             # cv2.imwrite("mult_pre_img.jpg",this_img); cv2.imwrite("mult_pre_msk.jpg",this_msk[...,0:3])
-            this_img=augment_single_decor(this_img,_level=self.aug_value)  # integer N: a <= N <= b.
+            this_img=self.aug.decor1(this_img)  # integer N: a <= N <= b.
             # cv2.imwrite("mult_post_img.jpg",this_img); cv2.imwrite("mult_post_msk.jpg",this_msk[...,0:3])
             this_bbox=extract_bboxes(this_msk)
             if self.cfg.mini_mask_shape is not None:
@@ -528,7 +528,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
         std_diff=kwargs.get('std_diff',10)  # original area should be cleaner, lower std (spot_std-patch_std<diff), pos-val: accept contrasty background
         img=np.copy(self.pair.img_set.get_image(view))
         # cv2.imwrite("multi_%s_pre.jpg"%view.file_name,img)
-        img=augment_single_shift(img,self.aug_value)
+        img=self.aug.shift1(img)
         # cv2.imwrite("multi_%s_shift.jpg"%view.file_name,img)
         area=self.cfg.row_in*self.cfg.col_in/self.cfg.target_scale
         pool=list(range(0,self.cfg.num_targets))+add_weight # equal chance, +weight to some category
@@ -545,7 +545,7 @@ class ImagePatchGenerator(keras.utils.Sequence):
                 colpos=random.uniform(0,1)
                 pat_img,pat_msk=the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view)[...,np.newaxis]
                 # cv2.imwrite(pch_view.image_name+"_pimg_0.jpg",pat_img);cv2.imwrite(pch_view.image_name+"_pmsk_0.jpg",pat_msk)
-                pat_img,pat_msk=augment_patch_mask_pair(pat_img,pat_msk,self.aug_value) # only allow minimal augmentation, preverse [H,W,C]
+                pat_img,pat_msk=self.aug.shift2_decor1(pat_img,pat_msk) # only allow minimal augmentation, preverse [H,W,C]
                 # cv2.imwrite(pch_view.image_name+"_pimg_%d.jpg"%self.aug_value,pat_img);cv2.imwrite(pch_view.image_name+"_pmsk_%d.jpg"%self.aug_value,pat_msk)
                 p_row,p_col,_=pat_img.shape # insure fit may change image size, so get the updated size
                 p_gray=np.mean(pat_img,axis=-1,keepdims=True)  # stats based on grayscale

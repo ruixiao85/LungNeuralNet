@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 
 from osio import mkdir_ifexist,to_excel_sheet
-from preprocess import augment_image_mask_pair,prep_scale,read_image
+from preprocess import prep_scale,read_image,AugImageMask
 from postprocess import g_kern_rect,draw_text
 
 class BaseNetU(Config):
@@ -125,7 +125,6 @@ class BaseNetU(Config):
             df['time']=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
             df.to_csv(self.filename+".csv",mode="a",header=(not os.path.exists(self.filename+".csv")))
             self.find_best_models(self.filename+'^*^.h5')  # remove unnecessary networks
-        del self.net
 
     def predict(self,pair,pred_dir):
         self.build_net(is_train=False)
@@ -210,7 +209,6 @@ class BaseNetU(Config):
         for i,note in [(0,'_area'),(1,'_count')]:
             df=pd.DataFrame(res_grp[...,i],index=batch.keys(),columns=pair.targets*pair.cfg.dep_out)
             to_excel_sheet(df,xls_file,pair.origin+note+"_sum")
-        del self.net
 
 class ImageMaskPair:
     def __init__(self,cfg:BaseNetU,wd,origin,targets,is_train):
@@ -266,7 +264,7 @@ class ImageMaskGenerator(keras.utils.Sequence):
         self.cfg=pair.cfg
         self.target_list=tgt_list
         self.is_train=self.cfg.is_train
-        self.aug_value=aug_value
+        self.aug=AugImageMask(aug_value)
         self.view_coord=view_coord
         self.indexes=None
         self.on_epoch_end()
@@ -285,7 +283,7 @@ class ImageMaskGenerator(keras.utils.Sequence):
                 for ti,tgt in enumerate(self.target_list):
                     _tgt[vi, ..., ti] = self.pair.msk_set[ti].get_mask(vc)
             # cv2.imwrite("pair_img_0.jpg",_img[0]); cv2.imwrite("pair_msk_0.jpg",_tgt[0,...,0:3])
-            _img, _tgt = augment_image_mask_pair(_img, _tgt, self.aug_value)  # integer N: a <= N <= b.
+            _img, _tgt = self.aug.shift2_decor1(_img,_tgt)  # integer N: a <= N <= b.
             # cv2.imwrite("pair_img_1.jpg",_img[0]); cv2.imwrite("pair_msk_1.jpg",_tgt[0,...,0:3])
             return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
         else:

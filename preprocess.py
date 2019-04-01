@@ -112,81 +112,70 @@ def extract_pad_image(lg_img, r0, r1, c0, c1):
     else:
         return lg_img[r0:r1, c0:c1, ...]
 
-## shifting, suitable to apply to image-mask pairs ##
-pad_params=[
-    {'mode':'reflect'}, # 0 reflect
-    {'mode':'constant','cval':255}, # 1 white
-    # {'mode':'constant','cval':0}, # 2 black
-]
-cache_size=2 # >=size of pad_params
-@lru_cache(maxsize=cache_size,typed=False)
-def aug_shift_1(pad_type)->list: return [iaa.Fliplr(0.5),iaa.Flipud(0.5)]
-@lru_cache(maxsize=cache_size,typed=False)
-def aug_shift_2(pad_type)->list: return aug_shift_1(pad_type)+[iaa.Affine(scale={"x":(0.95,1.1),"y":(0.95,1.1)},order=[0,1],**pad_params[pad_type])]
-@lru_cache(maxsize=cache_size,typed=False)
-def aug_shift_3(pad_type)->list: return aug_shift_2(pad_type)+[iaa.OneOf([iaa.Affine(rotate=(-25,25),**pad_params[pad_type]), iaa.Affine(shear=(-5,5),**pad_params[pad_type])])]
-@lru_cache(maxsize=cache_size,typed=False)
-def aug_shift_4(pad_type)->list:
-    # filtered_kwargs={k:v for k,v in kwargs.items() if k not in ['backend','fit_output']} # PiecewiseAffine does not support these
-    return aug_shift_2(pad_type)+[iaa.OneOf([iaa.Affine(rotate=(-45,45),**pad_params[pad_type]), iaa.Affine(shear=(-8,8),**pad_params[pad_type]),
-                                             iaa.PiecewiseAffine(scale=(0.00,0.02),**pad_params[pad_type])])]
 
-## decorative, not moving/shifting places. suitable for original RGB image ##
-@lru_cache(maxsize=cache_size,typed=False)
-def aug_decor_1(pad_type)->list: return [iaa.Multiply((0.9,1.12))]
-@lru_cache(maxsize=cache_size,typed=False)
-def aug_decor_2(pad_type)->list: return [iaa.OneOf([iaa.Multiply((0.9,1.12)),iaa.ContrastNormalization((0.93,1.1),per_channel=True),iaa.Grayscale(alpha=(0.0,0.14)),iaa.AddToHueAndSaturation((-9,9))])]
-@lru_cache(maxsize=cache_size,typed=False)
-def aug_decor_3(pad_type)->list: return aug_decor_2(pad_type)+[iaa.OneOf([iaa.GaussianBlur((0,0.3)),iaa.Sharpen((0,0.3),lightness=(0.95,1.1)),iaa.Emboss(alpha=(0,0.2),strength=(0.9,1.1))])]
-@lru_cache(maxsize=cache_size,typed=False)
-def aug_decor_4(pad_type)->list: return aug_decor_2(pad_type)+[iaa.OneOf([iaa.GaussianBlur((0,0.6)),iaa.Sharpen((0,0.3),lightness=(0.9,1.1)),iaa.Emboss(alpha=(0,0.3),strength=(0.9,1.1))])]
-# def aug_decor_4(pad_type)->list: return aug_decor_3()+[iaa.JpegCompression((0,50))]
+class AugBase:
+    def __init__(self,level,pad_params):
+        self.level=level # aug_value higher=harsher
+        self.pad_params=pad_params # {'mode':'constant','cval':0} # default pad black
+        self.aug_shift=self.prep_shift()
+        self.aug_decor=self.prep_decor()
 
-def augment_single(_img,_level,_list,_pad_type):
-    if _level<1: return _img
-    else:
-        level_idx=min(math.floor(_level),len(_list))-1
-        return iaa.Sequential(_list[level_idx](_pad_type)).augment_images(_img) if _img.ndim==4 else iaa.Sequential(_list[level_idx](_pad_type)).augment_image(_img)
-def augment_dual(_img,_msk,_level,_list,_pad_type):
-    if _level<1: return _img,_msk
-    else:
-        level_idx=min(math.floor(_level),len(_list))-1
-        aug_det=iaa.Sequential(_list[level_idx](_pad_type)).to_deterministic()
-        return (aug_det.augment_images(_img),aug_det.augment_images(_msk)) if _img.ndim==4 else\
-               (aug_det.augment_image(_img),aug_det.augment_image(_msk))
+    def prep_shift(self):
+        if self.level<1: return None
+        if self.level<2: return [iaa.Fliplr(0.5),iaa.Flipud(0.5)]
+        if self.level<3: return [iaa.Fliplr(0.5),iaa.Flipud(0.5),iaa.Affine(scale={"x":(0.95,1.1),"y":(0.95,1.1)},order=[0,1],**self.pad_params)]
+        if self.level<4: return [iaa.Fliplr(0.5),iaa.Flipud(0.5),iaa.Affine(scale={"x":(0.95,1.1),"y":(0.95,1.1)},**self.pad_params),
+                                iaa.OneOf([iaa.Affine(rotate=(-25,25),**self.pad_params),iaa.Affine(shear=(-5,5),**self.pad_params)])]
+        return [iaa.Fliplr(0.5),iaa.Flipud(0.5),iaa.Affine(scale={"x":(0.95,1.1),"y":(0.95,1.1)},**self.pad_params),
+                iaa.OneOf([iaa.Affine(rotate=(-45,45),**self.pad_params),iaa.Affine(shear=(-8,8),**self.pad_params),
+                iaa.PiecewiseAffine(scale=(0.00,0.02),**self.pad_params)])]
 
+    def prep_decor(self):
+        if self.level<1: return None
+        if self.level<2: return [iaa.Multiply((0.9,1.12))]
+        if self.level<3: return [iaa.OneOf([iaa.Multiply((0.9,1.12)),iaa.ContrastNormalization((0.93,1.1),per_channel=True),iaa.Grayscale(alpha=(0.0,0.14)),iaa.AddToHueAndSaturation((-9,9))])]
+        if self.level<4: return [iaa.OneOf([iaa.Multiply((0.9,1.12)),iaa.ContrastNormalization((0.93,1.1),per_channel=True),iaa.Grayscale(alpha=(0.0,0.14)),iaa.AddToHueAndSaturation((-9,9))]),
+                                iaa.OneOf([iaa.GaussianBlur((0,0.3)),iaa.Sharpen((0,0.3),lightness=(0.95,1.1)),iaa.Emboss(alpha=(0,0.2),strength=(0.9,1.1))])]
+        return [iaa.OneOf([iaa.Multiply((0.9,1.12)),iaa.ContrastNormalization((0.93,1.1),per_channel=True),iaa.Grayscale(alpha=(0.0,0.14)),iaa.AddToHueAndSaturation((-9,9))]),
+                iaa.OneOf([iaa.GaussianBlur((0,0.6)),iaa.Sharpen((0,0.3),lightness=(0.9,1.1)),iaa.Emboss(alpha=(0,0.3),strength=(0.9,1.1))])]
+        # decor=aug_decor_3()+[iaa.JpegCompression((0,50))]
 
-def augment_single_decor(_img,_level,_pad_type=0):
-    return augment_single(_img,_level,_list=[aug_decor_1,aug_decor_2,aug_decor_3,aug_decor_4],_pad_type=_pad_type)
-def augment_single_shift(_img,_level,_pad_type=0):
-    return augment_single(_img,_level,_list=[aug_shift_1,aug_shift_2,aug_shift_3,aug_shift_4],_pad_type=_pad_type)
-def augment_dual_shift(_img,_msk,_level,_pad_type=0):
-    return augment_dual(_img,_msk,_level,_list=[aug_shift_1,aug_shift_2,aug_shift_3,aug_shift_4],_pad_type=_pad_type)
+    def decor1(self,_img):
+        if self.aug_decor is None: return _img
+        return iaa.Sequential(self.aug_decor).augment_images(_img) if _img.ndim==4 else iaa.Sequential(self.aug_decor).augment_image(_img)
 
-def augment_image_mask_pair(_img,_msk,_level):
-    _img,_msk=augment_dual_shift(_img,_msk,_level,_pad_type=0) # 0 reflect to positively-mark background
-    # _img,_msk=augment_dual_shift(_img,255-_msk,_level,_pad_type=1) # 1 white
-    _img=augment_single_decor(_img,_level)
-    return _img,_msk # reflect
-    # return _img,255-_msk # constant
+    def shift1(self,_img):
+        if self.aug_shift is None: return _img
+        return iaa.Sequential(self.aug_shift).augment_images(_img) if _img.ndim==4 else iaa.Sequential(self.aug_shift).augment_image(_img)
 
-def augment_patch_mask_pair(_img,_msk,_level):
-    # milder simplier approach
-    # _img,_msk=augment_dual_shift(_img,255-_msk,min(1,_level),_pad_type=1) # 1 white pad RGB patches and inversed mask, and insure fit
-    # _img=augment_single_decor(_img,min(2,_level)) # milder augmentations on patches
-    # if _img_max!=255: print(_img_max)
-    # return 255-_img_max+_img, 255-_msk
+    def shift2(self,_img,_msk):
+        if self.aug_shift is None: return _img,_msk
+        aug_det=iaa.Sequential(self.aug_shift).to_deterministic()
+        return (aug_det.augment_images(_img),aug_det.augment_images(_msk)) if _img.ndim==4 else (aug_det.augment_image(_img),aug_det.augment_image(_msk))
 
-    # normal but pad->crop approach
-    row,col,_=_img.shape
-    length=math.ceil((row**2+col**2)**0.5)
-    rp,cp=(length-row)//2,(length-col)//2
-    _img=np.pad(_img,pad_width=((rp,rp),(cp,cp),(0,0)),mode='constant',constant_values=255)
-    _msk=np.pad(_msk,pad_width=((rp,rp),(cp,cp),(0,0)),mode='constant',constant_values=0)
-    _img,_msk=augment_dual_shift(_img,(255-_msk).astype(np.bool),_level,_pad_type=1) # 1 white pad RGB patches and inversed mask, and insure fit
-    _img=augment_single_decor(_img,_level) # milder augmentations on patches
-    _msk=255-255*(_msk.astype(np.uint8)) # inverse back
-    y1,x1,y2,x2=extract_bboxes(_msk)[0]
-    _img,_msk=_img[y1:y2,x1:x2,...],_msk[y1:y2,x1:x2,...]
-    _img_max=np.max(_img)
-    return 255-_img_max+_img, _msk
+    def shift2_decor1(self,_img,_msk):
+        _img,_msk=self.shift2(_img,_msk)  # depending on pad_params
+        _img=self.decor1(_img)
+        return _img,_msk
+
+class AugImageMask(AugBase):
+    def __init__(self,level):
+        super(AugImageMask,self).__init__(level,pad_params={'mode':'reflect'})  # 0 reflect
+
+class AugPatchMask(AugBase):
+    def __init__(self,level):
+        super(AugPatchMask,self).__init__(level,pad_params={'mode':'constant','cval':255})  # 1 white
+
+    def pad_shift2_decor1_crop(self,_img,_msk):
+        row,col,_=_img.shape
+        length=math.ceil((row**2+col**2)**0.5)
+        rp,cp=(length-row)//2,(length-col)//2
+        _img=np.pad(_img,pad_width=((rp,rp),(cp,cp),(0,0)),mode='constant',constant_values=255)
+        _msk=(255-np.pad(_msk,pad_width=((rp,rp),(cp,cp),(0,0)),mode='constant',constant_values=0)).astype(np.bool) # pad zero and inverse
+        _img,_msk=self.shift2_decor1(_img,_msk) # pad white 255
+        _msk=255-255*(_msk.astype(np.uint8))  # inverse back
+        y1,x1,y2,x2=extract_bboxes(_msk)[0]
+        _img,_msk=_img[y1:y2,x1:x2,...],_msk[y1:y2,x1:x2,...]
+        _img_max=np.max(_img)
+        return 255-_img_max+_img,_msk
+
