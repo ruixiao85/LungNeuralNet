@@ -1,21 +1,19 @@
-# LungNeuralNet
-
+<h1>LungNeuralNet</h1>
 We demonstrated that the CNNs, including U-Net and Mask R-CNN, can be instrumental to provide
  i) efficient evaluation of pathological lung lesions;
  ii) detailed characterization of the normal lung histology;
  and iii) precise detection and classification for BALF cells.
  These advanced methods allow improved efficiency and quantification of lung cytology and histopathology.
  
-##Applications of U-Net like architectures
+<h2>Applications of U-Net like architectures</h2>
 
 The convolutional neural network architecture was based on U-Net, Convolutional Networks for Biomedical Image Segmentation.
 http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/
 
-![alt text](resource/train_unet.jpg?raw=true "original Image")
+<img src="resource/train_unet.jpg" alt="original Image">
 
 
-###Lung Pathology 
-
+<h3>Lung Pathology</h3>
 After training on 14 image pairs, the neural network is able to reach >90% accuracy (dice coefficient) in identifying lung parenchymal region and >60% for severe inflammation in the lung in the validation set.
 The prediction results on a separate image, including segmentation mask and area stats, was shown below.
 <dl>
@@ -30,7 +28,7 @@ The prediction results on a separate image, including segmentation mask and area
 ![alt text](2x_field_lung_flu/pred/36_KO_FLU_1_both.jpg?raw=true "severe inflammation in the lung")
 
 
-###Lung Histology 
+<h3>Lung Histology</h3>
 
 After training and validating (3:1) on 16 image pairs, the neural network is able to identify a variety of areas in a normal mouse lung section (equivalent to 10X, cropped from whole slide scan).
 
@@ -57,19 +55,18 @@ The method can be helpful to identify and quantify various structures or tissue 
 </dd>
 
 
-![alt text](10x_scan_lung_smoke/pred/027327_2017-12-05 13_53_29_RA5_greenmark.jpg?raw=true "greem-marked image")
-
+<img src"10x_scan_lung_smoke/pred/027327_2017-12-05 13_53_29_RA5_greenmark.jpg" alt="greem-marked image"/>
 
 <dl>
     <dt>Six-Color Segmentation Map</dt>    
 </dd>
 
 
-![alt text](10x_scan_lung_smoke/pred/027327_2017-12-05 13_53_29_RA5_pred.jpg?raw=true "6 color segmentation Image")
+![alt text](./10x_scan_lung_smoke/pred/027327_2017-12-05 13_53_29_RA5_pred.jpg?raw=true "6 color segmentation Image")
 
 
 
-##Applications of Mask R-CNN
+<h2>Applications of Mask R-CNN</h2>
 
 >Kaiming He, Georgia Gkioxari, Piotr Dollár, Ross Girshick. Mask R-CNN. arXiv:1703.06870. <br/>
 https://github.com/matterport/Mask_RCNN
@@ -80,7 +77,7 @@ MRCNN, based on matterport's implementation, was incorporated and adapted to spl
 ![alt text](resource/train_mrcnn.jpg?raw=true "scheme")
 
 
-###Broncho-alveolar Lavage Fluid Cytology 
+<h3>Broncho-alveolar Lavage Fluid Cytology</h3>
 
 After training and validating (3:1) on 21 background image with 26 lymphocytes, 95 monocytes, and 22 polymorphonuclear leukocytes, the neural network is able to detect and categorize these cell types in a mouse lung bronchoalveolar lavage fluid (20X objective).
 
