@@ -7,10 +7,12 @@ We demonstrated that the CNNs, including U-Net and Mask R-CNN, can be instrument
  These advanced methods allow improved efficiency and quantification of lung cytology and histopathology.
  
 ##Applications of U-Net like architectures
+
 The convolutional neural network architecture was based on U-Net, Convolutional Networks for Biomedical Image Segmentation.
 http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/
 
 ![alt text](resource/train_unet.jpg?raw=true "original Image")
+
 
 ###Lung Pathology 
 
@@ -24,7 +26,9 @@ The prediction results on a separate image, including segmentation mask and area
 |---|---|---|
 | 36_KO_FLU_1.jpg | 836148 | 203466 |
 
+
 ![alt text](2x_field_lung_flu/pred/36_KO_FLU_1_both.jpg?raw=true "severe inflammation in the lung")
+
 
 ###Lung Histology 
 
@@ -52,24 +56,32 @@ The method can be helpful to identify and quantify various structures or tissue 
     <dt>Non-Parenchymal Region Highlighted Image</dt>
 </dd>
 
+
 ![alt text](10x_scan_lung_smoke/pred/027327_2017-12-05 13_53_29_RA5_greenmark.jpg?raw=true "greem-marked image")
+
 
 <dl>
     <dt>Six-Color Segmentation Map</dt>    
 </dd>
 
+
 ![alt text](10x_scan_lung_smoke/pred/027327_2017-12-05 13_53_29_RA5_pred.jpg?raw=true "6 color segmentation Image")
 
 
+
 ##Applications of Mask R-CNN
+
 >Kaiming He, Georgia Gkioxari, Piotr Dollár, Ross Girshick. Mask R-CNN. arXiv:1703.06870. <br/>
 https://github.com/matterport/Mask_RCNN
 
 MRCNN, based on matterport's implementation, was incorporated and adapted to split/merge tiles from large image, simulate bronchoalveolar lavage from background & representative cell images, and batch-evaluate mean average precisions.
 
+
 ![alt text](resource/train_mrcnn.jpg?raw=true "scheme")
 
+
 ###Broncho-alveolar Lavage Fluid Cytology 
+
 After training and validating (3:1) on 21 background image with 26 lymphocytes, 95 monocytes, and 22 polymorphonuclear leukocytes, the neural network is able to detect and categorize these cell types in a mouse lung bronchoalveolar lavage fluid (20X objective).
 
 ![alt text](resource/mrcnn_simulate.jpg?raw=true "train with simulated images")
