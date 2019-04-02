@@ -3,177 +3,45 @@
 The convolutional neural network architecture was based on U-Net, Convolutional Networks for Biomedical Image Segmentation.
 http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/
 
+![alt text](../resource/train_unet.jpg?raw=true "original Image")
+
 After training and validating (3:1) on 16 image pairs, the neural network is able to identify a variety of areas in a normal mouse lung section (equivalent to 10X, cropped from whole slide scan).
 
 UNet was modified for larger inputs and to learn both local details (particularly helpful for small blood vessels) and general spatial context (valuable for learning the background). Each label was trained separately into individual neural network with sigmoid output function and loss function with combination of binary crossentropy and dice loss. This will 1) allow each network to function separately, 2) concentrate the computational power on each category, and 3) avoid the imbalance problem that may occur to softmax output and multi-clas crossentropy loss.  
-With one day of training, the accuracy as indicated by dice coefficient has reached to more than 80% for each category.<br/>
->background: >97.91% <br/>
-conducting airway: >91.82% <br/>
-connective tissue: >87.41% <br/>
-large blood vessel: >91.86% <br/>
-respiratory airway: >97.85% <br/>
-small blood vessel: >81.55% <br/>
+With one day of training, the accuracy as indicated by dice coefficient has reached to more than 80% for most categories.<br/>
 
-Since these categories should constitute 100% of the image, the combined output can be further processed with softmax or argmax to select the category/label with the highest probability.
+><b>single-class (sigmoid) dice coefficient:</b> <br/>
+background: 97% <br/>
+conducting airway: 84% <br/>
+connective tissue: 83% <br/>
+large blood vessel: 78% <br/>
+respiratory airway: 97% <br/>
+small blood vessel: 63% <br/>
+
+Since these categories should constitute 100% of the image and are mutually exclusive, the combined output can be further processed with softmax to select the category/label with the highest probability.
+
+><b>multi-class (softmax) accuracy:</b><br/> 96%
 
 The method can be helpful to identify and quantify various structures or tissue types in the lung and extensible to developmental abnormality or diseased areas.
 
-Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia University Medical Center
 
 <dl>
     <dt>Original Image</dt>
 </dl>
 
-<img src='pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpg'/>
+![alt text](pred/027327_2017-12-05 13_53_29_RA5_original.jpg?raw=true "original image")
 
 <dl>
-    <dt>Processed Image</dt>
-    <dd>1296x1296, multiple runs with >2 times overlapping factor, applied center-weighted gaussian kernel and merged together</dl>
+    <dt>Non-Parenchymal Region Highlighted Image</dt>
 </dd>
 
-<img src='pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpe'/>
+![alt text](pred/027327_2017-12-05 13_53_29_RA5_greenmark.jpg?raw=true "greem-marked image")
 
-# Neural Network Summary
-```
-__________________________________________________________________________________________________
-Layer (type)                    Output Shape         Param #     Connected to                     
-==================================================================================================
-input_1 (InputLayer)            (None, 1296, 1296, 3 0                                            
-__________________________________________________________________________________________________
-pre0 (Conv2D)                   (None, 1296, 1296, 6 1792        input_1[0][0]                    
-__________________________________________________________________________________________________
-dconv0 (Conv2D)                 (None, 1296, 1296, 6 36928       pre0[0][0]                       
-__________________________________________________________________________________________________
-dsamp1 (MaxPooling2D)           (None, 648, 648, 64) 0           dconv0[0][0]                     
-__________________________________________________________________________________________________
-dproc1 (Conv2D)                 (None, 648, 648, 96) 55392       dsamp1[0][0]                     
-__________________________________________________________________________________________________
-dconv1 (Conv2D)                 (None, 648, 648, 96) 83040       dproc1[0][0]                     
-__________________________________________________________________________________________________
-dsamp2 (MaxPooling2D)           (None, 324, 324, 96) 0           dconv1[0][0]                     
-__________________________________________________________________________________________________
-dproc2 (Conv2D)                 (None, 324, 324, 128 110720      dsamp2[0][0]                     
-__________________________________________________________________________________________________
-dconv2 (Conv2D)                 (None, 324, 324, 128 147584      dproc2[0][0]                     
-__________________________________________________________________________________________________
-dsamp3 (MaxPooling2D)           (None, 162, 162, 128 0           dconv2[0][0]                     
-__________________________________________________________________________________________________
-dproc3 (Conv2D)                 (None, 162, 162, 196 225988      dsamp3[0][0]                     
-__________________________________________________________________________________________________
-dconv3 (Conv2D)                 (None, 162, 162, 196 345940      dproc3[0][0]                     
-__________________________________________________________________________________________________
-dsamp4 (MaxPooling2D)           (None, 81, 81, 196)  0           dconv3[0][0]                     
-__________________________________________________________________________________________________
-dproc4 (Conv2D)                 (None, 81, 81, 256)  451840      dsamp4[0][0]                     
-__________________________________________________________________________________________________
-dconv4 (Conv2D)                 (None, 81, 81, 256)  590080      dproc4[0][0]                     
-__________________________________________________________________________________________________
-dsamp5 (MaxPooling2D)           (None, 27, 27, 256)  0           dconv4[0][0]                     
-__________________________________________________________________________________________________
-dproc5 (Conv2D)                 (None, 27, 27, 256)  590080      dsamp5[0][0]                     
-__________________________________________________________________________________________________
-dconv5 (Conv2D)                 (None, 27, 27, 256)  590080      dproc5[0][0]                     
-__________________________________________________________________________________________________
-dsamp6 (MaxPooling2D)           (None, 9, 9, 256)    0           dconv5[0][0]                     
-__________________________________________________________________________________________________
-dproc6 (Conv2D)                 (None, 9, 9, 256)    590080      dsamp6[0][0]                     
-__________________________________________________________________________________________________
-dconv6 (Conv2D)                 (None, 9, 9, 256)    590080      dproc6[0][0]                     
-__________________________________________________________________________________________________
-dsamp7 (MaxPooling2D)           (None, 3, 3, 256)    0           dconv6[0][0]                     
-__________________________________________________________________________________________________
-dproc7 (Conv2D)                 (None, 3, 3, 256)    590080      dsamp7[0][0]                     
-__________________________________________________________________________________________________
-dconv7 (Conv2D)                 (None, 3, 3, 256)    590080      dproc7[0][0]                     
-__________________________________________________________________________________________________
-dsamp8 (MaxPooling2D)           (None, 1, 1, 256)    0           dconv7[0][0]                     
-__________________________________________________________________________________________________
-dproc8 (Conv2D)                 (None, 1, 1, 256)    590080      dsamp8[0][0]                     
-__________________________________________________________________________________________________
-ujoin8 (Concatenate)            (None, 1, 1, 512)    0           dproc8[0][0]                     
-                                                                 dsamp8[0][0]                     
-__________________________________________________________________________________________________
-usamp7 (UpSampling2D)           (None, 3, 3, 512)    0           ujoin8[0][0]                     
-__________________________________________________________________________________________________
-umerge7 (Concatenate)           (None, 3, 3, 768)    0           usamp7[0][0]                     
-                                                                 dconv7[0][0]                     
-__________________________________________________________________________________________________
-uproc7 (Conv2D)                 (None, 3, 3, 256)    1769728     umerge7[0][0]                    
-__________________________________________________________________________________________________
-ujoin7 (Concatenate)            (None, 3, 3, 512)    0           uproc7[0][0]                     
-                                                                 dsamp7[0][0]                     
-__________________________________________________________________________________________________
-usamp6 (UpSampling2D)           (None, 9, 9, 512)    0           ujoin7[0][0]                     
-__________________________________________________________________________________________________
-umerge6 (Concatenate)           (None, 9, 9, 768)    0           usamp6[0][0]                     
-                                                                 dconv6[0][0]                     
-__________________________________________________________________________________________________
-uproc6 (Conv2D)                 (None, 9, 9, 256)    1769728     umerge6[0][0]                    
-__________________________________________________________________________________________________
-ujoin6 (Concatenate)            (None, 9, 9, 512)    0           uproc6[0][0]                     
-                                                                 dsamp6[0][0]                     
-__________________________________________________________________________________________________
-usamp5 (UpSampling2D)           (None, 27, 27, 512)  0           ujoin6[0][0]                     
-__________________________________________________________________________________________________
-umerge5 (Concatenate)           (None, 27, 27, 768)  0           usamp5[0][0]                     
-                                                                 dconv5[0][0]                     
-__________________________________________________________________________________________________
-uproc5 (Conv2D)                 (None, 27, 27, 256)  1769728     umerge5[0][0]                    
-__________________________________________________________________________________________________
-ujoin5 (Concatenate)            (None, 27, 27, 512)  0           uproc5[0][0]                     
-                                                                 dsamp5[0][0]                     
-__________________________________________________________________________________________________
-usamp4 (UpSampling2D)           (None, 81, 81, 512)  0           ujoin5[0][0]                     
-__________________________________________________________________________________________________
-umerge4 (Concatenate)           (None, 81, 81, 768)  0           usamp4[0][0]                     
-                                                                 dconv4[0][0]                     
-__________________________________________________________________________________________________
-uproc4 (Conv2D)                 (None, 81, 81, 256)  1769728     umerge4[0][0]                    
-__________________________________________________________________________________________________
-ujoin4 (Concatenate)            (None, 81, 81, 452)  0           uproc4[0][0]                     
-                                                                 dsamp4[0][0]                     
-__________________________________________________________________________________________________
-usamp3 (UpSampling2D)           (None, 162, 162, 452 0           ujoin4[0][0]                     
-__________________________________________________________________________________________________
-umerge3 (Concatenate)           (None, 162, 162, 648 0           usamp3[0][0]                     
-                                                                 dconv3[0][0]                     
-__________________________________________________________________________________________________
-uproc3 (Conv2D)                 (None, 162, 162, 196 1143268     umerge3[0][0]                    
-__________________________________________________________________________________________________
-ujoin3 (Concatenate)            (None, 162, 162, 324 0           uproc3[0][0]                     
-                                                                 dsamp3[0][0]                     
-__________________________________________________________________________________________________
-usamp2 (UpSampling2D)           (None, 324, 324, 324 0           ujoin3[0][0]                     
-__________________________________________________________________________________________________
-umerge2 (Concatenate)           (None, 324, 324, 452 0           usamp2[0][0]                     
-                                                                 dconv2[0][0]                     
-__________________________________________________________________________________________________
-uproc2 (Conv2D)                 (None, 324, 324, 128 520832      umerge2[0][0]                    
-__________________________________________________________________________________________________
-ujoin2 (Concatenate)            (None, 324, 324, 224 0           uproc2[0][0]                     
-                                                                 dsamp2[0][0]                     
-__________________________________________________________________________________________________
-usamp1 (UpSampling2D)           (None, 648, 648, 224 0           ujoin2[0][0]                     
-__________________________________________________________________________________________________
-umerge1 (Concatenate)           (None, 648, 648, 320 0           usamp1[0][0]                     
-                                                                 dconv1[0][0]                     
-__________________________________________________________________________________________________
-uproc1 (Conv2D)                 (None, 648, 648, 96) 276576      umerge1[0][0]                    
-__________________________________________________________________________________________________
-ujoin1 (Concatenate)            (None, 648, 648, 160 0           uproc1[0][0]                     
-                                                                 dsamp1[0][0]                     
-__________________________________________________________________________________________________
-usamp0 (UpSampling2D)           (None, 1296, 1296, 1 0           ujoin1[0][0]                     
-__________________________________________________________________________________________________
-umerge0 (Concatenate)           (None, 1296, 1296, 2 0           usamp0[0][0]                     
-                                                                 dconv0[0][0]                     
-__________________________________________________________________________________________________
-uproc0 (Conv2D)                 (None, 1296, 1296, 6 129088      umerge0[0][0]                    
-__________________________________________________________________________________________________
-out0 (Conv2D)                   (None, 1296, 1296, 1 65          uproc0[0][0]                     
-==================================================================================================
-Total params: 15,328,605
-Trainable params: 15,328,605
-Non-trainable params: 0
-____________________________________
-```
+<dl>
+    <dt>Six-Color Segmentation Map</dt>    
+</dd>
+
+![alt text](pred/027327_2017-12-05 13_53_29_RA5_pred.jpg?raw=true "6 color segmentation Image")
+
+
+Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia University Medical Center

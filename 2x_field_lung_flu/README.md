@@ -3,37 +3,37 @@
 The convolutional neural network architecture was based on U-Net, Convolutional Networks for Biomedical Image Segmentation.
 http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/
 
-After training on 14 image pairs, the neural network is able to reach 80%~90% accuracy (dice coefficient) in identifying lung parenchymal region and severe inflammation in the lung in the validation set.
-The prediction performed on a new image was shown as an example below.
+![alt text](../resource/train_unet.jpg?raw=true "original Image")
 
-Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia University Medical Center
+After training on 14 image pairs, the neural network is able to reach >90% accuracy (dice coefficient) in identifying lung parenchymal region and >60% for severe inflammation in the lung in the validation set.
+The prediction results on a separate image, including segmentation mask and area stats, was shown below.
+
 
 <dl>
     <dt>Original Image</dt>
-    <dl></dl>
 </dl>
 
-![alt text](pred/Original/36_KO_FLU_1.jpg?raw=true "original Image")
+![alt text](pred/Original_0.2/36_KO_FLU_1.jpg?raw=true "original Image")
 
 <dl>
     <dt>Predicted to be lung parenchymal region</dt>
-    <dd>sum of pixels: 813216 (56% of the entire image)</dd>
+    <dd>sum of pixels: 836148 (57.76% of the entire image)</dd>
 </dl>
 
-![alt text](pred/Parenchyma+0.2_768x768_NetU_Vgg16_6F64-512P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1/36_KO_FLU_1.jpe?raw=true "lung parenchymal region")
+![alt text](pred/36_KO_FLU_1_paren.jpg?raw=true "lung parenchymal region")
 
 <dl>
     <dt>Predicted to be severe inflammation in the lung</dt>
-    <dd>sum of pixels: 279179 (19% of the entire image)</dd>
+    <dd>sum of pixels: 203466 (14.05% of the entire image)</dd>
 </dl>
 
-![alt text](pred/SevereInflammation+0.2_768x768_NetU_Vgg16_6F64-512P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1/36_KO_FLU_1.jpe?raw=true "severe inflammation in the lung")
+![alt text](pred/36_KO_FLU_1_inflam.jpg?raw=true "severe inflammation in the lung")
 
 <dl>
-    <dt>Multi-label overlay</dd>
+    <dt>Multi-label overlay (blue: parenchyma, red: severe inflammation)</dd>
 </dl>
 
-![alt text](pred/Parenchyma,SevereInflamma+0.2_768x768_NetU_Vgg16_6F64-512P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1/36_KO_FLU_1.jpe?raw=true "severe inflammation in the lung")
+![alt text](pred/36_KO_FLU_1_both.jpg?raw=true "severe inflammation in the lung")
 
 
 <dl>
@@ -42,225 +42,150 @@ Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia Unive
 
 |   | Parenchyma  |  SevereInflammation |
 |---|---|---|
-| 36_KO_FLU_1.jpg | 813216 | 279179 |
+| 36_KO_FLU_1.jpg | 836148 | 203466 |
 
 # Training
-![alt text](log/dice.png?raw=true "dice coefficient during training")
-![alt text](log/jac.png?raw=true "jaccard coefficient during training")
+![alt text](2x_dice_lr.jpg?raw=true "dice coefficient and learning rate during training (left: parenchyma, right: severe inflammation")
 ```
-
 Using TensorFlow backend.
-Network specifications: Unet_8F64-256P2-2_Ca3Ca3SDmpSCa3_SSUuCCa33S_EluSigmoidBcedice1
-Found [14] file from [.\LungNeuralNet\2x_field_lung_flu\train\Original]
-Found [84] file from [.\LungNeuralNet\2x_field_lung_flu\train\Original_1.0_512x512]
+Network specifications: NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1
+Found [1] folders start with [Original_] from [.\LungNeuralNet\2x_field_lung_flu\train]
+ Original_0.2 + input images.
+Processing images from folder [Original_0.2] with resize_ratio of 1.0x ...
+Found [0] files recursively matching [*.jpeg] from [.\LungNeuralNet\2x_field_lung_flu\train\Original_0.2]
+No [*.jpeg] files found, splitting [*.jpg] images with [0.33] ratio.
+Found [14] files recursively matching [*.jpg] from [.\LungNeuralNet\2x_field_lung_flu\train\Original_0.2]
+[Original] was split into training [10] and validation [4] set.
+Loading image files (train/val) to memory...
+  12_KO_FLU_1.jpg  18_KO_FLU_1.jpg  18_KO_FLU_2.jpg  36_KO_FLU_2.jpg  39_WT_FLU_2.jpg  40_WT_FLU_1.jpg  40_WT_FLU_2.jpg  6_WT_FLU_2.jpg  6_WT_FLU_3.jpg  7_WT_FLU_1.jpg
+  12_KO_FLU_2.jpg  39_WT_FLU_1.jpg  6_WT_FLU_1.jpg  7_WT_FLU_2.jpg
+ 12_KO_FLU_1.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 18_KO_FLU_1.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 18_KO_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 36_KO_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 39_WT_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 40_WT_FLU_1.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 40_WT_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 6_WT_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 6_WT_FLU_3.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 7_WT_FLU_1.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+Images were divided into [60] views
+ 12_KO_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 39_WT_FLU_1.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 6_WT_FLU_1.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 7_WT_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+Images were divided into [24] views
+Found [1] folders start with [Parenchyma_] from [.\LungNeuralNet\2x_field_lung_flu\train]
+ Parenchyma_0.2 + input images.
+Processing images from folder [Parenchyma_0.2] with resize_ratio of 1.0x ...
+Found [0] files recursively matching [*.jpeg] from [.\LungNeuralNet\2x_field_lung_flu\train\Parenchyma_0.2]
+No [*.jpeg] files found, splitting [*.jpg] images with [0.33] ratio.
+Found [14] files recursively matching [*.jpg] from [.\LungNeuralNet\2x_field_lung_flu\train\Parenchyma_0.2]
+[Parenchyma] was split into training [10] and validation [4] set.
+Loading image files (train/val) to memory...
+  12_KO_FLU_1.jpg  18_KO_FLU_1.jpg  18_KO_FLU_2.jpg  36_KO_FLU_2.jpg  39_WT_FLU_2.jpg  40_WT_FLU_1.jpg  40_WT_FLU_2.jpg  6_WT_FLU_2.jpg  6_WT_FLU_3.jpg  7_WT_FLU_1.jpg
+  12_KO_FLU_2.jpg  39_WT_FLU_1.jpg  6_WT_FLU_1.jpg  7_WT_FLU_2.jpg
+ 12_KO_FLU_1.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 18_KO_FLU_1.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 18_KO_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 36_KO_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 39_WT_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 40_WT_FLU_1.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 40_WT_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 6_WT_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 6_WT_FLU_3.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 7_WT_FLU_1.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+Images were divided into [60] views
+ 12_KO_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 39_WT_FLU_1.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 6_WT_FLU_1.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+ 7_WT_FLU_2.jpg target 768 x 768 (coverage 3.0): original 1040 x 1392 ->  row /2 col /3
+Images were divided into [24] views
+After pairing intersections, train/validation views [60 : 24] -> [60 : 24]
+After low contrast exclusion [0 : 0], train/validation views [60 : 24] ->  [60 : 24]
+Model compiled.
+Training for Parenchyma_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1
+Scanning for files matching Parenchyma_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1^*^.h5 in .\LungNeuralNet\2x_field_lung_flu
+Found [1] files matching [Parenchyma_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1^*^.h5] from [.\LungNeuralNet\2x_field_lung_flu]
+Found 1 previous models, keeping the top 1 (max):
+* 1. Parenchyma_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1^06^0.951^.h5 kept
+Train with some random weights.
+Aiming to surpass the historical best value of val_dice=0.951000
+Epoch 1/50
+ 1/60 [..............................] - ETA: 9:07 - loss: 1.4055 - jac: 0.5704 - dice: 0.7264
+ 2/60 [>.............................] - ETA: 4:48 - loss: 0.9675 - jac: 0.6340 - dice: 0.7742
+ 3/60 [>.............................] - ETA: 3:22 - loss: 0.8347 - jac: 0.5722 - dice: 0.7226
+ ...
+Epoch 00001: val_dice 0.927->-inf->0.951 current best, lr=5.0e-05, not saving to [Parenchyma_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1^01^0.927^.h5]
 ...
-From 84 split into train: 66 views 11 images; validation 18 views 3 images
-Training Images:
-{'7_WT_FLU_2.jpg', '36_KO_FLU_2.jpg', '6_WT_FLU_3.jpg', '40_WT_FLU_1.jpg', '18_KO_FLU_1.jpg', '40_WT_FLU_2.jpg', '12_KO_FLU_1.jpg', '6_WT_FLU_2.jpg', '39_WT_FLU_1.jpg', '18_KO_FLU_2.jpg', '12_KO_FLU_2.jpg'}
-Validation Images:
-{'6_WT_FLU_1.jpg', '39_WT_FLU_2.jpg', '7_WT_FLU_1.jpg'}
-Fitting neural net...
-
-Training 1/5 for Parenchyma_1.0_512x512_Unet_8F64-256P2-2_Ca3Ca3SDmpSCa3_SSUuCCa33S_EluSigmoidBcedice1
-Epoch 1/12
-2018-09-05 18:33:26.302356: I T:\src\github\tensorflow\tensorflow\core\platform\cpu_feature_guard.cc:141] Your CPU supports instructions that this TensorFlow binary was not compiled to use: AVX2
-2018-09-05 18:33:26.476315: I T:\src\github\tensorflow\tensorflow\core\common_runtime\gpu\gpu_device.cc:1405] Found device 0 with properties: 
-name: GeForce GTX 1070 major: 6 minor: 1 memoryClockRate(GHz): 1.7715
-pciBusID: 0000:01:00.0
-totalMemory: 8.00GiB freeMemory: 6.63GiB
-2018-09-05 18:33:26.476607: I T:\src\github\tensorflow\tensorflow\core\common_runtime\gpu\gpu_device.cc:1484] Adding visible gpu devices: 0
-2018-09-05 18:33:27.145461: I T:\src\github\tensorflow\tensorflow\core\common_runtime\gpu\gpu_device.cc:965] Device interconnect StreamExecutor with strength 1 edge matrix:
-2018-09-05 18:33:27.145637: I T:\src\github\tensorflow\tensorflow\core\common_runtime\gpu\gpu_device.cc:971]      0 
-2018-09-05 18:33:27.145747: I T:\src\github\tensorflow\tensorflow\core\common_runtime\gpu\gpu_device.cc:984] 0:   N 
-2018-09-05 18:33:27.145968: I T:\src\github\tensorflow\tensorflow\core\common_runtime\gpu\gpu_device.cc:1097] Created TensorFlow device (/job:localhost/replica:0/task:0/device:GPU:0 with 6398 MB memory) -> physical GPU (device: 0, name: GeForce GTX 1070, pci bus id: 0000:01:00.0, compute capability: 6.1)
-
- 1/66 [..............................] - ETA: 6:51 - loss: 1.8724 - jac: 0.1122 - dice: 0.2018 - dice67: 0.2780 - dice33: 3.9622e-05
- 2/66 [..............................] - ETA: 3:27 - loss: 1.2738 - jac: 0.2575 - dice: 0.3880 - dice67: 0.4322 - dice33: 0.3255    
- 3/66 [>.............................] - ETA: 2:19 - loss: 1.0166 - jac: 0.3665 - dice: 0.5046 - dice67: 0.5481 - dice33: 0.4753
- 4/66 [>.............................] - ETA: 1:45 - loss: 0.9187 - jac: 0.3623 - dice: 0.5081 - dice67: 0.5259 - dice33: 0.5178
- 5/66 [=>............................] - ETA: 1:24 - loss: 0.8577 - jac: 0.3556 - dice: 0.5054 - dice67: 0.5349 - dice33: 0.5542
- 6/66 [=>............................] - ETA: 1:10 - loss: 0.8033 - jac: 0.3780 - dice: 0.5307 - dice67: 0.5617 - dice33: 0.6056
- 7/66 [==>...........................] - ETA: 1:01 - loss: 0.7521 - jac: 0.4211 - dice: 0.5706 - dice67: 0.6035 - dice33: 0.6545
- 8/66 [==>...........................] - ETA: 53s - loss: 0.7249 - jac: 0.4357 - dice: 0.5867 - dice67: 0.6347 - dice33: 0.6976 
- 9/66 [===>..........................] - ETA: 47s - loss: 0.6823 - jac: 0.4733 - dice: 0.6184 - dice67: 0.6652 - dice33: 0.7296
-...
-60/66 [==========================>...] - ETA: 0s - loss: 0.1491 - jac: 0.8636 - dice: 0.9214 - dice67: 0.9199 - dice33: 0.9225
-61/66 [==========================>...] - ETA: 0s - loss: 0.1497 - jac: 0.8635 - dice: 0.9215 - dice67: 0.9193 - dice33: 0.9216
-62/66 [===========================>..] - ETA: 0s - loss: 0.1500 - jac: 0.8639 - dice: 0.9218 - dice67: 0.9195 - dice33: 0.9224
-63/66 [===========================>..] - ETA: 0s - loss: 0.1490 - jac: 0.8647 - dice: 0.9223 - dice67: 0.9200 - dice33: 0.9223
-64/66 [============================>.] - ETA: 0s - loss: 0.1493 - jac: 0.8646 - dice: 0.9223 - dice67: 0.9200 - dice33: 0.9229
-65/66 [============================>.] - ETA: 0s - loss: 0.1484 - jac: 0.8655 - dice: 0.9229 - dice67: 0.9207 - dice33: 0.9236
-66/66 [==============================] - 11s 168ms/step - loss: 0.1524 - jac: 0.8600 - dice: 0.9191 - dice67: 0.9144 - dice33: 0.9096 - val_loss: 0.1784 - val_jac: 0.8517 - val_dice: 0.9183 - val_dice67: 0.9273 - val_dice33: 0.9216
+Epoch 00006: val_dice 0.944->0.944->0.951 less than ideal, lr*0.30=4.5e-06, not saving to [Parenchyma_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1^06^0.944^.h5]
 Epoch 00007: early stopping
-
-Training 2/5 for Parenchyma_1.0_512x512_Unet_8F64-256P2-2_Ca3Ca3SDmpSCa3_SSUuCCa33S_EluSigmoidBcedice1
-...
 ```
 
 # Prediction
 ```
-Found [1] file from [.\LungNeuralNet\2x_field_lung_flu\pred\Original]
-Found [12] file from [.\2x_field_lung_flu\pred\Original_1.0_512x512]
-36_KO_FLU_1_#1040#1392#0#512#0#512#.jpg
-36_KO_FLU_1_#1040#1392#0#512#293#805#.jpg
-36_KO_FLU_1_#1040#1392#0#512#587#1099#.jpg
-36_KO_FLU_1_#1040#1392#0#512#880#1392#.jpg
-36_KO_FLU_1_#1040#1392#264#776#0#512#.jpg
-36_KO_FLU_1_#1040#1392#264#776#293#805#.jpg
-36_KO_FLU_1_#1040#1392#264#776#587#1099#.jpg
-36_KO_FLU_1_#1040#1392#264#776#880#1392#.jpg
-36_KO_FLU_1_#1040#1392#528#1040#0#512#.jpg
-36_KO_FLU_1_#1040#1392#528#1040#293#805#.jpg
-36_KO_FLU_1_#1040#1392#528#1040#587#1099#.jpg
-36_KO_FLU_1_#1040#1392#528#1040#880#1392#.jpg
-Load model and predict to [Parenchyma]...
-Parenchyma_1.0_512x512_Unet_8F64-256P2-2_Ca3Ca3SDmpSCa3_SSUuCCa3Ca3_EluSigmoidBcedice1.h5
+Using TensorFlow backend.
+Network specifications: NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1
+Found [2] folders start with [Original_] from [.\LungNeuralNet\2x_field_lung_flu\pred]
+ Original_0.2 + input images.
+Processing images from folder [Original_0.2] with resize_ratio of 1.0x ...
+Found [0] files recursively matching [*.jpeg] from [.\LungNeuralNet\2x_field_lung_flu\pred\Original_0.2]
+No [*.jpeg] files found, splitting [*.jpg] images with [0.33] ratio.
+Found [1] files recursively matching [*.jpg] from [.\LungNeuralNet\2x_field_lung_flu\pred\Original_0.2]
+[Original] was split into training [1] and validation [0] set.
+Loading image files (train/val) to memory...
+  36_KO_FLU_1.jpg
 
- 1/12 [=>............................] - ETA: 17s
- 3/12 [======>.......................] - ETA: 5s 
- 5/12 [===========>..................] - ETA: 2s
- 7/12 [================>.............] - ETA: 1s
- 9/12 [=====================>........] - ETA: 0s
-11/12 [==========================>...] - ETA: 0s
-12/12 [==============================] - 2s 174ms/step
+ 36_KO_FLU_1.jpg target 768 x 768 (coverage 2.0): original 1040 x 1392 ->  row /2 col /3
+Images were divided into [6] views
+Images were divided into [0] views
 
-Saving predicted results [36_KO_FLU_1.jpg] to folder [Parenchyma_1.0_512x512_Unet_8F64-256P2-2_Ca3Ca3SDmpSCa3_SSUuCCa3Ca3_EluSigmoidBcedice1]...
-36_KO_FLU_1_#1040#1392#0#512#0#512#.jpg
-[  0: Parenchyma] 103938 / 262144  39.65%
-36_KO_FLU_1_#1040#1392#0#512#293#805#.jpg
-[  0: Parenchyma] 150757 / 262144  57.51%
-36_KO_FLU_1_#1040#1392#0#512#587#1099#.jpg
-[  0: Parenchyma] 188507 / 262144  71.91%
-36_KO_FLU_1_#1040#1392#0#512#880#1392#.jpg
-[  0: Parenchyma] 183025 / 262144  69.82%
-36_KO_FLU_1_#1040#1392#264#776#0#512#.jpg
-[  0: Parenchyma] 215833 / 262144  82.33%
-36_KO_FLU_1_#1040#1392#264#776#293#805#.jpg
-[  0: Parenchyma] 214551 / 262144  81.84%
-36_KO_FLU_1_#1040#1392#264#776#587#1099#.jpg
-[  0: Parenchyma] 177790 / 262144  67.82%
-36_KO_FLU_1_#1040#1392#264#776#880#1392#.jpg
-[  0: Parenchyma] 174051 / 262144  66.40%
-36_KO_FLU_1_#1040#1392#528#1040#0#512#.jpg
-[  0: Parenchyma] 124851 / 262144  47.63%
-36_KO_FLU_1_#1040#1392#528#1040#293#805#.jpg
-[  0: Parenchyma] 161558 / 262144  61.63%
-36_KO_FLU_1_#1040#1392#528#1040#587#1099#.jpg
-[  0: Parenchyma] 177674 / 262144  67.78%
-36_KO_FLU_1_#1040#1392#528#1040#880#1392#.jpg
-[  0: Parenchyma] 148933 / 262144  56.81%
+Load model and predict to [Parenchyma,SevereInflamma]...
+Scanning for files matching Parenchyma_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1^*^.h5 in .\LungNeuralNet\2x_field_lung_flu
+Found [1] files matching [Parenchyma_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1^*^.h5] from [.\LungNeuralNet\2x_field_lung_flu]
+Found 1 previous models, keeping the top 1 (max):
+* 1. Parenchyma_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1^06^0.951^.h5 kept
+Parenchyma_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1^06^0.951^.h5
+
+1/6 [====>.........................] - ETA: 20s
+2/6 [=========>....................] - ETA: 8s 
+3/6 [==============>...............] - ETA: 4s
+4/6 [===================>..........] - ETA: 2s
+5/6 [========================>.....] - ETA: 0s
+6/6 [==============================] - 5s 870ms/step
+Scanning for files matching SevereInflammation_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1^*^.h5 in .\LungNeuralNet\2x_field_lung_flu
+Found [1] files matching [SevereInflammation_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1^*^.h5] from [.\LungNeuralNet\2x_field_lung_flu]
+Found 1 previous models, keeping the top 1 (max):
+* 1. SevereInflammation_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1^05^0.923^.h5 kept
+SevereInflammation_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1^05^0.923^.h5
+
+1/6 [====>.........................] - ETA: 1s
+2/6 [=========>....................] - ETA: 0s
+3/6 [==============>...............] - ETA: 0s
+4/6 [===================>..........] - ETA: 0s
+5/6 [========================>.....] - ETA: 0s
+6/6 [==============================] - 1s 223ms/step
+Saving predicted results [36_KO_FLU_1.jpg] to folder [pred\Original-Parenchyma,SevereInflamma_0.2_768x768_NetU_Vgg16_6F64-1024P2-2_Ca3CtUuCtCa3Ca3_TanhReluSigmBced1]...
+36_KO_FLU_1_#1040#1392#0#768#0#768#.jpg
+[  0: Parenchyma] #126 $350404 / $589824  59.41%
+[  1: SevereInflammation] #66 $32634 / $589824  5.53%
+36_KO_FLU_1_#1040#1392#0#768#312#1080#.jpg
+[  0: Parenchyma] #221 $397610 / $589824  67.41%
+[  1: SevereInflammation] #104 $132518 / $589824  22.47%
+36_KO_FLU_1_#1040#1392#0#768#624#1392#.jpg
+[  0: Parenchyma] #220 $388495 / $589824  65.87%
+[  1: SevereInflammation] #100 $121345 / $589824  20.57%
+36_KO_FLU_1_#1040#1392#272#1040#0#768#.jpg
+[  0: Parenchyma] #121 $377949 / $589824  64.08%
+[  1: SevereInflammation] #92 $62182 / $589824  10.54%
+36_KO_FLU_1_#1040#1392#272#1040#312#1080#.jpg
+[  0: Parenchyma] #223 $442101 / $589824  74.95%
+[  1: SevereInflammation] #172 $185313 / $589824  31.42%
+36_KO_FLU_1_#1040#1392#272#1040#624#1392#.jpg
+[  0: Parenchyma] #242 $410661 / $589824  69.62%
+[  1: SevereInflammation] #179 $171898 / $589824  29.14%
 36_KO_FLU_1.jpg
-[  0: Parenchyma] 813216 / 1447680  56.17%
-...
+[  0: Parenchyma] #370 $836148 / $1447680  57.76%
+[  1: SevereInflammation] #210 $203466 / $1447680  14.05%
 ```
-
-# Neural Network Summary
-```
-__________________________________________________________________________________________________
-Layer (type)                    Output Shape         Param #     Connected to                     
-==================================================================================================
-input_1 (InputLayer)            (None, 512, 512, 3)  0                                            
-__________________________________________________________________________________________________
-pre0 (Conv2D)                   (None, 512, 512, 64) 1792        input_1[0][0]                    
-__________________________________________________________________________________________________
-dconv0 (Conv2D)                 (None, 512, 512, 64) 36928       pre0[0][0]                       
-__________________________________________________________________________________________________
-dsamp1 (MaxPooling2D)           (None, 256, 256, 64) 0           dconv0[0][0]                     
-__________________________________________________________________________________________________
-dproc1 (Conv2D)                 (None, 256, 256, 96) 55392       dsamp1[0][0]                     
-__________________________________________________________________________________________________
-dconv1 (Conv2D)                 (None, 256, 256, 96) 83040       dproc1[0][0]                     
-__________________________________________________________________________________________________
-dsamp2 (MaxPooling2D)           (None, 128, 128, 96) 0           dconv1[0][0]                     
-__________________________________________________________________________________________________
-dproc2 (Conv2D)                 (None, 128, 128, 128 110720      dsamp2[0][0]                     
-__________________________________________________________________________________________________
-dconv2 (Conv2D)                 (None, 128, 128, 128 147584      dproc2[0][0]                     
-__________________________________________________________________________________________________
-dsamp3 (MaxPooling2D)           (None, 64, 64, 128)  0           dconv2[0][0]                     
-__________________________________________________________________________________________________
-dproc3 (Conv2D)                 (None, 64, 64, 192)  221376      dsamp3[0][0]                     
-__________________________________________________________________________________________________
-dconv3 (Conv2D)                 (None, 64, 64, 192)  331968      dproc3[0][0]                     
-__________________________________________________________________________________________________
-dsamp4 (MaxPooling2D)           (None, 32, 32, 192)  0           dconv3[0][0]                     
-__________________________________________________________________________________________________
-dproc4 (Conv2D)                 (None, 32, 32, 256)  442624      dsamp4[0][0]                     
-__________________________________________________________________________________________________
-dconv4 (Conv2D)                 (None, 32, 32, 256)  590080      dproc4[0][0]                     
-__________________________________________________________________________________________________
-dsamp5 (MaxPooling2D)           (None, 16, 16, 256)  0           dconv4[0][0]                     
-__________________________________________________________________________________________________
-dproc5 (Conv2D)                 (None, 16, 16, 256)  590080      dsamp5[0][0]                     
-__________________________________________________________________________________________________
-dconv5 (Conv2D)                 (None, 16, 16, 256)  590080      dproc5[0][0]                     
-__________________________________________________________________________________________________
-dsamp6 (MaxPooling2D)           (None, 8, 8, 256)    0           dconv5[0][0]                     
-__________________________________________________________________________________________________
-dproc6 (Conv2D)                 (None, 8, 8, 256)    590080      dsamp6[0][0]                     
-__________________________________________________________________________________________________
-dconv6 (Conv2D)                 (None, 8, 8, 256)    590080      dproc6[0][0]                     
-__________________________________________________________________________________________________
-dsamp7 (MaxPooling2D)           (None, 4, 4, 256)    0           dconv6[0][0]                     
-__________________________________________________________________________________________________
-dproc7 (Conv2D)                 (None, 4, 4, 256)    590080      dsamp7[0][0]                     
-__________________________________________________________________________________________________
-usamp6 (UpSampling2D)           (None, 8, 8, 256)    0           dproc7[0][0]                     
-__________________________________________________________________________________________________
-umerge6 (Concatenate)           (None, 8, 8, 512)    0           usamp6[0][0]                     
-                                                                 dconv6[0][0]                     
-__________________________________________________________________________________________________
-uproc6 (Conv2D)                 (None, 8, 8, 256)    1179904     umerge6[0][0]                    
-__________________________________________________________________________________________________
-usamp5 (UpSampling2D)           (None, 16, 16, 256)  0           uproc6[0][0]                     
-__________________________________________________________________________________________________
-umerge5 (Concatenate)           (None, 16, 16, 512)  0           usamp5[0][0]                     
-                                                                 dconv5[0][0]                     
-__________________________________________________________________________________________________
-uproc5 (Conv2D)                 (None, 16, 16, 256)  1179904     umerge5[0][0]                    
-__________________________________________________________________________________________________
-usamp4 (UpSampling2D)           (None, 32, 32, 256)  0           uproc5[0][0]                     
-__________________________________________________________________________________________________
-umerge4 (Concatenate)           (None, 32, 32, 512)  0           usamp4[0][0]                     
-                                                                 dconv4[0][0]                     
-__________________________________________________________________________________________________
-uproc4 (Conv2D)                 (None, 32, 32, 256)  1179904     umerge4[0][0]                    
-__________________________________________________________________________________________________
-usamp3 (UpSampling2D)           (None, 64, 64, 256)  0           uproc4[0][0]                     
-__________________________________________________________________________________________________
-umerge3 (Concatenate)           (None, 64, 64, 448)  0           usamp3[0][0]                     
-                                                                 dconv3[0][0]                     
-__________________________________________________________________________________________________
-uproc3 (Conv2D)                 (None, 64, 64, 192)  774336      umerge3[0][0]                    
-__________________________________________________________________________________________________
-usamp2 (UpSampling2D)           (None, 128, 128, 192 0           uproc3[0][0]                     
-__________________________________________________________________________________________________
-umerge2 (Concatenate)           (None, 128, 128, 320 0           usamp2[0][0]                     
-                                                                 dconv2[0][0]                     
-__________________________________________________________________________________________________
-uproc2 (Conv2D)                 (None, 128, 128, 128 368768      umerge2[0][0]                    
-__________________________________________________________________________________________________
-usamp1 (UpSampling2D)           (None, 256, 256, 128 0           uproc2[0][0]                     
-__________________________________________________________________________________________________
-umerge1 (Concatenate)           (None, 256, 256, 224 0           usamp1[0][0]                     
-                                                                 dconv1[0][0]                     
-__________________________________________________________________________________________________
-uproc1 (Conv2D)                 (None, 256, 256, 96) 193632      umerge1[0][0]                    
-__________________________________________________________________________________________________
-usamp0 (UpSampling2D)           (None, 512, 512, 96) 0           uproc1[0][0]                     
-__________________________________________________________________________________________________
-umerge0 (Concatenate)           (None, 512, 512, 160 0           usamp0[0][0]                     
-                                                                 dconv0[0][0]                     
-__________________________________________________________________________________________________
-uproc0 (Conv2D)                 (None, 512, 512, 64) 92224       umerge0[0][0]                    
-__________________________________________________________________________________________________
-post0 (Conv2D)                  (None, 512, 512, 64) 36928       uproc0[0][0]                     
-__________________________________________________________________________________________________
-out0 (Conv2D)                   (None, 512, 512, 1)  65          post0[0][0]                      
-==================================================================================================
-Total params: 9,977,569
-Trainable params: 9,977,569
-Non-trainable params: 0
-__________________________________________________________________________________________________
-
-```
+Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia University Medical Center

@@ -1,50 +1,104 @@
 # LungNeuralNet
 
+We demonstrated that the CNNs, including U-Net and Mask R-CNN, can be instrumental to provide
+ i) efficient evaluation of pathological lung lesions;
+ ii) detailed characterization of the normal lung histology;
+ and iii) precise detection and classification for BALF cells.
+ These advanced methods allow improved efficiency and quantification of lung cytology and histopathology.
+ 
+##Applications of U-Net like architectures
 The convolutional neural network architecture was based on U-Net, Convolutional Networks for Biomedical Image Segmentation.
 http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/
 
+![alt text](resource/train_unet.jpg?raw=true "original Image")
 
-# Detect lung inflammation  
+###Lung Pathology 
 
-After training and validating (3:1) on 14 image pairs, the neural network is able to reach 80%~90% accuracy (dice coefficient) in identifying lung parenchymal region and severe inflammation in the lung in the validation set. Area of inflammation normalized by area of parenchymal region can be a good indicator for degree of inflammation.
-
+After training on 14 image pairs, the neural network is able to reach >90% accuracy (dice coefficient) in identifying lung parenchymal region and >60% for severe inflammation in the lung in the validation set.
+The prediction results on a separate image, including segmentation mask and area stats, was shown below.
 <dl>
-    <dt>Original Image</dt>
+    <dt>Multi-label overlay (blue: parenchyma, red: severe inflammation)</dd>
 </dl>
 
-<img src='2x_field_lung_flu/pred/Original/36_KO_FLU_1.jpg'/>
+|   | Parenchyma  |  SevereInflammation |
+|---|---|---|
+| 36_KO_FLU_1.jpg | 836148 | 203466 |
 
-<dl>
-    <dt>Multi-label overlay</dd>
-    <dd>lung parenchymal region: pink<br/>severe inflammation: cyan</dd>
-</dl>
+![alt text](2x_field_lung_flu/pred/36_KO_FLU_1_both.jpg?raw=true "severe inflammation in the lung")
 
-<img src='2x_field_lung_flu/pred/Parenchyma,SevereInflam1.0_512x512_Unet_8F64-256P2-2_Ca3Ca3SDmpSCa3_SSUuCCa3Ca3_EluSigmoidBcedice1/36_KO_FLU_1.jpe'/>
+###Lung Histology 
 
-# Segmentation of mouse lung structure 
-After training and validating (3:1) on 16 image pairs, the neural network is able to identify a variety of areas in a normal mouse lung section (10X equivalent, cropped from whole slide scan).
-The accuracy as indicated by dice coefficient has reached to more than 80% for each category.<br/>
->background: >97.91% <br/>
-conducting airway: >91.82% <br/>
-connective tissue: >87.41% <br/>
-large blood vessel: >91.86% <br/>
-respiratory airway: >97.85% <br/>
-small blood vessel: >81.55% <br/>
+After training and validating (3:1) on 16 image pairs, the neural network is able to identify a variety of areas in a normal mouse lung section (equivalent to 10X, cropped from whole slide scan).
+
+UNet was modified for larger inputs and to learn both local details (particularly helpful for small blood vessels) and general spatial context (valuable for learning the background). Each label was trained separately into individual neural network with sigmoid output function and loss function with combination of binary crossentropy and dice loss. This will 1) allow each network to function separately, 2) concentrate the computational power on each category, and 3) avoid the imbalance problem that may occur to softmax output and multi-clas crossentropy loss.  
+With one day of training, the accuracy as indicated by dice coefficient has reached to more than 80% for most categories.<br/>
+
+><b>single-class (sigmoid) dice coefficient:</b> <br/>
+background: 97% <br/>
+conducting airway: 84% <br/>
+connective tissue: 83% <br/>
+large blood vessel: 78% <br/>
+respiratory airway: 97% <br/>
+small blood vessel: 63% <br/>
+
+Since these categories should constitute 100% of the image and are mutually exclusive, the combined output can be further processed with softmax to select the category/label with the highest probability.
+
+><b>multi-class (softmax) accuracy:</b><br/> 96%
 
 The method can be helpful to identify and quantify various structures or tissue types in the lung and extensible to developmental abnormality or diseased areas.
 
-<dl>
-    <dt>Original Image</dt>
-</dl>
-
-<img src='10x_scan_lung_smoke/pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpg'/>
-
 
 <dl>
-    <dt>Processed Image</dt>
-    <dd>1296x1296, multiple runs with >2 times overlapping factor, applied center-weighted gaussian kernel and merged together</dl>
+    <dt>Non-Parenchymal Region Highlighted Image</dt>
 </dd>
 
-<img src='10x_scan_lung_smoke/pred/Original_Back,Cond,Conn,Larg,Resp,Smal/027327_2017-12-05 13_53_29_RA5.jpe'/>
+![alt text](10x_scan_lung_smoke/pred/027327_2017-12-05 13_53_29_RA5_greenmark.jpg?raw=true "greem-marked image")
+
+<dl>
+    <dt>Six-Color Segmentation Map</dt>    
+</dd>
+
+![alt text](10x_scan_lung_smoke/pred/027327_2017-12-05 13_53_29_RA5_pred.jpg?raw=true "6 color segmentation Image")
+
+
+##Applications of Mask R-CNN
+>Kaiming He, Georgia Gkioxari, Piotr Dollár, Ross Girshick. Mask R-CNN. arXiv:1703.06870. <br/>
+https://github.com/matterport/Mask_RCNN
+
+MRCNN, based on matterport's implementation, was incorporated and adapted to split/merge tiles from large image, simulate bronchoalveolar lavage from background & representative cell images, and batch-evaluate mean average precisions.
+
+![alt text](resource/train_mrcnn.jpg?raw=true "scheme")
+
+###Broncho-alveolar Lavage Fluid Cytology 
+After training and validating (3:1) on 21 background image with 26 lymphocytes, 95 monocytes, and 22 polymorphonuclear leukocytes, the neural network is able to detect and categorize these cell types in a mouse lung bronchoalveolar lavage fluid (20X objective).
+
+![alt text](resource/mrcnn_simulate.jpg?raw=true "train with simulated images")
+  
+Within one day of training, the accuracy represented by mean average precision has reached 75% for all categories. The accuracy is highest for the monocyte category.<br/>
+
+![alt text](20x_pizz mmp13 ko liver/pred/20x_balf_cells.jpg?raw=true "cell detection and categorization results")
+
+<table style="width:100%">
+  <tr>
+    <th>CNN Architecture</th> 
+    <th>mAP</th>
+    <th>Val_mAP</th>
+  </tr>
+  <tr>
+    <td>DenseNet121</td>
+    <td>0.846</td> 
+    <td>0.744</td>
+  </tr>
+  <tr>
+    <td>ResNet50</td>
+    <td>0.848</td>
+    <td>0.750</td>
+  </tr>
+  <tr>
+    <td>Vgg16</td>
+    <td>0.838</td>
+    <td>0.763</td>
+  </tr>
+</table>
 
 Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia University Medical Center
