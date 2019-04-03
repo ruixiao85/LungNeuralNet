@@ -34,12 +34,15 @@ The best results are listed below:
 These methods are helpful for identifing and quantifing various structures or tissue types in the lung and extensible to developmental abnormality or diseased areas.
 
 Original Image
+
 ![alt text](pred/027327_original.jpg?raw=true "original image")
 
 Non-Parenchymal Region Highlighted Image
+
 ![alt text](pred/027327_greenmark.jpg?raw=true "greem-marked image")
 
 Six-Color Segmentation Map
+
 ![alt text](pred/027327_pred.jpg?raw=true "6 color segmentation Image")
 
 Data credits: Jeanine D'Armiento, Monica Goldklang, Kyle Stearns; Columbia University Medical Center

@@ -58,7 +58,7 @@ The best results are listed below:
     
 These methods are helpful for identifing and quantifing various structures or tissue types in the lung and extensible to developmental abnormality or diseased areas.
 
-Non-Parenchymal Region Highlighted Image.
+Non-Parenchymal Region Highlighted Image
 
 ![alt text](10x_scan_lung_smoke/pred/027327_greenmark.jpg?raw=true "greem-marked image")
 

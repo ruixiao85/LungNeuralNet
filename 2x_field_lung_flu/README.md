@@ -10,15 +10,19 @@ The prediction results on a separate image, including segmentation mask and area
 Multi-label overlay (blue: parenchyma, red: severe inflammation)
 
 Original Image
+
 ![alt text](pred/Original_0.2/36_KO_FLU_1.jpg?raw=true "original Image")
 
 Predicted lung parenchymal region
+
 ![alt text](pred/36_KO_FLU_1_paren.jpg?raw=true "lung parenchymal region")
 
 Predicted severe inflammation in the lung
+
 ![alt text](pred/36_KO_FLU_1_inflam.jpg?raw=true "severe inflammation in the lung")
 
 Multi-label overlay (blue: parenchyma, red: severe inflammation)
+
 ![alt text](pred/36_KO_FLU_1_both.jpg?raw=true "both parenchyma and severe inflammation in the lung")
 
 
