@@ -1,44 +1,28 @@
 # LungNeuralNet
 
-The convolutional neural network architecture was based on U-Net, Convolutional Networks for Biomedical Image Segmentation.
-http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/
+The convolutional neural network architecture used in this project was inspired by [U-Net](http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/) and [dual frame U-Net](https://arxiv.org/abs/1708.08333) with added transfer learning from pre-trained models in keras ([keras-applications](https://keras.io/applications/)).
 
 ![alt text](../resource/train_unet.jpg?raw=true "original Image")
 
-After training on 14 image pairs, the neural network is able to reach >90% accuracy (dice coefficient) in identifying lung parenchymal region and >60% for severe inflammation in the lung in the validation set.
+After training on **14** image pairs, the neural network is able to reach **>90%** accuracy (dice coefficient) in identifying lung parenchymal region and **>60%** for severe inflammation in the lung in the validation set.
 The prediction results on a separate image, including segmentation mask and area stats, was shown below.
 
+Multi-label overlay (blue: parenchyma, red: severe inflammation)
 
-<dl>
-    <dt>Original Image</dt>
-</dl>
-
+Original Image
 ![alt text](pred/Original_0.2/36_KO_FLU_1.jpg?raw=true "original Image")
 
-<dl>
-    <dt>Predicted to be lung parenchymal region</dt>
-    <dd>sum of pixels: 836148 (57.76% of the entire image)</dd>
-</dl>
-
+Predicted lung parenchymal region
 ![alt text](pred/36_KO_FLU_1_paren.jpg?raw=true "lung parenchymal region")
 
-<dl>
-    <dt>Predicted to be severe inflammation in the lung</dt>
-    <dd>sum of pixels: 203466 (14.05% of the entire image)</dd>
-</dl>
-
+Predicted severe inflammation in the lung
 ![alt text](pred/36_KO_FLU_1_inflam.jpg?raw=true "severe inflammation in the lung")
 
-<dl>
-    <dt>Multi-label overlay (blue: parenchyma, red: severe inflammation)</dd>
-</dl>
-
+Multi-label overlay (blue: parenchyma, red: severe inflammation)
 ![alt text](pred/36_KO_FLU_1_both.jpg?raw=true "severe inflammation in the lung")
 
 
-<dl>
-    <dt>Exported results</dt>    
-</dl>
+Exported results
 
 |   | Parenchyma  |  SevereInflammation |
 |---|---|---|
