@@ -58,11 +58,13 @@ The best results are listed below:
     
 These methods are helpful for identifing and quantifing various structures or tissue types in the lung and extensible to developmental abnormality or diseased areas.
 
-Non-Parenchymal Region Highlighted Image
-![alt text](10x_scan_lung_smoke/pred/027327_2017-12-05 13_53_29_RA5_greenmark.jpg "greem-marked image")
+Non-Parenchymal Region Highlighted Image.
+
+![alt text](10x_scan_lung_smoke/pred/027327_2017-12-05 13_53_29_RA5_greenmark.jpg?raw=true "greem-marked image")
 
 Six-Color Segmentation Map
-![alt text](10x_scan_lung_smoke/pred/027327_2017-12-05 13_53_29_RA5_pred.jpg "6 color segmentation Image")
+
+![alt text](10x_scan_lung_smoke/pred/027327_2017-12-05 13_53_29_RA5_pred.jpg?raw=true "6 color segmentation Image")
 
 ## Applications of Mask R-CNN
 
@@ -82,7 +84,8 @@ After training and validating (3:1) on 21 background image with 26 lymphocytes, 
 
 ![alt text](resource/mrcnn_simulate.jpg?raw=true "train with simulated images")
   
-Within one day of training, the accuracy represented by mean average precision has reached 75% for all categories. The accuracy is highest for the monocyte category.
+Within one day of training, the accuracy represented by mean average precision has reached 75% for all categories.
+The accuracy is highest for the monocyte category.
 
 ![alt text](20x_pizz mmp13 ko liver/pred/20x_balf_cells.jpg "cell detection and categorization results")
 
