@@ -2,7 +2,7 @@
 
 The convolutional neural network architecture used in this project was inspired by [U-Net](http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/) and [dual frame U-Net](https://arxiv.org/abs/1708.08333) with added transfer learning from pre-trained models in keras ([keras-applications](https://keras.io/applications/)).
 
-![alt text](../resource/train_unet.jpg?raw=true "original Image")
+![alt text](../resource/train_unet.jpg?raw=true "train_unet")
 
 After training on **14** image pairs, the neural network is able to reach **>90%** accuracy (dice coefficient) in identifying lung parenchymal region and **>60%** for severe inflammation in the lung in the validation set.
 The prediction results on a separate image, including segmentation mask and area stats, was shown below.
@@ -19,7 +19,7 @@ Predicted severe inflammation in the lung
 ![alt text](pred/36_KO_FLU_1_inflam.jpg?raw=true "severe inflammation in the lung")
 
 Multi-label overlay (blue: parenchyma, red: severe inflammation)
-![alt text](pred/36_KO_FLU_1_both.jpg?raw=true "severe inflammation in the lung")
+![alt text](pred/36_KO_FLU_1_both.jpg?raw=true "both parenchyma and severe inflammation in the lung")
 
 
 Exported results

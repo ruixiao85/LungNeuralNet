@@ -2,11 +2,9 @@
 
 The convolutional neural network architecture used in this project was inspired by [U-Net](http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/) and [dual frame U-Net](https://arxiv.org/abs/1708.08333) with added transfer learning from pre-trained models in keras ([keras-applications](https://keras.io/applications/)).
 
-![alt text](../resource/train_unet.jpg?raw=true "severe inflammation in the lung")
+![alt text](../resource/train_unet.jpg?raw=true "train_unet")
 
 After training and validating (3:1) on **16 whole slide scans**, the neural network is able to identify a variety of areas in a normal mouse lung section (equivalent to 10X, cropped from whole slide scan).
-
-![alt text](../resource/train_unet.jpg?raw=true "original Image")
 
 Variations of U-Nets were built to perform
  - **single-class segmentation**

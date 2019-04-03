@@ -12,7 +12,7 @@ Overall, these advanced methods allow improved efficiency and quantification of 
 
 The convolutional neural network architecture used in this project was inspired by [U-Net](http://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/) and [dual frame U-Net](https://arxiv.org/abs/1708.08333) with added transfer learning from pre-trained models in keras ([keras-applications](https://keras.io/applications/)).
 
-![alt text](resource/train_unet.jpg?raw=true "severe inflammation in the lung")
+![alt text](resource/train_unet.jpg?raw=true "train_unet")
 
 ### Lung Pathology
 
@@ -21,7 +21,7 @@ The prediction results on a separate image, including segmentation mask and area
 
 Multi-label overlay (blue: parenchyma, red: severe inflammation)
 
-![alt text](2x_field_lung_flu/pred/36_KO_FLU_1_both.jpg?raw=true "severe inflammation in the lung")
+![alt text](2x_field_lung_flu/pred/36_KO_FLU_1_both.jpg?raw=true "both parenchyma and severe inflammation in the lung")
 
 |   | Parenchyma  |  SevereInflammation |
 |---|---|---|
@@ -64,7 +64,7 @@ Non-Parenchymal Region Highlighted Image.
 
 Six-Color Segmentation Map
 
-![alt text](10x_scan_lung_smoke/pred/027327_pred.jpg?raw=true "6 color segmentation Image")
+![alt text](10x_scan_lung_smoke/pred/027327_pred.jpg?raw=true "6 color segmentation image")
 
 ## Applications of Mask R-CNN
 
