@@ -32,33 +32,33 @@ def normalize_meanstd(a, axis=(1,2)):
 
 def prep_scale(_img,fun=None):
     if fun=='tanh':
-        return scale_tanh(_img)
+        return scale_minus1_plus1(_img)
         # return normalize_meanstd(scale_tanh(_img))
-    elif fun=='sigmoid':
-        return scale_sigmoid(_img)
+    elif fun in ['sigmoid','softmax']:
+        return scale_0_1(_img)
     else:
         raise("function %s not supported" % fun)
 
 def rev_scale(_img,fun=None):
     if fun=='tanh':
-        rev=reverse_tanh(_img)
-    elif fun=='sigmoid':
-        rev=reverse_sigmoid(_img)
+        rev=reverse_minus1_plus1(_img)
+    elif fun in ['sigmoid','softmax']:
+        rev=reverse_0_1(_img)
     else:
         raise("function %s not supported" % fun)
     return rev
 
-def scale_sigmoid(_array):
+def scale_0_1(_array):
     return _array.astype(np.float32)/255.0  # 0 ~ 1
 
-def reverse_sigmoid(_array):
+def reverse_0_1(_array):
     return (_array.astype(np.float32)*255.0).astype(np.uint8)  # 0 ~ 1
 
-def scale_tanh(_array):
+def scale_minus1_plus1(_array):
     return _array.astype(np.float32)/127.5-1.0  # -1 ~ +1
     # return 1.0-_array.astype(np.float32)/127.5  # +1 ~ -1
 
-def reverse_tanh(_array):
+def reverse_minus1_plus1(_array):
     return ((_array.astype(np.float32)+1.0)*127.5).astype(np.uint8)  # -1 ~ +1
     # return ((1.0-_array.astype(np.float32))*127.5).astype(np.uint8)  # +1 ~ -1
 
