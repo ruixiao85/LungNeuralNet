@@ -132,6 +132,8 @@ class ViewSet(ImageSet):
         return "%s_%dx%d"%(self.label_scale(target,scale), rows or self.row, cols or self.col)
     def scale_res(self,scale=None,rows=None,cols=None):
         return "%s_%dx%d"%(scale or self.target_scale, rows or self.row, cols or self.col)
+    def scale_allres(self,scale=None):
+        return "%s_*"%(scale or self.target_scale)
 
     def prep_folder(self):
         self.folder_screen_split()

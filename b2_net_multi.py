@@ -354,8 +354,12 @@ class BaseNetM(Config):
             for grp,view in batch.items():
                 grp_box,grp_cls,grp_scr,grp_msk=None,None,None,None
                 prd,tgt_name=pair.predict_generator_partial(tgt_list,view)
-                weight_file=self.find_best_models("%s_%s^*^.h5"%(tgt_name,dir_cfg_append),allow_cache=True)[0]
-                print(weight_file)
+                weight_file=None
+                for pat in ["%s_%s^*^.h5"%(tgt_name,dir_cfg_append), "%s_%s^*^.h5"%(tgt_name,pair.img_set.scale_allres()+'_'+str(self))]:
+                    weight_list=self.find_best_models(pat,allow_cache=True)
+                    if weight_list:
+                        weight_file=weight_list[0]; break
+                print(weight_file or Exception("No trained neural network found."))
                 self.net.load_weights(weight_file,by_name=True)  # weights only
                 # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
                 detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=\

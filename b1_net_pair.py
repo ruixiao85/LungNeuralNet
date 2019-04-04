@@ -147,11 +147,12 @@ class BaseNetU(Config):
                     o=min(i+self.dep_out,nt)
                     tgt_sub=tgt_list[i:o]
                     prd,tgt_name=pair.predict_generator_partial(tgt_sub,view)
-                    weight_file=self.find_best_models("%s_%s^*^.h5"%(tgt_name,dir_cfg_append),allow_cache=True)[0]
-                    # weight_file_overall=self.find_best_models(tgt_name+'_*^.h5',allow_cache=True)[0]
-                    # if weight_file_overall!=weight_file: # load best regardless of archtecture
-                    #     self.load_json(weight_file_overall)
-                    print(weight_file)
+                    weight_file=None
+                    for pat in ["%s_%s^*^.h5"%(tgt_name,dir_cfg_append),"%s_%s^*^.h5"%(tgt_name,pair.img_set.scale_allres()+'_'+str(self))]:
+                        weight_list=self.find_best_models(pat,allow_cache=True)
+                        if weight_list:
+                            weight_file=weight_list[0]; break
+                    print(weight_file or Exception("No trained neural network found."))
                     self.net.load_weights(weight_file)  # weights only
                     # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
                     msk=self.net.predict_generator(prd,max_queue_size=5,workers=1,use_multiprocessing=False,verbose=1)
