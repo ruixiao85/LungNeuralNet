@@ -148,8 +148,8 @@ class ViewSet(ImageSet):
             data=self.image_data[name]
             row,col,_=data.shape
             if row<self.row or col<self.col: # pad needed
-                row_pad=int(math.ceil(self.row-row)/2.0)
-                col_pad=int(math.ceil(self.col-col)/2.0)
+                row_pad=max(0,int(math.ceil(self.row-row)/2.0))
+                col_pad=max(0,int(math.ceil(self.col-col)/2.0))
                 print("  pad[%d,%d]@%s"%(row_pad,col_pad,name),end='')
                 self.image_data[name]=np.pad(data,((row_pad,row_pad),(col_pad,col_pad),(0,0)), 'reflect')
 
