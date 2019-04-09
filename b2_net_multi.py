@@ -344,7 +344,7 @@ class BaseNetM(Config):
         xls_file=os.path.join(pred_dir,"%s_%s_%s.xlsx"%(pair.origin,pred_dir.split(os.path.sep)[-1],repr(self)))
         batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
         dir_cfg_append=pair.img_set.scale_res(None,self.row_out,self.col_out)+'_'+str(self)
-        save_ind,save_raw=pair.cfg.save_ind_raw
+        save_ind,save_raw,_=pair.cfg.save_ind_raw_mask
         res_ind,res_grp=None,None
         for dir_out,tgt_list in pair.predict_generator_note():
             res_i,res_g=None,None

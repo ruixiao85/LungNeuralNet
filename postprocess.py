@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 from PIL import ImageDraw,Image,ImageFont
 import cv2
@@ -36,20 +38,25 @@ def g_kern_rect(row, col, rel_sig=0.5):
     r0, c0=int(0.5*(l-row)),int(0.5*(l-col))
     return mat[r0:r0+row,c0:c0+col]
 
-def connect_component_label(d,file,labels):
-    label_hue=np.uint8(179*labels/(1e-6+np.max(labels)))  # Map component labels to hue val
-    blank_ch=255*np.ones_like(label_hue)
-    labeled_img=cv2.merge([label_hue,blank_ch,blank_ch])
-    labeled_img=cv2.cvtColor(labeled_img,cv2.COLOR_HSV2BGR)  # cvt to BGR for display
-    labeled_img[label_hue==0]=0  # set bg label to black
-    cv2.imwrite(file+'_%d.png'%d,labeled_img) # write each channel
-
 def cal_area_count(rc1):
     count,labels=cv2.connectedComponents(rc1,connectivity=8,ltype=cv2.CV_32S)
     newres=np.array([np.sum(rc1,keepdims=False),count-1])
     return newres,labels
 
-def single_call(cfg,img,msk,file=None):  # sigmoid (r,c,1) blend, np result
+def export_mask(d,file,labels,folders):
+    if file:
+        labeled_img=np.where(labels==0,0,255).astype(np.uint8) # 1: simple black/white mask
+        # label_hue=np.uint8(179*labels/(1e-6+np.max(labels)))  # 2: colorful connected component labeling
+        # blank_ch=255*np.ones_like(label_hue)
+        # labeled_img=cv2.merge([label_hue,blank_ch,blank_ch])
+        # labeled_img=cv2.cvtColor(labeled_img,cv2.COLOR_HSV2BGR)  # cvt to BGR for display
+        # labeled_img[label_hue==0]=0  # set bg label to black
+        if folders:
+            cv2.imwrite(folders[d]+os.path.sep+file.split(os.path.sep)[-1]+'.png',labeled_img)  # write into each folder
+        else:
+            cv2.imwrite(file+'_%d.png'%d,labeled_img) # append channel number
+
+def single_call(cfg,img,msk,file=None,folders=None):  # sigmoid (r,c,1) blend, np result
     res=None; blend=img.copy()
     msk=np.rint(msk)  # sigmoid round to  0/1 # consider range(-1 ~ +1) for multi class voting
     for d in range(msk.shape[-1]):
@@ -58,11 +65,10 @@ def single_call(cfg,img,msk,file=None):  # sigmoid (r,c,1) blend, np result
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
             blend[...,c]=np.where(msk[...,d]>=0.5,blend[...,c]*(1-cfg.overlay_opacity[d])+cfg.overlay_color[d][c]*cfg.overlay_opacity[d],blend[...,c])  # weighted average
-        if file is not None:
-            connect_component_label(d,file,labels)
+        export_mask(d,file,labels,folders)
     return blend, res
 
-def single_brighten(cfg,img,msk,file=None):  # sigmoid (r,c,1) blend, np result
+def single_brighten(cfg,img,msk,file=None,folders=None):  # sigmoid (r,c,1) blend, np result
     res=None; blend=img.copy()
     msk=np.rint(gaussian_smooth(msk))  # sigmoid round to  0/1 # consider range(-1 ~ +1) for multi class voting
     for d in range(msk.shape[-1]):
@@ -73,11 +79,10 @@ def single_brighten(cfg,img,msk,file=None):  # sigmoid (r,c,1) blend, np result
             mskrev=rev_scale(morph_close(msk,6,6),'sigmoid')
             # blend[...,c]=np.where(mskrev[...,d]>=blend[...,c],mskrev[...,d],blend[...,c])  # weighted average
             blend[...,c]=np.maximum(mskrev[...,d],blend[...,c])  # brighter area
-        if file is not None:
-            connect_component_label(d,file,labels)
+        export_mask(d,file,labels,folders)
     return blend, res
 
-def multi_call(cfg,img,msk,file=None):  # softmax (r,c,multi_label) blend, np result
+def multi_call(cfg,img,msk,file=None,folders=None):  # softmax (r,c,multi_label) blend, np result
     res=None; blend=img.copy()
     msk=np.argmax(msk,axis=-1) # do argmax if predict categories covers all possibilities or consider them individually
     # uni,count=np.unique(msk,return_counts=True)
@@ -91,19 +96,17 @@ def multi_call(cfg,img,msk,file=None):  # softmax (r,c,multi_label) blend, np re
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
             blend[...,c]=np.where(msk==d,blend[...,c]*(1-cfg.overlay_opacity[d])+cfg.overlay_color[d][c]*cfg.overlay_opacity[d],blend[...,c])
-        if file is not None:
-            connect_component_label(d, file, labels)
+        export_mask(d,file,labels,folders)
     return blend, res
 
-def compare_call(cfg,img,msk,file=None):  # compare input and output with same dimension
+def compare_call(cfg,img,msk,file=None,folders=None):  # compare input and output with same dimension
     res=None
     diff=np.round(np.abs(msk.copy()-prep_scale(img,cfg.out))).astype(np.uint8)
     for d in range(msk.shape[-1]):
         curr=diff[...,d][...,np.newaxis]
         newres,labels=cal_area_count(curr)
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
-        if file is not None:
-            connect_component_label(d,file,labels)
+        export_mask(d,file,labels,folders)
     return rev_scale(msk,cfg.feed), res
 
 def draw_text(cfg,img,text_list,width):

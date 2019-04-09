@@ -132,9 +132,11 @@ class BaseNetU(Config):
         sum_i,sum_g=self.row_out*self.col_out,None
         batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
         dir_cfg_append=pair.img_set.scale_res(None,self.row_out,self.col_out)+'_'+str(self)
-        save_ind,save_raw=pair.cfg.save_ind_raw
+        save_ind,save_raw,save_mask=pair.cfg.save_ind_raw_mask
         res_ind,res_grp=None,None
         for dir_out,tgt_list in pair.predict_generator_note():
+            folders=[os.path.join(pred_dir,"%s_%s"%(t,pair.img_set.raw_scale)) for t in tgt_list] if save_mask else None
+            if folders: [mkdir_ifexist(f) for f in folders]
             res_i,res_g=None,None
             print('Load model and predict to [%s]...'%dir_out)
             target_dir=os.path.join(pred_dir,"%s-%s_%s"%(pair.origin,dir_out,dir_cfg_append)); mkdir_ifexist(target_dir) # dir for invidual images
@@ -195,7 +197,7 @@ class BaseNetU(Config):
                     mrg_r, mrg_c, _=mrg_in.shape
                     mrg_out=cv2.resize(mrg_out, (mrg_c,mrg_r))
                     sum_g=mrg_r*mrg_c
-                blend,r_g=self.predict_proc(self,mrg_in,mrg_out,file=None) # merge_file.replace(self.image_format[1:],'')
+                blend,r_g=self.predict_proc(self,mrg_in,mrg_out,file=merge_file.replace(self.image_format[1:],''),folders=folders)
                 for d in range(len(tgt_list)):
                     text="[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgt_list[d],r_g[d][1],r_g[d][0],sum_g,100.*r_g[d][0]/sum_g)
                     print(text); text_list.append(text)
