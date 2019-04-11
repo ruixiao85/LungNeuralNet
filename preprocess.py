@@ -95,8 +95,7 @@ def read_resize_fit(_file, _resize, _row, _col):
     ri=(row-_row)//2; ci=(col-_col)//2
     return img[ri:ri+_row,ci:ci+_col,...]
 
-def extract_pad_image(lg_img, r0, r1, c0, c1):
-    _row, _col, _ = lg_img.shape
+def extract_pad_image(lg_img, _row, _col, r0, r1, c0, c1, pad_value):
     r0p, r1p, c0p, c1p = 0, 0, 0, 0
     if r0 < 0:
         r0p = -r0; r0 = 0
@@ -107,8 +106,9 @@ def extract_pad_image(lg_img, r0, r1, c0, c1):
     if c1 > _col:
         c1p = c1 - _col; c1 = _col
     if r0p + r1p + c0p + c1p > 0:
-        print("padding %dx%d image by subset [r0 %d r1 %d, c0 %d c1 %d] and padd [r0p %d r1p %d, c0p %d c1p %d]"%(_row,_col,r0,r1,c0,c1,r0p,r1p,c0p,c1p))
-        return np.pad(lg_img[r0:r1, c0:c1, ...], ((r0p, r1p), (c0p, c1p), (0, 0)), 'reflect')
+        # print("padding %dx%d image by subset [r0 %d r1 %d, c0 %d c1 %d] and pad [r0p %d r1p %d, c0p %d c1p %d]"%(_row,_col,r0,r1,c0,c1,r0p,r1p,c0p,c1p))
+        # return np.pad(lg_img[r0:r1, c0:c1, ...], ((r0p, r1p), (c0p, c1p), (0, 0)), 'reflect')
+        return np.pad(lg_img[r0:r1, c0:c1, ...], ((r0p, r1p), (c0p, c1p), (0, 0)), mode='constant',constant_values=pad_value)
     else:
         return lg_img[r0:r1, c0:c1, ...]
 
@@ -125,19 +125,19 @@ class AugBase:
         if self.level<2: return [iaa.Fliplr(0.5),iaa.Flipud(0.5)]
         if self.level<3: return [iaa.Fliplr(0.5),iaa.Flipud(0.5),iaa.SomeOf((0,1),iaa.Affine(scale={"x":(0.95,1.1),"y":(0.95,1.1)},order=[0,1],**self.pad_params))]
         if self.level<4: return [iaa.Fliplr(0.5),iaa.Flipud(0.5),iaa.SomeOf((0,1),iaa.Affine(scale={"x":(0.95,1.1),"y":(0.95,1.1)},**self.pad_params)),
-                                iaa.SomeOf((0,1),[iaa.Affine(rotate=(-25,25),**self.pad_params),iaa.Affine(shear=(-5,5),**self.pad_params)])]
+                                iaa.SomeOf((0,2),[iaa.Affine(rotate=(-25,25),**self.pad_params),iaa.Affine(shear=(-5,5),**self.pad_params)])]
         return [iaa.Fliplr(0.5),iaa.Flipud(0.5),iaa.SomeOf((0,1),iaa.Affine(scale={"x":(0.95,1.1),"y":(0.95,1.1)},**self.pad_params)),
-                iaa.SomeOf((0,1),[iaa.Affine(rotate=(-45,45),**self.pad_params),iaa.Affine(shear=(-8,8),**self.pad_params),
+                iaa.SomeOf((0,3),[iaa.Affine(rotate=(-45,45),**self.pad_params),iaa.Affine(shear=(-8,8),**self.pad_params),
                 iaa.PiecewiseAffine(scale=(0.00,0.02),**self.pad_params)])]
 
     def prep_decor(self):
         if self.level<1: return None
         if self.level<2: return [iaa.SomeOf((0,1),iaa.Multiply((0.9,1.12)))]
-        if self.level<3: return [iaa.SomeOf((0,1),[iaa.Multiply((0.9,1.12)),iaa.ContrastNormalization((0.93,1.1),per_channel=True),iaa.Grayscale(alpha=(0.0,0.14)),iaa.AddToHueAndSaturation((-9,9))])]
-        if self.level<4: return [iaa.SomeOf((0,1),[iaa.Multiply((0.9,1.12)),iaa.ContrastNormalization((0.93,1.1),per_channel=True),iaa.Grayscale(alpha=(0.0,0.14)),iaa.AddToHueAndSaturation((-9,9))]),
-                                iaa.SomeOf((0,1),[iaa.GaussianBlur((0,0.3)),iaa.Sharpen((0,0.3),lightness=(0.95,1.1)),iaa.Emboss(alpha=(0,0.2),strength=(0.9,1.1))])]
-        return [iaa.SomeOf((0,1),[iaa.Multiply((0.9,1.12)),iaa.ContrastNormalization((0.93,1.1),per_channel=True),iaa.Grayscale(alpha=(0.0,0.14)),iaa.AddToHueAndSaturation((-9,9))]),
-                iaa.SomeOf((0,1),[iaa.GaussianBlur((0,0.6)),iaa.Sharpen((0,0.3),lightness=(0.9,1.1)),iaa.Emboss(alpha=(0,0.3),strength=(0.9,1.1))])]
+        if self.level<3: return [iaa.SomeOf((0,2),[iaa.Multiply((0.9,1.12)),iaa.ContrastNormalization((0.93,1.1),per_channel=True),iaa.Grayscale(alpha=(0.0,0.14)),iaa.AddToHueAndSaturation((-9,9))])]
+        if self.level<4: return [iaa.SomeOf((0,3),[iaa.Multiply((0.9,1.12)),iaa.ContrastNormalization((0.93,1.1),per_channel=True),iaa.Grayscale(alpha=(0.0,0.14)),iaa.AddToHueAndSaturation((-9,9))]),
+                                iaa.SomeOf((0,3),[iaa.GaussianBlur((0,0.3)),iaa.Sharpen((0,0.3),lightness=(0.95,1.1)),iaa.Emboss(alpha=(0,0.2),strength=(0.9,1.1))])]
+        return [iaa.SomeOf((0,4),[iaa.Multiply((0.9,1.12)),iaa.ContrastNormalization((0.93,1.1),per_channel=True),iaa.Grayscale(alpha=(0.0,0.14)),iaa.AddToHueAndSaturation((-9,9))]),
+                iaa.SomeOf((0,3),[iaa.GaussianBlur((0,0.6)),iaa.Sharpen((0,0.3),lightness=(0.9,1.1)),iaa.Emboss(alpha=(0,0.3),strength=(0.9,1.1))])]
         # decor=aug_decor_3()+[iaa.JpegCompression((0,50))]
 
     def decor1(self,_img):

@@ -5,9 +5,17 @@ from glob import glob
 
 def mkdir_ifexist(_dir):
     exist=os.path.exists(_dir)
-    if not exist:
-        os.mkdir(_dir)
+    if not exist: os.mkdir(_dir)
     return exist
+def mkdir_dir(_dir):
+    exist=os.path.exists(_dir)
+    if not exist: os.mkdir(_dir)
+    return _dir
+def mkdirs_dir(_dir):
+    _path=os.path.dirname(_dir)
+    os.makedirs(_path,exist_ok=True)
+    return _dir
+
 
 def to_excel_sheet(_df, _xls, _sheet):
     if os.path.exists(_xls):

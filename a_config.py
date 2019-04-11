@@ -35,7 +35,7 @@ class Config:
         self.overlay_color=kwargs.get('overlay_color', generate_colors(self.num_targets))
         self.overlay_opacity=kwargs.get('overlay_opacity', [0.2]*self.num_targets)
         self.overlay_textshape_bwif=kwargs.get('overlay_textshape_bwif', (True,True,False,False)) # black_legend, white_legend, color_instance_text, fill_shape
-        self.save_ind_raw_mask=kwargs.get('save_ind_raw_mask', (False,True,True)) # (ind view output/not, whole image in raw/cnn scale, raw mask output/not)
+        self.save_raw_ind_grp_grpm=kwargs.get('save_raw_ind_grp_grpm', (True,True,True,True)) # (raw/cnn scale, ind, grp, grp_msk)
         self.ntop=kwargs.get('ntop', 1) # numbers of top networks to keep, delete the networks that are less than ideal
         self.batch_size=kwargs.get('batch_size', 1)
         self.pre_trained=kwargs.get('pre_trained', True) # True: load weights pre-trained on imagenet; False: init with random weights
@@ -43,7 +43,7 @@ class Config:
         self.train_step=kwargs.get('train_step', 512)
         self.train_val_step=kwargs.get('train_val_step',128)
         self.train_val_split=kwargs.get('train_val_split',0.33)
-        self.train_val_aug=kwargs.get('train_val_aug',(4,2))  # only to training process two values each for tr and val set, applies to image-mask set and image+patch
+        self.train_val_aug=kwargs.get('train_val_aug',(2,0))  # only to training process two values each for tr and val set, applies to image-mask set and image+patch
         self.train_shuffle=kwargs.get('train_shuffle', True)  # only to training process, not prediction mode
         self.train_continue=kwargs.get('train_continue', True)  # True to continue training by loading previous weights
         self.indicator=kwargs.get('indicator', 'val_acc')
@@ -55,14 +55,15 @@ class Config:
         self._model_cache={}
 
     @staticmethod
-    def get_proper_range(ra,ca,ri,ro,ci,co,tri,tro,tci,tco): # row/col limit of large image, row/col index on large image, row/col index for small image
+    def get_proper_range(ra,ca,ri,ro,ci,co,tri,tro,tci,tco,div=1.0): # row/col limit of large image, row/col index on large image, row/col index for small image
         # print('%d %d %d:%d,%d,%d %d:%d,%d,%d'%(ra,ca,ri,ro,ci,co,tri,tro,tci,tco),end='')
         if ri<0: tri=-ri; ri=0
         if ci<0: tci=-ci; ci=0
         if ro>ra: tro=tro-(ro-ra); ro=ra
         if co>ca: tco=tco-(co-ca); co=ca
         # print('-> %d %d %d:%d,%d,%d %d:%d,%d,%d'%(ra,ca,ri,ro,ci,co,tri,tro,tci,tco))
-        return ri,ro,ci,co,tri,tro,tci,tco
+        return (ri,ro,ci,co,tri,tro,tci,tco) if div==1.0 else\
+            (int(ri/div),int(ro/div),int(ci/div),int(co/div),int(tri/div),int(tro/div),int(tci/div),int(tco/div))
 
     @staticmethod
     def parse_saved_model(filename):

@@ -104,34 +104,40 @@ class ImageSet:
     def adapt_channel(self,img,channels=None):
         return np.mean(img,axis=-1,keepdims=True) if (channels or self.channels)==1 else img
 
-    def get_image(self,view):
-        if isinstance(view,MetaInfo):
-            return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,0:3]
-        return self.image_data[view][:,:,0:3] # can also be a file
-    def get_mask(self,view):
-        if isinstance(view,MetaInfo):
-            return self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,3] if self.channels==4\
-                else 255-self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,1] if self.channels==3\
-                else self.image_data[view.image_name][view.row_start:view.row_end,view.col_start:view.col_end,0] # 4: alpha 3: process further on green
+    def get_image(self,view:MetaInfo,raw=False,whole=False,pad_value=255):
+        if raw and self.resize_ratio!=1.0:
+            div=self.resize_ratio
+            img=self.adapt_channel(read_image(os.path.join(self.work_directory,self.raw_folder,view.image_name)))
+            return img if whole else extract_pad_image(img,
+                int(view.ori_row/div),int(view.ori_col/div),int(view.row_start),int(view.row_end),int(view.col_start),int(view.col_end),pad_value)
         else:
-            return self.image_data[view][:,:,3] if self.channels==4\
-                else 255-self.image_data[view.image_name][:,:,1] if self.channels==3\
-                else self.image_data[view][:,:,0] # 4: alpha 3: process further on green
+            img=self.image_data[view.image_name]
+            return img if whole else extract_pad_image(img,view.ori_row,view.ori_col,view.row_start,view.row_end,view.col_start,view.col_end,pad_value)
+
+    def get_mask(self,view:MetaInfo,raw=False,whole=False,pad_value=None):
+        pad_value=pad_value or (255 if self.channels==3 else 0) # pad 255 for patches with channels=3
+        view=self.get_image(view,raw,whole,pad_value)
+        return view[...,3] if self.channels==4 else 255-view[...,1] if self.channels==3 else view[...,0] # 4: alpha 3: process further on green
 
 class ViewSet(ImageSet):
     def __init__(self,cfg: Config,wd,sf,is_train,channels,low_std_ex):
         super(ViewSet,self).__init__(cfg,wd,sf,is_train,channels)
         self.coverage=cfg.coverage_train if self.is_train else cfg.coverage_predict
+        self.list_to_view=self.list_to_view_with_overlap if self.coverage>0 else self.list_to_view_without_overlap
         self.train_step=cfg.train_step
         self.row,self.col=cfg.row_in,cfg.col_in
         self.low_std_ex=low_std_ex
         self.tr_view,self.val_view=None,None  # lists -> views with specified size
         self.tr_view_ex,self.val_view_ex=None,None  # views with low contrast
 
+    def res(self,rows=None,cols=None):
+        return "%dx%d"%(rows or self.row, cols or self.col)
     def label_scale_res(self,target=None,scale=None,rows=None,cols=None):
-        return "%s_%dx%d"%(self.label_scale(target,scale), rows or self.row, cols or self.col)
+        return "%s_%s"%(self.label_scale(target,scale), self.res(rows,cols))
+    def label_rawscale(self,target=None):
+        return self.label_scale(target,self.raw_scale)
     def scale_res(self,scale=None,rows=None,cols=None):
-        return "%s_%dx%d"%(scale or self.target_scale, rows or self.row, cols or self.col)
+        return "%s_%s"%(scale or self.target_scale, self.res(rows,cols))
     def scale_allres(self,scale=None):
         return "%s_*"%(scale or self.target_scale)
 
@@ -153,14 +159,14 @@ class ViewSet(ImageSet):
                 print("  pad[%d,%d]@%s"%(row_pad,col_pad,name),end='')
                 self.image_data[name]=np.pad(data,((row_pad,row_pad),(col_pad,col_pad),(0,0)), 'reflect')
 
-    def list_to_view(self,img_list):
+    def list_to_view_with_overlap(self,img_list):
         dotext=self.image_format[1:]
         view_list=[]
         for img in img_list:
             _img=self.image_data[img]
             lg_row,lg_col,lg_dep=_img.shape
-            r_len=max(1,1+int(round((lg_row-self.row)/self.row*self.coverage)))
-            c_len=max(1,1+int(round((lg_col-self.col)/self.col*self.coverage)))
+            r_len=max(1,1+int(math.ceil((lg_row-self.row)*self.coverage/self.row)))
+            c_len=max(1,1+int(math.ceil((lg_col-self.col)*self.coverage/self.col)))
             print(" %s target %d x %d (coverage %.1f): original %d x %d ->  row /%d col /%d"%(img,self.row,self.col,self.coverage,lg_row,lg_col,r_len,c_len))
             r0,r_step=(0,float(lg_row-self.row)/(r_len-1)) if r_len>1 else (int(0.5*(lg_row-self.row)),0)
             c0,c_step=(0,float(lg_col-self.col)/(c_len-1)) if c_len>1 else (int(0.5*(lg_col-self.col)),0)
@@ -174,6 +180,22 @@ class ViewSet(ImageSet):
                         ,img,lg_row,lg_col,ri,ro,ci,co)
                     view_list.append(entry)  # add to either tr or val set
         print("Images were divided into [%d] views"%(len(view_list)))
+        return view_list
+
+    def list_to_view_without_overlap(self,img_list):
+        dotext=self.image_format[1:]
+        view_list=[]
+        for img in img_list:
+            _img=self.image_data[img]
+            lg_row,lg_col,lg_dep=_img.shape
+            for ri in range(0,lg_row,self.row):
+                for ci in range(0,lg_col,self.col):
+                    ro=ri+self.row
+                    co=ci+self.col
+                    entry=MetaInfo(img.replace(dotext,("_#%d#%d#%d#%d#%d#%d#"+dotext)%(lg_row,lg_col,ri,ro,ci,co))
+                        ,img,lg_row,lg_col,ri,ro,ci,co)
+                    view_list.append(entry)  # add to either tr or val set
+        print("Images were divided into [%d] views without overlap"%(len(view_list)))
         return view_list
 
     def low_std_exclusion(self,view_list):

@@ -20,7 +20,7 @@ from c2_mrcnn_matterport import norm_boxes_graph,parse_image_meta_graph,Detectio
     mrcnn_class_loss_graph,mrcnn_bbox_loss_graph,mrcnn_mask_loss_graph,ProposalLayer,build_fpn_mask_graph,DetectionLayer,generate_pyramid_anchors,\
     parse_detections,compose_image_meta,build_rpn_targets,norm_boxes,compute_ap,non_max_suppression,extract_bboxes,minimize_mask
 from image_set import ImageSet,ViewSet,PatchSet
-from osio import mkdir_ifexist,to_excel_sheet
+from osio import mkdir_ifexist,to_excel_sheet,mkdir_dir,mkdirs_dir
 from postprocess import g_kern_rect,draw_text,draw_detection,morph_close
 from preprocess import prep_scale,read_image,read_resize,AugPatchMask
 
@@ -40,6 +40,7 @@ class BaseNetM(Config):
         self.indicator_trend=kwargs.get('indicator_trend', 'min')
         from postprocess import draw_detection
         self.predict_proc=kwargs.get('predict_proc', draw_detection)
+        self.coverage_predict=-1 # do not allow overlap during prediction/inference
         self.trainlayer_regex=kwargs.get('trainlayer_regex', ".*") # all
         # self.trainlayer_regex=kwargs.get('trainlayer_regex', r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)")  # head
         # self.trainlayer_regex=kwargs.get('trainlayer_regex', r"# (res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 3+
@@ -341,25 +342,30 @@ class BaseNetM(Config):
 
     def predict(self,pair,pred_dir):
         self.build_net(is_train=False)
-        xls_file=os.path.join(pred_dir,"%s_%s_%s.xlsx"%(pair.origin,pred_dir.split(os.path.sep)[-1],repr(self)))
+        xls_file,cfg=os.path.join(pred_dir,"%s_%s_%s.xlsx"%(pair.origin,pred_dir.split(os.path.sep)[-1],repr(self))),str(self)
+        params=["Count","Area","AreaPercentage"]
+        regions=["Total","ConductingAirway","RespiratoryAirway","ConnectiveTissue","LargeBloodVessel","SmallBloodVessel"]
+        # msks=[ViewSet(self,pair.wd,r,is_train=True,channels=1,low_std_ex=True).prep_folder() for r in regions]
         batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
-        dir_cfg_append=pair.img_set.scale_res(None,self.row_out,self.col_out)+'_'+str(self)
-        save_ind,save_raw,_=pair.cfg.save_ind_raw_mask
+        save_raw,save_ind,save_grp,save_grpm=pair.cfg.save_raw_ind_grp_grpm
         res_ind,res_grp=None,None
         for dir_out,tgt_list in pair.predict_generator_note():
-            res_i,res_g=None,None
+            res_i,res_g,regmap=None,None,None
             print('Load model and predict to [%s]...'%dir_out)
-            target_dir=os.path.join(pred_dir,"%s-%s_%s"%(pair.origin,dir_out,dir_cfg_append)); mkdir_ifexist(target_dir) # dir for invidual images
-            merge_dir=os.path.join(pred_dir,"%s-%s+%s"%(pair.origin,dir_out,dir_cfg_append)); mkdir_ifexist(merge_dir) # dir for grouped/whole images
+            ind_dir=mkdir_dir(os.path.join(pred_dir,"%s-%s_%.1f_%s"%(pair.origin,dir_out,pair.img_set.target_scale,cfg))) if save_ind else None  # ind view
+            grp_dir=mkdir_dir(os.path.join(pred_dir,"%s-%s_%.1f+%s"%(pair.origin,dir_out,pair.img_set.target_scale,cfg))) if save_grp else None  # grp/whole
+            mask_dirs=[mkdir_dir(os.path.join(pred_dir,"%s_%s"%(tgt,pair.img_set.raw_scale))) for tgt in tgt_list] if save_mask else None  # b/w masks
+            comp_dir=mkdir_dir(os.path.join(pred_dir,"%s-%s_%.1f+%s"%(pair.origin,dir_out,pair.img_set.raw_scale,cfg))) if save_grp else None # region comp
             for grp,view in batch.items():
                 grp_box,grp_cls,grp_scr,grp_msk=None,None,None,None
+                regmap={rn:read_image(os.path.join(pred_dir,pair.img_set.label_rawscale(rn),view[0].image_name))[...,1]/255 for rn in regions if rn!="Total"}
                 prd,tgt_name=pair.predict_generator_partial(tgt_list,view)
                 weight_file=None
-                for pat in ["%s_%s^*^.h5"%(tgt_name,dir_cfg_append), "%s_%s^*^.h5"%(tgt_name,pair.img_set.scale_allres()+'_'+str(self))]:
+                for pat in ["%s_%s_%s^*^.h5"%(tgt_name,scale_res,cfg) for scale_res in [pair.img_set.scale_res(),pair.img_set.scale_allres()]]:
                     weight_list=self.find_best_models(pat,allow_cache=True)
                     if weight_list:
                         weight_file=weight_list[0]; break
-                print(weight_file or Exception("No trained neural network found."))
+                print(weight_file or "No trained neural network found.")
                 self.net.load_weights(weight_file,by_name=True)  # weights only
                 # self.net=load_model(weight_file,custom_objects=custom_function_dict()) # weight optimizer archtecture
                 detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=\
@@ -368,37 +374,41 @@ class BaseNetM(Config):
                 for i,(det,msk) in enumerate(zip(detections,mrcnn_mask)): # each view
                     final_rois,final_class_ids,final_scores,final_masks=parse_detections(det,msk,self.dim_in)
                     origin=pair.img_set.get_image(view[i])
-                    blend, r_i=self.predict_proc(self,origin,pair.targets,final_rois,final_class_ids,final_scores,final_masks)
+                    r_i, blend, _=self.predict_proc(self,origin,tgt_list,final_rois,final_class_ids,final_scores,final_masks,reg=regmap)
                     res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate([res_i,r_i[np.newaxis,...]],axis=0)
                     if save_ind:
-                        # cv2.imwrite(os.path.join(target_dir,view[i].file_name.replace(os.path.sep,'_')),origin)
-                        cv2.imwrite(os.path.join(target_dir,view[i].file_name.replace(os.path.sep,'_')),blend)
+                        cv2.imwrite(mkdirs_dir(os.path.join(ind_dir,view[i].file_name)),blend)
                     y_d=view[i].row_start; x_d=view[i].col_start
-                    overall_rois=final_rois.copy() # otherwise will update individual coordinates
-                    overall_rois[:,0]+=y_d; overall_rois[:,2]+=y_d
-                    overall_rois[:,1]+=x_d; overall_rois[:,3]+=x_d
-                    grp_box=overall_rois if grp_box is None else np.concatenate((grp_box,overall_rois))
+                    final_rois[:,0]+=y_d; final_rois[:,2]+=y_d
+                    final_rois[:,1]+=x_d; final_rois[:,3]+=x_d
+                    grp_box=final_rois if grp_box is None else np.concatenate((grp_box,final_rois))
                     grp_cls=final_class_ids if grp_cls is None else np.concatenate((grp_cls,final_class_ids))
                     grp_scr=final_scores if grp_scr is None else np.concatenate((grp_scr,final_scores))
                     grp_msk=final_masks if grp_msk is None else np.concatenate((grp_msk,final_masks))
                     ri,ro,ci,co,tri,tro,tci,tco=self.get_proper_range(view[i].ori_row,view[i].ori_col,
                             view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
                     mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
-                sel_index=non_max_suppression(grp_box,grp_scr,threshold=self.detection_nms_threshold) if self.coverage_predict>1 and grp_box.shape[0]>0 else None
-                if save_raw and pair.img_set.resize_ratio!=1:  # high-res raw group image
+                r_g,blend,_=self.predict_proc(self,mrg_in,tgt_list,grp_box,grp_cls,grp_scr,grp_msk,reg=regmap)
+                if save_grp:
+                    cv2.imwrite(mkdirs_dir(os.path.join(grp_dir,view[0].image_name)),blend)
+                if pair.img_set.resize_ratio!=1 and (save_mask or save_comp): # need to load raw image and resize the rest
                     mrg_in=read_image(os.path.join(pred_dir,pair.img_set.raw_folder,view[0].image_name))
                     grp_box=(grp_box.astype(np.float32)/pair.img_set.resize_ratio).astype(np.int32)
-                # cv2.imwrite(os.path.join(merge_dir,view[0].image_name.replace(os.path.sep,'_')),mrg_in)
-                blend,r_g=self.predict_proc(self,mrg_in,pair.targets,grp_box,grp_cls,grp_scr,grp_msk,sel_index)
-                res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
-                cv2.imwrite(os.path.join(merge_dir,view[0].image_name.replace(os.path.sep,'_')),blend)
+                    r_g,blend,mask=self.predict_proc(self,mrg_in,tgt_list,grp_box,grp_cls,grp_scr,grp_msk,reg=regmap)
+                    if save_mask:
+                        [cv2.imwrite(mkdirs_dir(os.path.join(md,view[0].image_name)),mask[...,i]) for (i,md) in enumerate(mask_dirs)]
+                    if save_comp:
+                        cv2.imwrite(mkdirs_dir(os.path.join(comp_dir,view[0].image_name)),blend)
+                print(r_g.shape)
+                res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...])) # can either cnn scale or raw scale
             res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
             res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
-        for i,note in [(0,'_count'),(1,'_area'),(2,'_area_pct')]:
-            df=pd.DataFrame(res_ind[...,i::3],index=view_name,columns=pair.targets)
-            to_excel_sheet(df,xls_file,pair.origin+note) # per slice
-            df=pd.DataFrame(res_grp[...,i::3],index=batch.keys(),columns=pair.targets)
-            to_excel_sheet(df,xls_file,pair.origin+note+"_sum") # per whole image
+        df=pd.DataFrame(res_ind.reshape((len(view_name)*len(regions),-1)),index=pd.MultiIndex.from_product([view_name,regions],names=["view_name","regions"]),
+            columns=pd.MultiIndex.from_product([pair.targets,params],names=["targets","params"]))
+        to_excel_sheet(df,xls_file,pair.origin) # per slice
+        df=pd.DataFrame(res_grp.reshape((len(batch)*len(regions),-1)),index=pd.MultiIndex.from_product([batch.keys(),regions],names=["image_name","regions"]),
+            columns=pd.MultiIndex.from_product([pair.targets,params],names=["targets","params"]))
+        to_excel_sheet(df,xls_file,pair.origin+"_sum") # per whole image
 
 class ImagePatchPair:
     def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train):
@@ -523,10 +533,9 @@ class ImagePatchGenerator(keras.utils.Sequence):
         return [_img,_img_meta,_anc],[]
 
     def blend_image_patch(self,view,verbose,**kwargs): # return img,cls,msk for each view, verbose 0:none 1:+ 2:details
-        add_weight=kwargs.get('add_weight',[1])  # default=[0,1,2,...] the pool to draw from, equal chance, here you can add more weights to certain categories
-        random_weight=kwargs.get('random_weight', 4) # random weight for each category will be added
-        patch_per_area=kwargs.get('patch_per_area',[4000,20000])  # divided by area, larger number -> fewer patches/smaller density
-        max_instance=kwargs.get('max_instance',30)  # break out if more than this amount was inserted
+        random_weight=kwargs.get('random_weight',6) # random weight for each category will be added
+        patch_per_area=kwargs.get('patch_per_area',6000)  # divided by area, larger number -> fewer patches/smaller density
+        max_instance=kwargs.get('max_instance',30)  # break out condition: >? patches inserted in any category
         ave_diff=kwargs.get('ave_diff',10)  # original area should be brighter (spot_ave-brightness-patch_ave-brightness>diff), neg-val: accept dim images
         min_diff=kwargs.get('min_diff',0)  # original area should be brighter (spot_min-brightness-patch_min-brightness>diff), neg-val: accept dim images
         std_diff=kwargs.get('std_diff',10)  # original area should be cleaner, lower std (spot_std-patch_std<diff), pos-val: accept contrasty background
@@ -534,16 +543,16 @@ class ImagePatchGenerator(keras.utils.Sequence):
         # cv2.imwrite("multi_%s_pre.jpg"%view.file_name,img)
         img=self.aug.shift1(img)
         # cv2.imwrite("multi_%s_shift.jpg"%view.file_name,img)
-        area=self.cfg.row_in*self.cfg.col_in/self.cfg.target_scale
-        pool=list(range(0,self.cfg.num_targets))+add_weight # equal chance, +weight to some category
-        for _ in range(random_weight): pool.append(random.randint(-1,self.cfg.num_targets-1)) # +random weight
+        area=int(self.cfg.row_in*self.cfg.col_in/self.cfg.target_scale)
+        pool=list(range(0,self.cfg.num_targets+1)) # equal chance
+        for _ in range(random_weight): pool.append(random.randint(0,self.cfg.num_targets)) # +random weight
         while True:
             inserted=[0]*self.cfg.num_targets  # track # of inserts per category
-            nexample=random.randint(area//patch_per_area[1],area//patch_per_area[0])
-            labels=random.choices(pool,k=nexample)
+            nexample=max(3,area//random.randint(patch_per_area//2,patch_per_area*2))
+            labels=random.choices([p for p in pool if p!=0],k=nexample)  # 0background 1,2,...foreground
             clss,msks=[],None
             for li in labels:
-                the_pch_set=self.pair.pch_set[li]
+                the_pch_set=self.pair.pch_set[li-1]
                 pch_view=random.choice(the_pch_set.val_view) if self.is_val else random.choice(the_pch_set.tr_view)
                 rowpos=random.uniform(0,1)
                 colpos=random.uniform(0,1)
@@ -567,12 +576,12 @@ class ImagePatchGenerator(keras.utils.Sequence):
                     # cv2.imwrite("spot_acepted.jpg",img[lri:lro,lci:lco]); cv2.imwrite("patch_acepted.jpg",pat_img)
                     # img[lri:lro,lci:lco]=np.minimum(img[lri:lro,lci:lco],pat_img[pri:pro,pci:pco].astype(np.uint8)) # darken
                     img[lri:lro,lci:lco]=((img[lri:lro,lci:lco]).astype(np.float16)*pat_img[pri:pro,pci:pco]/255.0).astype(np.uint8)
-                    clss.append(li+1) #0,1,2 -> 1,2,3 becaue zero is reserved for background
+                    clss.append(li) # 1,2,3 becaue zero is reserved for background
                     msk=np.zeros((self.cfg.row_in,self.cfg.col_in,1),dtype=np.uint8) # np.uint8 0-255
                     msk[lri:lro,lci:lco,0]=pat_msk[pri:pro,pci:pco,0]
                     msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
-                    inserted[li]+=1
-                    if inserted[li]>max_instance: break;
+                    inserted[li-1]+=1
+                    if inserted[li-1]>max_instance: break;
                 # else: cv2.imwrite("spot_rejected.jpg",img[lri:lro,lci:lco])
             if verbose>1:
                 print(" inserted %s for %s"%(inserted,view.file_name),end='')
