@@ -95,7 +95,12 @@ def read_resize_fit(_file, _resize, _row, _col):
     ri=(row-_row)//2; ci=(col-_col)//2
     return img[ri:ri+_row,ci:ci+_col,...]
 
+def read_mask_default_zeros(_file,_row,_col):
+    img=read_image(_file)
+    return np.zeros((_row,_col),np.uint8) if img is None else img[...,1]/255
+
 def extract_pad_image(lg_img, _row, _col, r0, r1, c0, c1, pad_value):
+    # _row,_col=lg_img.shape[0:2]
     r0p, r1p, c0p, c1p = 0, 0, 0, 0
     if r0 < 0:
         r0p = -r0; r0 = 0

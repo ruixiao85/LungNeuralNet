@@ -3,6 +3,8 @@ import os
 import numpy as np
 from PIL import ImageDraw,Image,ImageFont
 import cv2
+
+from a_config import get_proper_range
 from preprocess import prep_scale,rev_scale
 from math import floor,log,sqrt
 
@@ -137,7 +139,7 @@ def draw_detection(cfg,image,tgts,box,cls,scr,msk,reg=None):
         t=cls[i]-1
         y1,x1,y2,x2=box[i]
         mask=np.zeros((ori_row,ori_col),dtype=np.uint8)
-        ri,ro,ci,co,tri,tro,tci,tco=cfg.get_proper_range(ori_row,ori_col, y1,y2,x1,x2, 0,y2-y1,0,x2-x1)
+        ri,ro,ci,co,tri,tro,tci,tco=get_proper_range(ori_row,ori_col, y1,y2,x1,x2, 0,y2-y1,0,x2-x1)
         patch=gaussian_smooth(cv2.resize(np.where(msk[i]>=0.5,1,0).astype(np.uint8),(x2-x1,y2-y1),interpolation=cv2.INTER_AREA)[tri:tro,tci:tco],5,5)
         mask[ri:ro,ci:co]=patch  # range(0,1) -> (y2-y1,x2-x1))
         for c in range(3):  # mask per channel
@@ -157,7 +159,7 @@ def draw_detection(cfg,image,tgts,box,cls,scr,msk,reg=None):
     origin=Image.fromarray(blend.astype(np.uint8),'RGB')  # L RGB
     draw=ImageDraw.Draw(origin)
     if instance:
-        for i in sel:
+        for i in range(n):
             t=cls[i]-1
             y1,x1,y2,x2=box[i]
             # draw.rectangle((x1,y1,x2,y2),fill=None,outline=cfg.overlay_color[d]) # bbox

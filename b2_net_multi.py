@@ -15,14 +15,14 @@ import keras.engine as KE
 import keras.models as KM
 from keras.engine.saving import model_from_json,load_model
 
-from a_config import Config
+from a_config import Config,get_proper_range
 from c2_mrcnn_matterport import norm_boxes_graph,parse_image_meta_graph,DetectionTargetLayer,fpn_classifier_graph,rpn_class_loss_graph,rpn_bbox_loss_graph,\
     mrcnn_class_loss_graph,mrcnn_bbox_loss_graph,mrcnn_mask_loss_graph,ProposalLayer,build_fpn_mask_graph,DetectionLayer,generate_pyramid_anchors,\
     parse_detections,compose_image_meta,build_rpn_targets,norm_boxes,compute_ap,non_max_suppression,extract_bboxes,minimize_mask
 from image_set import ImageSet,ViewSet,PatchSet
 from osio import mkdir_ifexist,to_excel_sheet,mkdir_dir,mkdirs_dir
 from postprocess import g_kern_rect,draw_text,draw_detection,morph_close
-from preprocess import prep_scale,read_image,read_resize,AugPatchMask
+from preprocess import prep_scale,read_image,read_resize,AugPatchMask,read_mask_default_zeros
 
 
 class BaseNetM(Config):
@@ -347,18 +347,19 @@ class BaseNetM(Config):
         regions=["Total","ConductingAirway","RespiratoryAirway","ConnectiveTissue","LargeBloodVessel","SmallBloodVessel"]
         # msks=[ViewSet(self,pair.wd,r,is_train=True,channels=1,low_std_ex=True).prep_folder() for r in regions]
         batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
-        save_raw,save_ind,save_grp,save_grpm=pair.cfg.save_raw_ind_grp_grpm
+        save_ind,save_raw,save_msk=pair.cfg.save_ind_raw_msk
+        save_raw,out_scale=(True,pair.img_set.raw_scale) if (save_raw and pair.img_set.resize_ratio!=1.0) else (False,pair.img_set.target_scale)
         res_ind,res_grp=None,None
         for dir_out,tgt_list in pair.predict_generator_note():
             res_i,res_g,regmap=None,None,None
             print('Load model and predict to [%s]...'%dir_out)
             ind_dir=mkdir_dir(os.path.join(pred_dir,"%s-%s_%.1f_%s"%(pair.origin,dir_out,pair.img_set.target_scale,cfg))) if save_ind else None  # ind view
-            grp_dir=mkdir_dir(os.path.join(pred_dir,"%s-%s_%.1f+%s"%(pair.origin,dir_out,pair.img_set.target_scale,cfg))) if save_grp else None  # grp/whole
-            mask_dirs=[mkdir_dir(os.path.join(pred_dir,"%s_%s"%(tgt,pair.img_set.raw_scale))) for tgt in tgt_list] if save_mask else None  # b/w masks
-            comp_dir=mkdir_dir(os.path.join(pred_dir,"%s-%s_%.1f+%s"%(pair.origin,dir_out,pair.img_set.raw_scale,cfg))) if save_grp else None # region comp
+            grp_dir=mkdir_dir(os.path.join(pred_dir,"%s-%s_%.1f+%s"%(pair.origin,dir_out,out_scale,cfg)))
+            mask_dirs=[mkdir_dir(os.path.join(pred_dir,"%s_%s"%(tgt,out_scale))) for tgt in tgt_list] if save_msk else None  # b/w masks
             for grp,view in batch.items():
                 grp_box,grp_cls,grp_scr,grp_msk=None,None,None,None
-                regmap={rn:read_image(os.path.join(pred_dir,pair.img_set.label_rawscale(rn),view[0].image_name))[...,1]/255 for rn in regions if rn!="Total"}
+                regmap={rn:read_mask_default_zeros(os.path.join(pred_dir,pair.img_set.label_scale(rn,out_scale),view[0].image_name),self.row_out,self.col_out)
+                    for rn in regions if rn!="Total"}
                 prd,tgt_name=pair.predict_generator_partial(tgt_list,view)
                 weight_file=None
                 for pat in ["%s_%s_%s^*^.h5"%(tgt_name,scale_res,cfg) for scale_res in [pair.img_set.scale_res(),pair.img_set.scale_allres()]]:
@@ -374,9 +375,9 @@ class BaseNetM(Config):
                 for i,(det,msk) in enumerate(zip(detections,mrcnn_mask)): # each view
                     final_rois,final_class_ids,final_scores,final_masks=parse_detections(det,msk,self.dim_in)
                     origin=pair.img_set.get_image(view[i])
-                    r_i, blend, _=self.predict_proc(self,origin,tgt_list,final_rois,final_class_ids,final_scores,final_masks,reg=regmap)
-                    res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate([res_i,r_i[np.newaxis,...]],axis=0)
                     if save_ind:
+                        r_i,blend,_=self.predict_proc(self,origin,tgt_list,final_rois,final_class_ids,final_scores,final_masks)
+                        res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate([res_i,r_i[np.newaxis,...]],axis=0)
                         cv2.imwrite(mkdirs_dir(os.path.join(ind_dir,view[i].file_name)),blend)
                     y_d=view[i].row_start; x_d=view[i].col_start
                     final_rois[:,0]+=y_d; final_rois[:,2]+=y_d
@@ -385,27 +386,23 @@ class BaseNetM(Config):
                     grp_cls=final_class_ids if grp_cls is None else np.concatenate((grp_cls,final_class_ids))
                     grp_scr=final_scores if grp_scr is None else np.concatenate((grp_scr,final_scores))
                     grp_msk=final_masks if grp_msk is None else np.concatenate((grp_msk,final_masks))
-                    ri,ro,ci,co,tri,tro,tci,tco=self.get_proper_range(view[i].ori_row,view[i].ori_col,
+                    ri,ro,ci,co,tri,tro,tci,tco=get_proper_range(view[i].ori_row,view[i].ori_col,
                             view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
                     mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
-                r_g,blend,_=self.predict_proc(self,mrg_in,tgt_list,grp_box,grp_cls,grp_scr,grp_msk,reg=regmap)
-                if save_grp:
-                    cv2.imwrite(mkdirs_dir(os.path.join(grp_dir,view[0].image_name)),blend)
-                if pair.img_set.resize_ratio!=1 and (save_mask or save_comp): # need to load raw image and resize the rest
+                if save_raw:
                     mrg_in=read_image(os.path.join(pred_dir,pair.img_set.raw_folder,view[0].image_name))
                     grp_box=(grp_box.astype(np.float32)/pair.img_set.resize_ratio).astype(np.int32)
-                    r_g,blend,mask=self.predict_proc(self,mrg_in,tgt_list,grp_box,grp_cls,grp_scr,grp_msk,reg=regmap)
-                    if save_mask:
-                        [cv2.imwrite(mkdirs_dir(os.path.join(md,view[0].image_name)),mask[...,i]) for (i,md) in enumerate(mask_dirs)]
-                    if save_comp:
-                        cv2.imwrite(mkdirs_dir(os.path.join(comp_dir,view[0].image_name)),blend)
-                print(r_g.shape)
-                res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...])) # can either cnn scale or raw scale
+                r_g,blend,bw=self.predict_proc(self,mrg_in,tgt_list,grp_box,grp_cls,grp_scr,grp_msk,reg=regmap)
+                res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
+                cv2.imwrite(mkdirs_dir(os.path.join(grp_dir,view[0].image_name)),blend)
+                if save_msk:
+                    [cv2.imwrite(mkdirs_dir(os.path.join(md,view[0].image_name)),bw[...,i]) for (i,md) in enumerate(mask_dirs)]
             res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
             res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
-        df=pd.DataFrame(res_ind.reshape((len(view_name)*len(regions),-1)),index=pd.MultiIndex.from_product([view_name,regions],names=["view_name","regions"]),
-            columns=pd.MultiIndex.from_product([pair.targets,params],names=["targets","params"]))
-        to_excel_sheet(df,xls_file,pair.origin) # per slice
+        if save_ind:
+            df=pd.DataFrame(res_ind.reshape(len(view_name),-1),index=pd.MultiIndex.from_product([view_name],names=["view_name"]),
+                columns=pd.MultiIndex.from_product([pair.targets,params],names=["targets","params"]))
+            to_excel_sheet(df,xls_file,pair.origin) # per slice
         df=pd.DataFrame(res_grp.reshape((len(batch)*len(regions),-1)),index=pd.MultiIndex.from_product([batch.keys(),regions],names=["image_name","regions"]),
             columns=pd.MultiIndex.from_product([pair.targets,params],names=["targets","params"]))
         to_excel_sheet(df,xls_file,pair.origin+"_sum") # per whole image

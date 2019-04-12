@@ -4,7 +4,7 @@ import random
 import keras
 from keras.engine.saving import model_from_json,load_model
 
-from a_config import Config
+from a_config import Config,get_proper_range
 from image_set import ViewSet
 from metrics import custom_function_dict
 import os, cv2
@@ -131,15 +131,15 @@ class BaseNetU(Config):
         xls_file,cfg=os.path.join(pred_dir,"%s_%s_%s.xlsx"%(pair.origin,pred_dir.split(os.path.sep)[-1],repr(self))),str(self)
         params=["Count","Area","AreaPercentage"]
         batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
-        save_raw,save_ind,save_grp,save_grpm=pair.cfg.save_raw_ind_grp_grpm
-        output_scale=pair.img_set.raw_scale if save_raw else pair.img_set.target_scale
+        save_ind,save_raw,save_msk=pair.cfg.save_ind_raw_msk
+        save_raw,out_scale=(True,pair.img_set.raw_scale) if (save_raw and pair.img_set.resize_ratio!=1.0) else (False,pair.img_set.target_scale)
         res_ind,res_grp=None,None
         for dir_out,tgt_list in pair.predict_generator_note():
             res_i,res_g=None,None
             print('Load model and predict to [%s]...'%dir_out)
-            ind_dir=mkdir_dir(os.path.join(pred_dir,"%s-%s_%.1f_%s"%(pair.origin,dir_out,output_scale,cfg))) if save_ind else None  # ind view
-            grp_dir=mkdir_dir(os.path.join(pred_dir,"%s-%s_%.1f+%s"%(pair.origin,dir_out,output_scale,cfg))) if save_grp else None  # grp/whole
-            mask_dirs=[mkdir_dir(os.path.join(pred_dir,"%s_%s"%(tgt,output_scale))) for tgt in tgt_list] if save_grpm else None  # b/w masks
+            ind_dir=mkdir_dir(os.path.join(pred_dir,"%s-%s_%.1f_%s"%(pair.origin,dir_out,pair.img_set.target_scale,cfg))) if save_ind else None  # ind view
+            grp_dir=mkdir_dir(os.path.join(pred_dir,"%s-%s_%.1f+%s"%(pair.origin,dir_out,out_scale,cfg)))
+            mask_dirs=[mkdir_dir(os.path.join(pred_dir,"%s_%s"%(tgt,out_scale))) for tgt in tgt_list] if save_msk else None  # b/w masks
             mask_wt=g_kern_rect(self.row_out,self.col_out)
             for grp,view in batch.items():
                 msks=None; i,nt=0,len(tgt_list)
@@ -158,18 +158,17 @@ class BaseNetU(Config):
                     msk=self.net.predict_generator(prd,max_queue_size=5,workers=1,use_multiprocessing=False,verbose=1)
                     msks=msk if msks is None else np.concatenate((msks,msk),axis=-1)
                     i=o
-                mrg_in=pair.img_set.get_image(view[0],raw=save_raw,whole=True)
+                mrg_in=pair.img_set.get_image(view[0],whole=True) # @ cnn target scale
                 mrg_out=np.zeros(mrg_in.shape[0:2]+(len(tgt_list)*self.dep_out,),dtype=np.float32)
                 mrg_out_wt=np.zeros(mrg_in.shape[0:2],dtype=np.float32)+np.finfo(np.float32).eps
                 for i,msk in enumerate(msks):
-                    origin=pair.img_set.get_image(view[i],raw=save_raw)
-                    if save_raw and origin.shape[0:2]!=msk.shape[0:2]: msk=cv2.resize(msk,origin.shape[0:2])
-                    r_i,blend,_=self.predict_proc(self,origin,tgt_list,msk)
-                    res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i,r_i[np.newaxis,...]))
+                    origin=pair.img_set.get_image(view[i])
                     if save_ind:
+                        r_i,blend,_=self.predict_proc(self,origin,tgt_list,msk)
+                        res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i,r_i[np.newaxis,...]))
                         cv2.imwrite(mkdirs_dir(os.path.join(ind_dir,view[i].file_name)),blend)
-                    ri,ro,ci,co,tri,tro,tci,tco=self.get_proper_range(view[i].ori_row,view[i].ori_col,
-                        view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end, 0,self.row_out,0,self.col_out, div=pair.img_set.resize_ratio)
+                    ri,ro,ci,co,tri,tro,tci,tco=get_proper_range(view[i].ori_row,view[i].ori_col,
+                        view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end, 0,self.row_out,0,self.col_out)
                     for d in range(len(tgt_list)):
                         mrg_out[ri:ro,ci:co,d]+=(msk[...,d]*mask_wt)[tri:tro,tci:tco]
                     mrg_out_wt[ri:ro,ci:co]+=mask_wt[tri:tro,tci:tco]
@@ -177,15 +176,19 @@ class BaseNetU(Config):
                     mrg_out[...,d]/=mrg_out_wt
                 r_g,blend,bw=self.predict_proc(self,mrg_in,tgt_list,mrg_out)
                 res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
-                if save_grp:
-                    cv2.imwrite(mkdirs_dir(os.path.join(grp_dir,view[0].image_name)),blend)
-                if save_grpm:
+                if save_raw:
+                    mrg_in=pair.img_set.get_raw_image(view[0])
+                    mr,mc,_=mrg_in.shape; mrg_out=cv2.resize(mrg_out,(mc,mr))
+                    _,blend,bw=self.predict_proc(self,mrg_in,tgt_list,mrg_out)
+                cv2.imwrite(mkdirs_dir(os.path.join(grp_dir,view[0].image_name)),blend)
+                if save_msk:
                     [cv2.imwrite(mkdirs_dir(os.path.join(md,view[0].image_name)),bw[...,i]) for (i,md) in enumerate(mask_dirs)]
             res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
             res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
-        df=pd.DataFrame(res_ind.reshape((len(view_name)*len(pair.targets),-1)),index=pd.MultiIndex.from_product([view_name,pair.targets],names=["view_name","targets"]),
-            columns=pd.MultiIndex.from_product([params],names=["params"]))
-        to_excel_sheet(df,xls_file,pair.origin)  # per slice
+        if save_ind:
+            df=pd.DataFrame(res_ind.reshape((len(view_name)*len(pair.targets),-1)),index=pd.MultiIndex.from_product([view_name,pair.targets],names=["view_name","targets"]),
+                columns=pd.MultiIndex.from_product([params],names=["params"]))
+            to_excel_sheet(df,xls_file,pair.origin)  # per slice
         df=pd.DataFrame(res_grp.reshape((len(batch)*len(pair.targets),-1)),index=pd.MultiIndex.from_product([batch.keys(),pair.targets],names=["image_name","targets"]),
             columns=pd.MultiIndex.from_product([params],names=["params"]))
         to_excel_sheet(df,xls_file,pair.origin+"_sum")  # per whole image

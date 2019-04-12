@@ -4,16 +4,10 @@ import os
 from cv2 import cv2
 import numpy as np
 
-from a_config import Config
+from a_config import Config,parse_float
 from osio import mkdir_ifexist,find_file_pattern,find_file_pattern_rel,find_folder_prefix,find_file_ext_recursive,find_file_ext_recursive_rel
 from postprocess import morph_close,morph_open,gaussian_smooth,fill_contour
 from preprocess import read_image,read_resize,read_resize_pad,read_resize_fit,extract_pad_image
-
-def parse_float(text):
-    try:
-        return float(text)
-    except ValueError:
-        return None
 
 class MetaInfo:
     def __init__(self, file, image, ori_row, ori_col, ri, ro, ci, co):
@@ -104,19 +98,17 @@ class ImageSet:
     def adapt_channel(self,img,channels=None):
         return np.mean(img,axis=-1,keepdims=True) if (channels or self.channels)==1 else img
 
-    def get_image(self,view:MetaInfo,raw=False,whole=False,pad_value=255):
-        if raw and self.resize_ratio!=1.0:
-            div=self.resize_ratio
-            img=self.adapt_channel(read_image(os.path.join(self.work_directory,self.raw_folder,view.image_name)))
-            return img if whole else extract_pad_image(img,
-                int(view.ori_row/div),int(view.ori_col/div),int(view.row_start),int(view.row_end),int(view.col_start),int(view.col_end),pad_value)
-        else:
-            img=self.image_data[view.image_name]
-            return img if whole else extract_pad_image(img,view.ori_row,view.ori_col,view.row_start,view.row_end,view.col_start,view.col_end,pad_value)
 
-    def get_mask(self,view:MetaInfo,raw=False,whole=False,pad_value=None):
+    def get_raw_image(self,view:MetaInfo):
+        return self.adapt_channel(read_image(os.path.join(self.work_directory,self.raw_folder,view.image_name)))
+
+    def get_image(self,view:MetaInfo,whole=False,pad_value=255):
+        img=self.image_data[view.image_name]
+        return img if whole else extract_pad_image(img,view.ori_row,view.ori_col,view.row_start,view.row_end,view.col_start,view.col_end,pad_value)
+
+    def get_mask(self,view:MetaInfo,whole=False,pad_value=None):
         pad_value=pad_value or (255 if self.channels==3 else 0) # pad 255 for patches with channels=3
-        view=self.get_image(view,raw,whole,pad_value)
+        view=self.get_image(view,whole,pad_value)
         return view[...,3] if self.channels==4 else 255-view[...,1] if self.channels==3 else view[...,0] # 4: alpha 3: process further on green
 
 class ViewSet(ImageSet):
@@ -134,8 +126,6 @@ class ViewSet(ImageSet):
         return "%dx%d"%(rows or self.row, cols or self.col)
     def label_scale_res(self,target=None,scale=None,rows=None,cols=None):
         return "%s_%s"%(self.label_scale(target,scale), self.res(rows,cols))
-    def label_rawscale(self,target=None):
-        return self.label_scale(target,self.raw_scale)
     def scale_res(self,scale=None,rows=None,cols=None):
         return "%s_%s"%(scale or self.target_scale, self.res(rows,cols))
     def scale_allres(self,scale=None):
