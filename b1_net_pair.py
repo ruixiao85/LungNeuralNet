@@ -172,8 +172,7 @@ class BaseNetU(Config):
                     for d in range(len(tgt_list)):
                         mrg_out[ri:ro,ci:co,d]+=(msk[...,d]*mask_wt)[tri:tro,tci:tco]
                     mrg_out_wt[ri:ro,ci:co]+=mask_wt[tri:tro,tci:tco]
-                for d in range(len(tgt_list)):
-                    mrg_out[...,d]/=mrg_out_wt
+                mrg_out/=mrg_out_wt[...,np.newaxis]
                 r_g,blend,bw=self.predict_proc(self,mrg_in,tgt_list,mrg_out)
                 res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
                 if save_raw:
@@ -186,10 +185,12 @@ class BaseNetU(Config):
             res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
             res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
         if save_ind:
-            df=pd.DataFrame(res_ind.reshape((len(view_name)*len(pair.targets),-1)),index=pd.MultiIndex.from_product([view_name,pair.targets],names=["view_name","targets"]),
+            df=pd.DataFrame(res_ind.reshape((len(view_name)*(1+len(pair.targets)),-1)),
+                index=pd.MultiIndex.from_product([view_name,["Total"]+pair.targets],names=["view_name","targets"]),
                 columns=pd.MultiIndex.from_product([params],names=["params"]))
             to_excel_sheet(df,xls_file,pair.origin)  # per slice
-        df=pd.DataFrame(res_grp.reshape((len(batch)*len(pair.targets),-1)),index=pd.MultiIndex.from_product([batch.keys(),pair.targets],names=["image_name","targets"]),
+        df=pd.DataFrame(res_grp.reshape((len(batch)*(1+len(pair.targets)),-1)),
+            index=pd.MultiIndex.from_product([batch.keys(),["Total"]+pair.targets],names=["image_name","targets"]),
             columns=pd.MultiIndex.from_product([params],names=["params"]))
         to_excel_sheet(df,xls_file,pair.origin+"_sum")  # per whole image
 

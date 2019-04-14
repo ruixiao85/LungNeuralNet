@@ -40,66 +40,67 @@ def g_kern_rect(row, col, rel_sig=0.5):
     r0, c0=int(0.5*(l-row)),int(0.5*(l-col))
     return mat[r0:r0+row,c0:c0+col]
 
-def cal_count_area_aperc(rc1,sum):
+def cal_area_count_perc(rc1,div=1.0,area=None):
     count,labels=cv2.connectedComponents(rc1,connectivity=8,ltype=cv2.CV_32S)
-    sum_pos=np.sum(rc1,keepdims=False)
-    newres=np.array([count-1,sum_pos,100.0*sum_pos/sum])
+    sum_pos=np.sum(rc1,keepdims=False)/div
+    perc=sum_pos/area*100.0 if area else 100.0 # default 100%
+    newres=np.array([sum_pos,count-1,perc])
     return newres,labels
 
 def single_call(cfg,img,tgts,msk):  # sigmoid (r,c,1) blend, np result
-    res,text_list=None,[]; blend=img.copy()
-    row,col,_=img.shape; sum_pixel=row*col
-    bw_mask=np.zeros((row,col,len(tgts)))
-    msk=np.rint(msk)  # sigmoid round to  0/1 # consider range(-1 ~ +1) for multi class voting
-    for d in range(len(tgts)):
-        curr=msk[...,d][...,np.newaxis].astype(np.uint8)
-        newres,labels=cal_count_area_aperc(curr,sum_pixel)
-        text_list.append("[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgts[d],newres[0],newres[1],sum_pixel,newres[2]))
+    row,col,_=img.shape; div=cfg.target_scale**2.0; sum_pixel=row*col/div
+    bw_mask=np.zeros((row,col,len(tgts)),dtype=np.uint8)
+    res,text_list=np.array([sum_pixel,1.0,100.0])[np.newaxis,...],["[  0: Total] $%.1f #%d %.2f%%"%(sum_pixel,1.0,100.0)]
+    msk=np.rint(msk)  # sigmoid round to  0/1
+    for t in range(len(tgts)):
+        curr=msk[...,t][...,np.newaxis].astype(np.uint8)
+        newres,labels=cal_area_count_perc(curr,div,sum_pixel)
+        text_list.append("[  %d: %s] $%.1f #%d %.2f%%"%(t+1,tgts[t],newres[0],newres[1],newres[2]))
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
-            blend[...,c]=np.where(msk[...,d]>=0.5,blend[...,c]*(1-cfg.overlay_opacity[d])+cfg.overlay_color[d][c]*cfg.overlay_opacity[d],blend[...,c])  # weighted average
-            bw_mask[...,d]=np.where(msk[...,d]>=0.5,255,bw_mask[...,d])  # b/w mask maximum object masks
-    blend=draw_text(cfg,blend,text_list,col)
-    return res,blend,bw_mask
+            img[...,c]=np.where(msk[...,t]>=0.5,img[...,c]*(1-cfg.overlay_opacity[t])+cfg.overlay_color[t][c]*cfg.overlay_opacity[t],img[...,c])  # weighted average
+            bw_mask[...,t]=np.where(msk[...,t]>=0.5,255,bw_mask[...,t])  # b/w mask maximum object masks
+    img=draw_text(cfg,img,text_list,col)
+    return res,img,bw_mask
 
 def single_brighten(cfg,img,tgts,msk):  # sigmoid (r,c,1) blend, np result
-    res,text_list=None,[]; blend=img.copy()
-    row,col,_=img.shape; sum_pixel=row*col
+    row,col,_=img.shape; div=cfg.target_scale**2.0; sum_pixel=row*col/div
     bw_mask=np.zeros((row,col,len(tgts)))
-    msk=np.rint(gaussian_smooth(msk))  # sigmoid round to  0/1 # consider range(-1 ~ +1) for multi class voting
-    for d in range(msk.shape[-1]):
-        curr=msk[...,d][...,np.newaxis].astype(np.uint8)
-        newres,labels=cal_count_area_aperc(curr,sum_pixel)
-        text_list.append("[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgts[d],newres[0],newres[1],sum_pixel,newres[2]))
+    res,text_list=np.array([sum_pixel,1.0,100.0])[np.newaxis,...],["[  0: Total] $%.1f #%d %.2f%%"%(sum_pixel,1.0,100.0)]
+    msk=np.rint(gaussian_smooth(msk))  # sigmoid round to  0/1
+    for t in range(msk.shape[-1]):
+        curr=msk[...,t][...,np.newaxis].astype(np.uint8)
+        newres,labels=cal_area_count_perc(curr,div,sum_pixel)
+        text_list.append("[  %d: %s] $%.1f #%d %.2f%%"%(t+1,tgts[t],newres[0],newres[1],newres[2]))
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
             mskrev=rev_scale(morph_close(msk,6,6),'sigmoid')
-            # blend[...,c]=np.where(mskrev[...,d]>=blend[...,c],mskrev[...,d],blend[...,c])  # weighted average
-            blend[...,c]=np.maximum(mskrev[...,d],blend[...,c])  # brighter area
-            bw_mask[...,d]=np.where(msk[...,d]>=0.5,255,bw_mask[...,d])  # b/w mask maximum object masks
-    blend=draw_text(cfg,blend,text_list,col)
-    return res,blend,bw_mask
+            # img[...,c]=np.where(mskrev[...,d]>=img[...,c],mskrev[...,d],img[...,c])  # weighted average
+            img[...,c]=np.maximum(mskrev[...,t],img[...,c])  # brighter area
+            bw_mask[...,t]=np.where(msk[...,t]>=0.5,255,bw_mask[...,t])  # b/w mask maximum object masks
+    img=draw_text(cfg,img,text_list,col)
+    return res,img,bw_mask
 
 def multi_call(cfg,img,tgts,msk):  # softmax (r,c,multi_label) blend, np result
-    res,text_list=None,[]; blend=img.copy()
-    row,col,_=img.shape; sum_pixel=row*col
+    row,col,_=img.shape; div=cfg.target_scale**2.0; sum_pixel=row*col/div
     bw_mask=np.zeros((row,col,len(tgts)))
+    res,text_list=np.array([sum_pixel,1.0,100.0])[np.newaxis,...],["[  0: Total] $%.1f #%d %.2f%%"%(sum_pixel,1.0,100.0)]
     msk=np.argmax(msk,axis=-1) # do argmax if predict categories covers all possibilities or consider them individually
     # uni,count=np.unique(msk,return_counts=True)
     # map_count=dict(zip(uni,count))
     # count_vec=np.zeros(cfg.predict_size)
-    for d in range(cfg.predict_size):
+    for t in range(cfg.predict_size):
         # curr=msk[..., d][..., np.newaxis].astype(np.uint8)
         # count_vec[d]=map_count.get(d) or 0
-        curr=np.where(msk==d,1,0).astype(np.uint8)
-        newres,labels=cal_count_area_aperc(curr,sum_pixel)
-        text_list.append("[  %d: %s] #%d $%d / $%d  %.2f%%"%(d,tgts[d],newres[0],newres[1],sum_pixel,newres[2]))
+        curr=np.where(msk==t,1,0).astype(np.uint8)
+        newres,labels=cal_area_count_perc(curr,div,sum_pixel)
+        text_list.append("[  %d: %s] $%.1f #%d %.2f%%"%(t+1,tgts[t],newres[0],newres[1],newres[2]))
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
-            blend[...,c]=np.where(msk==d,blend[...,c]*(1-cfg.overlay_opacity[d])+cfg.overlay_color[d][c]*cfg.overlay_opacity[d],blend[...,c])
-            bw_mask[...,d]=np.where(msk==d,255,bw_mask[...,d])  # b/w mask maximum object masks
-    blend=draw_text(cfg,blend,text_list,col)
-    return res,blend,bw_mask
+            img[...,c]=np.where(msk==t,img[...,c]*(1-cfg.overlay_opacity[t])+cfg.overlay_color[t][c]*cfg.overlay_opacity[t],img[...,c])
+            bw_mask[...,t]=np.where(msk==t,255,bw_mask[...,t])  # b/w mask maximum object masks
+    img=draw_text(cfg,img,text_list,col)
+    return res,img,bw_mask
 
 def draw_text(cfg,img,text_list,width):
     black,white,_,_ =cfg.overlay_textshape_bwif
@@ -115,7 +116,7 @@ def draw_text(cfg,img,text_list,width):
         for i in range(len(text_list)):
             txtcrs=' \n'*i+' X'
             if white: draw.text((0,0),txtcrs,(210,210,210),ImageFont.truetype(font,size))
-            if black: draw.text((off,off),txtcrs,cfg.overlay_color[i],ImageFont.truetype(font,size))
+            if black and i!=0: draw.text((off,off),txtcrs,cfg.overlay_color[i-1],ImageFont.truetype(font,size))
         return np.array(origin)
     else:
         return img
