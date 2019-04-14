@@ -343,7 +343,7 @@ class BaseNetM(Config):
     def predict(self,pair,pred_dir):
         self.build_net(is_train=False)
         xls_file,cfg=os.path.join(pred_dir,"%s_%s_%s.xlsx"%(pair.origin,pred_dir.split(os.path.sep)[-1],repr(self))),str(self)
-        params=["Count","Area","AreaPercentage"]
+        params=["Area","Count","AreaPercentage","CountDensity"]
         regions=["Total","ConductingAirway","RespiratoryAirway","ConnectiveTissue","LargeBloodVessel","SmallBloodVessel"]
         # msks=[ViewSet(self,pair.wd,r,is_train=True,channels=1,low_std_ex=True).prep_folder() for r in regions]
         batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
@@ -375,6 +375,9 @@ class BaseNetM(Config):
                 for i,(det,msk) in enumerate(zip(detections,mrcnn_mask)): # each view
                     final_rois,final_class_ids,final_scores,final_masks=parse_detections(det,msk,self.dim_in)
                     origin=pair.img_set.get_image(view[i])
+                    ri,ro,ci,co,tri,tro,tci,tco=get_proper_range(view[i].ori_row,view[i].ori_col,
+                            view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
+                    mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
                     if save_ind:
                         r_i,blend,_=self.predict_proc(self,origin,tgt_list,final_rois,final_class_ids,final_scores,final_masks)
                         res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate([res_i,r_i[np.newaxis,...]],axis=0)
@@ -386,9 +389,6 @@ class BaseNetM(Config):
                     grp_cls=final_class_ids if grp_cls is None else np.concatenate((grp_cls,final_class_ids))
                     grp_scr=final_scores if grp_scr is None else np.concatenate((grp_scr,final_scores))
                     grp_msk=final_masks if grp_msk is None else np.concatenate((grp_msk,final_masks))
-                    ri,ro,ci,co,tri,tro,tci,tco=get_proper_range(view[i].ori_row,view[i].ori_col,
-                            view[i].row_start,view[i].row_end,view[i].col_start,view[i].col_end,  0,self.row_out,0,self.col_out)
-                    mrg_in[ri:ro,ci:co]=origin[tri:tro,tci:tco]
                 if save_raw:
                     mrg_in=read_image(os.path.join(pred_dir,pair.img_set.raw_folder,view[0].image_name))
                     grp_box=(grp_box.astype(np.float32)/pair.img_set.resize_ratio).astype(np.int32)

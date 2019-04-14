@@ -98,10 +98,14 @@ def parse_float(text):
         return None
 
 def get_proper_range(ra,ca,ri,ro,ci,co,tri,tro,tci,tco): # row/col limit of large image, row/col index on large image, row/col index for small image
-    # print('%d %d %d:%d,%d,%d %d:%d,%d,%d'%(ra,ca,ri,ro,ci,co,tri,tro,tci,tco),end='')
-    if ri<0: tri=-ri; ri=0
-    if ci<0: tci=-ci; ci=0
-    if ro>ra: tro=tro-(ro-ra); ro=ra
-    if co>ca: tco=tco-(co-ca); co=ca
-    # print('-> %d %d %d:%d,%d,%d %d:%d,%d,%d'%(ra,ca,ri,ro,ci,co,tri,tro,tci,tco))
+    # print('%d %d %d:%d,%d:%d %d:%d,%d:%d'%(ra,ca,ri,ro,ci,co,tri,tro,tci,tco),end=' ')
+    if ri<0:
+        tri=-ri; ri=0
+    if ci<0:
+        tci=-ci; ci=0
+    if ro>ra:
+        tro=tro-(ro-ra); ro=ra
+    if co>ca:
+        tco=tco-(co-ca); co=ca
+    # print('-> %d %d %d:%d,%d:%d %d:%d,%d:%d'%(ra,ca,ri,ro,ci,co,tri,tro,tci,tco))
     return ri,ro,ci,co,tri,tro,tci,tco

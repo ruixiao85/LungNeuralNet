@@ -123,19 +123,20 @@ def draw_text(cfg,img,text_list,width):
 
 
 def draw_detection(cfg,image,tgts,box,cls,scr,msk,reg=None):
-    font="arial.ttf"  #times.ttf
     ori_row,ori_col,_=image.shape
+    bw_mask=np.zeros_like(image)
+    div=cfg.target_scale**2.0
+    font="arial.ttf"  #times.ttf
     size=max(10, ori_col//64) # fontsize at least 10
     lwd=max(3, size//12) # line width
     black, white, instance, fill=cfg.overlay_textshape_bwif
     n=len(box)
     if not n: print("\n*** No instances to display *** \n")
-    blend=image.copy(); bw_mask=np.zeros_like(blend)
-    nreg,sum_pixels,name_reg=1,[ori_row*ori_col],["Total"] # default only consider whole image
+    nreg,sum_pixels,name_reg=1,[ori_row*ori_col/div],["Total"] # default only consider whole image
     if reg:
         for (rname,mask) in sorted(reg.items()):  # add more specified regions
-            nreg,sum_pixels,name_reg=nreg+1,sum_pixels+[np.sum(mask,keepdims=False)],name_reg+[rname] # green channel as mask
-    res=np.zeros((nreg,len(tgts),3),dtype=np.float32) # 0region:total/parenchyma/... 1target:LYM/MONO/PMN/...  2param:count/area/area_pct
+            nreg,sum_pixels,name_reg=nreg+1,sum_pixels+[np.sum(mask,keepdims=False)/div],name_reg+[rname] # green channel as mask
+    res=np.zeros((nreg,len(tgts),4),dtype=np.float32) # 0region:total/parenchyma/... 1target:LYM/MONO/PMN/...  2param:area/count/area_pct/count_density
     for i in range(n):
         t=cls[i]-1
         y1,x1,y2,x2=box[i]
@@ -144,20 +145,20 @@ def draw_detection(cfg,image,tgts,box,cls,scr,msk,reg=None):
         patch=gaussian_smooth(cv2.resize(np.where(msk[i]>=0.5,1,0).astype(np.uint8),(x2-x1,y2-y1),interpolation=cv2.INTER_AREA)[tri:tro,tci:tco],5,5)
         mask[ri:ro,ci:co]=patch  # range(0,1) -> (y2-y1,x2-x1))
         for c in range(3):  # mask per channel
-            blend[:,:,c]=np.where(mask>0,blend[:,:,c]*(1-cfg.overlay_opacity[t])+cfg.overlay_color[t][c]*cfg.overlay_opacity[t],blend[:,:,c]) if fill \
-            else np.where(cv2.morphologyEx(mask,cv2.MORPH_GRADIENT,np.ones((lwd,lwd),np.uint8))>0, cfg.overlay_color[t][c], blend[:,:,c])
+            image[:,:,c]=np.where(mask>0,image[:,:,c]*(1-cfg.overlay_opacity[t])+cfg.overlay_color[t][c]*cfg.overlay_opacity[t],image[:,:,c]) if fill \
+            else np.where(cv2.morphologyEx(mask,cv2.MORPH_GRADIENT,np.ones((lwd,lwd),np.uint8))>0, cfg.overlay_color[t][c], image[:,:,c])
             bw_mask[:,:,c]=np.where(mask>0,255,bw_mask[:,:,c])
-        patch_area=np.sum(patch,keepdims=False)
+        patch_area=np.sum(patch,keepdims=False)/div
         for r,rname in enumerate(name_reg):
             if r==0: # default Total
-                res[r,t,0]+=1; res[r,t,1]+=patch_area
+                res[r,t,0]+=patch_area; res[r,t,1]+=1.0
             else: # When regions are specified
                 patch_intercept=np.minimum(reg[rname][ri:ro,ci:co],patch)
-                intercept_area=np.sum(patch_intercept,keepdims=False)
+                intercept_area=np.sum(patch_intercept,keepdims=False)/div
                 if intercept_area/patch_area>0.5:
-                    res[r,t,0]+=1; res[r,t,1]+=intercept_area
+                    res[r,t,0]+=intercept_area; res[r,t,1]+=1.0
             # print(','.join([box[i],cls[i],scr[i],np.sum(patch,keepdims=False)]))
-    origin=Image.fromarray(blend.astype(np.uint8),'RGB')  # L RGB
+    origin=Image.fromarray(image.astype(np.uint8),'RGB')  # L RGB
     draw=ImageDraw.Draw(origin)
     if instance:
         for i in range(n):
@@ -174,8 +175,9 @@ def draw_detection(cfg,image,tgts,box,cls,scr,msk,reg=None):
             for t in range(len(tgts)):
                 if white: draw.text((0,0),'\n'*t+tgts[t],(210,210,210),ImageFont.truetype(font,size))
                 if black: draw.text((offset,offset),'\n'*t+tgts[t],cfg.overlay_color[t],ImageFont.truetype(font,size))
-                res[r,t,2]=100.0*res[r,t,1]/total_pixels
-                txtlist.append('            # %d $ %d  %.1f%% (%s)'%(res[r,t,0],res[r,t,1],res[r,t,2],rname))
+                res[r,t,2]=100.0*res[r,t,0]/total_pixels
+                res[r,t,3]=1000000.0*res[r,t,1]/total_pixels # 1/mm2
+                txtlist.append('           %s  $%.1f #%d %.1f%% %.1f'%(rname,res[r,t,0],res[r,t,1],res[r,t,2],res[r,t,3]))
         txtblk='\n'.join(txtlist)
         if white: draw.text((0,0),txtblk,(210,210,210),ImageFont.truetype(font,size))
         if black: draw.text((offset,offset),txtblk,(30,30,30),ImageFont.truetype(font,size))
