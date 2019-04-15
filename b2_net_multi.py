@@ -345,7 +345,7 @@ class BaseNetM(Config):
         xls_file,cfg=os.path.join(pred_dir,"%s_%s_%s.xlsx"%(pair.origin,pred_dir.split(os.path.sep)[-1],repr(self))),str(self)
         params=["Area","Count","AreaPercentage","CountDensity"]
         regions=["Total","ConductingAirway","RespiratoryAirway","ConnectiveTissue","LargeBloodVessel","SmallBloodVessel"]
-        # msks=[ViewSet(self,pair.wd,r,is_train=True,channels=1,low_std_ex=True).prep_folder() for r in regions]
+        # msks=[ImageSet(self,pair.wd,r,is_train=False,channels=1).prep_folder() for r in regions]
         batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
         save_ind,save_raw,save_msk=pair.cfg.save_ind_raw_msk
         save_raw,out_scale=(True,pair.img_set.raw_scale) if (save_raw and pair.img_set.resize_ratio!=1.0) else (False,pair.img_set.target_scale)
@@ -401,10 +401,10 @@ class BaseNetM(Config):
             res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
         if save_ind:
             df=pd.DataFrame(res_ind.reshape(len(view_name),-1),index=pd.MultiIndex.from_product([view_name],names=["view_name"]),
-                columns=pd.MultiIndex.from_product([pair.targets,params],names=["targets","params"]))
+                columns=pd.MultiIndex.from_product([["ALL"]+pair.targets,params],names=["targets","params"]))
             to_excel_sheet(df,xls_file,pair.origin) # per slice
         df=pd.DataFrame(res_grp.reshape((len(batch)*len(regions),-1)),index=pd.MultiIndex.from_product([batch.keys(),regions],names=["image_name","regions"]),
-            columns=pd.MultiIndex.from_product([pair.targets,params],names=["targets","params"]))
+            columns=pd.MultiIndex.from_product([["ALL"]+pair.targets,params],names=["targets","params"]))
         to_excel_sheet(df,xls_file,pair.origin+"_sum") # per whole image
 
 class ImagePatchPair:

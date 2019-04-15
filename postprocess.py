@@ -4,7 +4,7 @@ import numpy as np
 from PIL import ImageDraw,Image,ImageFont
 import cv2
 
-from a_config import get_proper_range
+from a_config import get_proper_range,generate_colors
 from preprocess import prep_scale,rev_scale
 from math import floor,log,sqrt
 
@@ -50,12 +50,12 @@ def cal_area_count_perc(rc1,div=1.0,area=None):
 def single_call(cfg,img,tgts,msk):  # sigmoid (r,c,1) blend, np result
     row,col,_=img.shape; div=cfg.target_scale**2.0; sum_pixel=row*col/div
     bw_mask=np.zeros((row,col,len(tgts)),dtype=np.uint8)
-    res,text_list=np.array([sum_pixel,1.0,100.0])[np.newaxis,...],["[  0: Total] $%.1f #%d %.2f%%"%(sum_pixel,1.0,100.0)]
+    res,text_list=np.array([sum_pixel,1.0,100.0])[np.newaxis,...],["[  0: Total] $%.1f #%d %.1f%%"%(sum_pixel,1.0,100.0)]
     msk=np.rint(msk)  # sigmoid round to  0/1
     for t in range(len(tgts)):
         curr=msk[...,t][...,np.newaxis].astype(np.uint8)
         newres,labels=cal_area_count_perc(curr,div,sum_pixel)
-        text_list.append("[  %d: %s] $%.1f #%d %.2f%%"%(t+1,tgts[t],newres[0],newres[1],newres[2]))
+        text_list.append("[  %d: %s] $%.1f #%d %.1f%%"%(t+1,tgts[t],newres[0],newres[1],newres[2]))
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
             img[...,c]=np.where(msk[...,t]>=0.5,img[...,c]*(1-cfg.overlay_opacity[t])+cfg.overlay_color[t][c]*cfg.overlay_opacity[t],img[...,c])  # weighted average
@@ -66,12 +66,12 @@ def single_call(cfg,img,tgts,msk):  # sigmoid (r,c,1) blend, np result
 def single_brighten(cfg,img,tgts,msk):  # sigmoid (r,c,1) blend, np result
     row,col,_=img.shape; div=cfg.target_scale**2.0; sum_pixel=row*col/div
     bw_mask=np.zeros((row,col,len(tgts)))
-    res,text_list=np.array([sum_pixel,1.0,100.0])[np.newaxis,...],["[  0: Total] $%.1f #%d %.2f%%"%(sum_pixel,1.0,100.0)]
+    res,text_list=np.array([sum_pixel,1.0,100.0])[np.newaxis,...],["[  0: Total] $%.1f #%d %.1f%%"%(sum_pixel,1.0,100.0)]
     msk=np.rint(gaussian_smooth(msk))  # sigmoid round to  0/1
     for t in range(msk.shape[-1]):
         curr=msk[...,t][...,np.newaxis].astype(np.uint8)
         newres,labels=cal_area_count_perc(curr,div,sum_pixel)
-        text_list.append("[  %d: %s] $%.1f #%d %.2f%%"%(t+1,tgts[t],newres[0],newres[1],newres[2]))
+        text_list.append("[  %d: %s] $%.1f #%d %.1f%%"%(t+1,tgts[t],newres[0],newres[1],newres[2]))
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
             mskrev=rev_scale(morph_close(msk,6,6),'sigmoid')
@@ -84,7 +84,7 @@ def single_brighten(cfg,img,tgts,msk):  # sigmoid (r,c,1) blend, np result
 def multi_call(cfg,img,tgts,msk):  # softmax (r,c,multi_label) blend, np result
     row,col,_=img.shape; div=cfg.target_scale**2.0; sum_pixel=row*col/div
     bw_mask=np.zeros((row,col,len(tgts)))
-    res,text_list=np.array([sum_pixel,1.0,100.0])[np.newaxis,...],["[  0: Total] $%.1f #%d %.2f%%"%(sum_pixel,1.0,100.0)]
+    res,text_list=np.array([sum_pixel,1.0,100.0])[np.newaxis,...],["[  0: Total] $%.1f #%d %.1f%%"%(sum_pixel,1.0,100.0)]
     msk=np.argmax(msk,axis=-1) # do argmax if predict categories covers all possibilities or consider them individually
     # uni,count=np.unique(msk,return_counts=True)
     # map_count=dict(zip(uni,count))
@@ -94,7 +94,7 @@ def multi_call(cfg,img,tgts,msk):  # softmax (r,c,multi_label) blend, np result
         # count_vec[d]=map_count.get(d) or 0
         curr=np.where(msk==t,1,0).astype(np.uint8)
         newres,labels=cal_area_count_perc(curr,div,sum_pixel)
-        text_list.append("[  %d: %s] $%.1f #%d %.2f%%"%(t+1,tgts[t],newres[0],newres[1],newres[2]))
+        text_list.append("[  %d: %s] $%.1f #%d %.1f%%"%(t+1,tgts[t],newres[0],newres[1],newres[2]))
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
             img[...,c]=np.where(msk==t,img[...,c]*(1-cfg.overlay_opacity[t])+cfg.overlay_color[t][c]*cfg.overlay_opacity[t],img[...,c])
@@ -136,17 +136,26 @@ def draw_detection(cfg,image,tgts,box,cls,scr,msk,reg=None):
     if reg:
         for (rname,mask) in sorted(reg.items()):  # add more specified regions
             nreg,sum_pixels,name_reg=nreg+1,sum_pixels+[np.sum(mask,keepdims=False)/div],name_reg+[rname] # green channel as mask
-    res=np.zeros((nreg,len(tgts),4),dtype=np.float32) # 0region:total/parenchyma/... 1target:LYM/MONO/PMN/...  2param:area/count/area_pct/count_density
+    res=np.zeros((nreg,1+len(tgts),4),dtype=np.float32) # 0region:total/parenchyma/... 1target:TotalArea/LYM/MONO/PMN/...  2param:area/count/area_pct/count_density
+    tot_color=max(nreg,len(tgts))
+    cfg.overlay_color,cfg.overlay_opacity=generate_colors(tot_color),[0.2]*tot_color # make sure to have enough colors
+    for r in range(nreg):
+        res[r,0,0]=sum_pixels[r]
+        res[r,0,2]=100.0*res[r,0,0]/res[0,0,0]
+    chars=3 # for ALL
+    for t in tgts:
+        chars=max(chars,len(t)) # longest nchars for targets
     for i in range(n):
-        t=cls[i]-1
+        t=cls[i]
+        tc=int((t-1)/len(tgts)*tot_color)
         y1,x1,y2,x2=box[i]
         mask=np.zeros((ori_row,ori_col),dtype=np.uint8)
         ri,ro,ci,co,tri,tro,tci,tco=get_proper_range(ori_row,ori_col, y1,y2,x1,x2, 0,y2-y1,0,x2-x1)
         patch=gaussian_smooth(cv2.resize(np.where(msk[i]>=0.5,1,0).astype(np.uint8),(x2-x1,y2-y1),interpolation=cv2.INTER_AREA)[tri:tro,tci:tco],5,5)
         mask[ri:ro,ci:co]=patch  # range(0,1) -> (y2-y1,x2-x1))
         for c in range(3):  # mask per channel
-            image[:,:,c]=np.where(mask>0,image[:,:,c]*(1-cfg.overlay_opacity[t])+cfg.overlay_color[t][c]*cfg.overlay_opacity[t],image[:,:,c]) if fill \
-            else np.where(cv2.morphologyEx(mask,cv2.MORPH_GRADIENT,np.ones((lwd,lwd),np.uint8))>0, cfg.overlay_color[t][c], image[:,:,c])
+            image[:,:,c]=np.where(mask>0,image[:,:,c]*(1-cfg.overlay_opacity[tc])+cfg.overlay_color[t-1][c]*cfg.overlay_opacity[tc],image[:,:,c]) if fill \
+            else np.where(cv2.morphologyEx(mask,cv2.MORPH_GRADIENT,np.ones((lwd,lwd),np.uint8))>0, cfg.overlay_color[tc][c], image[:,:,c])
             bw_mask[:,:,c]=np.where(mask>0,255,bw_mask[:,:,c])
         patch_area=np.sum(patch,keepdims=False)/div
         for r,rname in enumerate(name_reg):
@@ -162,23 +171,28 @@ def draw_detection(cfg,image,tgts,box,cls,scr,msk,reg=None):
     draw=ImageDraw.Draw(origin)
     if instance:
         for i in range(n):
-            t=cls[i]-1
+            t=cls[i]
+            tc=int((t-1)/len(tgts)*tot_color)
             y1,x1,y2,x2=box[i]
             # draw.rectangle((x1,y1,x2,y2),fill=None,outline=cfg.overlay_color[d]) # bbox
-            draw.text((x1,y1-size//2),'%s %d'%(tgts[t],floor(10.0*scr[i])),cfg.overlay_color[t],ImageFont.truetype(font,size)) # class score
-    txtlist=[]
+            draw.text((x1,y1-size//2),'%s %d'%(tgts[t],floor(10.0*scr[i])),cfg.overlay_color[tc],ImageFont.truetype(font,size)) # class score
     size=int(size*1.8) # increase size
     offset=max(1,size//12) # position offset for light dark text
     if black or white:
         for r,rname in enumerate(name_reg):
-            total_pixels=sum_pixels[r]
-            for t in range(len(tgts)):
-                if white: draw.text((0,0),'\n'*t+tgts[t],(210,210,210),ImageFont.truetype(font,size))
-                if black: draw.text((offset,offset),'\n'*t+tgts[t],cfg.overlay_color[t],ImageFont.truetype(font,size))
-                res[r,t,2]=100.0*res[r,t,0]/total_pixels
-                res[r,t,3]=1000000.0*res[r,t,1]/total_pixels # 1/mm2
-                txtlist.append('           %s  $%.1f #%d %.1f%% %.1f'%(rname,res[r,t,0],res[r,t,1],res[r,t,2],res[r,t,3]))
-        txtblk='\n'.join(txtlist)
-        if white: draw.text((0,0),txtblk,(210,210,210),ImageFont.truetype(font,size))
-        if black: draw.text((offset,offset),txtblk,(30,30,30),ImageFont.truetype(font,size))
+            rc=int((r-1)/nreg*tot_color)
+            txt='\n'*(r+1)+rname
+            for t,tgt in enumerate(["ALL"]+tgts):
+                tc=int((t-1)/len(tgts)*tot_color)
+                if t==0:
+                    txt+=' [$%.1f %.1f%%] '%(res[r,t,0],res[r,t,2])
+                else:
+                    res[r,t,2]=100.0*res[r,t,0]/res[r,0,0]
+                    res[r,t,3]=1000000.0*res[r,t,1]/res[r,0,0] # 1/mm2
+                    txt+=' [#%d %.1f] '%(res[r,t,1],res[r,t,3])
+                if r==0:
+                    if white: draw.text((0,0),'  '*(chars+3)*(t+1)+tgt,(210,210,210),ImageFont.truetype(font,size))
+                    if black: draw.text((offset,offset),'  '*(chars+3)*(t+1)+tgt,cfg.overlay_color[tc] if t!=0 else (30,30,30),ImageFont.truetype(font,size))
+            if white: draw.text((0,0),txt,cfg.overlay_color[rc] if r!=0 else (30,30,30),ImageFont.truetype(font,size))
+            if black: draw.text((offset,offset),txt,(30,30,30),ImageFont.truetype(font,size))
     return res,np.array(origin),bw_mask
