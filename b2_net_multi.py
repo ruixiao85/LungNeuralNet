@@ -344,7 +344,7 @@ class BaseNetM(Config):
         self.build_net(is_train=False)
         xls_file,cfg=os.path.join(pred_dir,"%s_%s_%s.xlsx"%(pair.origin,pred_dir.split(os.path.sep)[-1],repr(self))),str(self)
         params=["Area","Count","AreaPercentage","CountDensity"]
-        regions=["Total","ConductingAirway","RespiratoryAirway","ConnectiveTissue","LargeBloodVessel","SmallBloodVessel"]
+        regions=["WholeArea","Background","ConductingAirway","RespiratoryAirway","ConnectiveTissue","LargeBloodVessel","SmallBloodVessel"]
         # msks=[ImageSet(self,pair.wd,r,is_train=False,channels=1).prep_folder() for r in regions]
         batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
         save_ind,save_raw,save_msk=pair.cfg.save_ind_raw_msk
@@ -359,7 +359,7 @@ class BaseNetM(Config):
             for grp,view in batch.items():
                 grp_box,grp_cls,grp_scr,grp_msk=None,None,None,None
                 regmap={rn:read_mask_default_zeros(os.path.join(pred_dir,pair.img_set.label_scale(rn,out_scale),view[0].image_name),self.row_out,self.col_out)
-                    for rn in regions if rn!="Total"}
+                    for rn in regions if rn!="WholeArea"}
                 prd,tgt_name=pair.predict_generator_partial(tgt_list,view)
                 weight_file=None
                 for pat in ["%s_%s_%s^*^.h5"%(tgt_name,scale_res,cfg) for scale_res in [pair.img_set.scale_res(),pair.img_set.scale_allres()]]:

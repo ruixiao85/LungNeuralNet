@@ -5,15 +5,6 @@ import numpy as np
 
 from osio import find_file_pattern,find_file_pattern_rel
 
-
-def generate_colors(n, shuffle=False):
-    hsv = [(i / n, 0.9, 0.9) for i in range(n)]
-    # colors = [tuple((255*np.array(col)).astype(np.uint8)) for col in map(lambda c: colorsys.hsv_to_rgb(*c), hsv)] # rgb
-    colors = [tuple((255*np.array(col)[::-1]).astype(np.uint8)) for col in map(lambda c: colorsys.hsv_to_rgb(*c), hsv)] # bgr to match opencv
-    if shuffle:
-        random.shuffle(colors)
-    return colors
-
 class Config:
     def __init__(self,num_targets,target_scale,**kwargs,):
         self.num_targets=num_targets
@@ -32,7 +23,9 @@ class Config:
         self.coverage_predict=kwargs.get('coverage_predict', 2.0)
         self.predict_size=kwargs.get('predict_size', self.num_targets) # output each target invididually or grouped
         self.call_hardness=kwargs.get('call_hardness', 1.0)  # 0-smooth 1-hard binary call
-        self.overlay_color=kwargs.get('overlay_color', generate_colors(self.num_targets))
+        self.overlay_dark=kwargs.get('overlay_dark', lambda h : tuple((255*np.array(colorsys.hsv_to_rgb(h, 0.4, 0.4))[::-1]).astype(np.uint8)))
+        self.overlay_color=kwargs.get('overlay_color', lambda h : tuple((255*np.array(colorsys.hsv_to_rgb(h, 0.9, 0.9))[::-1]).astype(np.uint8)))
+        self.overlay_bright=kwargs.get('overlay_bright', lambda h : tuple((255*np.array(colorsys.hsv_to_rgb(h, 0.6, 0.9))[::-1]).astype(np.uint8)))
         self.overlay_opacity=kwargs.get('overlay_opacity', [0.2]*self.num_targets)
         self.overlay_textshape_bwif=kwargs.get('overlay_textshape_bwif', (True,True,False,False)) # black_legend, white_legend, color_instance_text, fill_shape
         self.save_ind_raw_msk=kwargs.get('save_ind_raw_msk', (True,True,True)) # (ind@cnn output/not, output grp @raw/cnn scale, grp_msk output/not)
