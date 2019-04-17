@@ -44,6 +44,7 @@ class BaseNetU(Config):
         from postprocess import single_call,multi_call
         self.predict_proc=kwargs.get('predict_proc', single_call)
         self.filename=kwargs.get('filename', None)
+        self.params=["Area","Count","AreaPercentage"]
         self.net=None # abstract -> instatiate in subclass
 
     def load_json(self,filename=None):  # load model from json
@@ -129,7 +130,6 @@ class BaseNetU(Config):
     def predict(self,pair,pred_dir):
         self.build_net(is_train=False)
         xls_file,cfg=os.path.join(pred_dir,"%s_%s_%s.xlsx"%(pair.origin,pred_dir.split(os.path.sep)[-1],repr(self))),str(self)
-        params=["Count","Area","AreaPercentage"]
         batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
         save_ind,save_raw,save_msk=pair.cfg.save_ind_raw_msk
         save_raw,out_scale=(True,pair.img_set.raw_scale) if (save_raw and pair.img_set.resize_ratio!=1.0) else (False,pair.img_set.target_scale)
@@ -164,7 +164,7 @@ class BaseNetU(Config):
                 for i,msk in enumerate(msks):
                     origin=pair.img_set.get_image(view[i])
                     if save_ind:
-                        r_i,blend,_=self.predict_proc(self,origin,tgt_list,msk)
+                        r_i,blend,_=self.predict_proc(self,origin.copy(),tgt_list,msk)
                         res_i=r_i[np.newaxis,...] if res_i is None else np.concatenate((res_i,r_i[np.newaxis,...]))
                         cv2.imwrite(mkdirs_dir(os.path.join(ind_dir,view[i].file_name)),blend)
                     ri,ro,ci,co,tri,tro,tci,tco=get_proper_range(view[i].ori_row,view[i].ori_col,
@@ -173,7 +173,7 @@ class BaseNetU(Config):
                         mrg_out[ri:ro,ci:co,d]+=(msk[...,d]*mask_wt)[tri:tro,tci:tco]
                     mrg_out_wt[ri:ro,ci:co]+=mask_wt[tri:tro,tci:tco]
                 mrg_out/=mrg_out_wt[...,np.newaxis]
-                r_g,blend,bw=self.predict_proc(self,mrg_in,tgt_list,mrg_out)
+                r_g,blend,bw=self.predict_proc(self,mrg_in.copy(),tgt_list,mrg_out)
                 res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
                 if save_raw:
                     mrg_in=pair.img_set.get_raw_image(view[0])
@@ -187,11 +187,11 @@ class BaseNetU(Config):
         if save_ind:
             df=pd.DataFrame(res_ind.reshape((len(view_name)*(1+len(pair.targets)),-1)),
                 index=pd.MultiIndex.from_product([view_name,["Total"]+pair.targets],names=["view_name","targets"]),
-                columns=pd.MultiIndex.from_product([params],names=["params"]))
+                columns=pd.MultiIndex.from_product(self.params,names=["params"]))
             to_excel_sheet(df,xls_file,pair.origin)  # per slice
         df=pd.DataFrame(res_grp.reshape((len(batch)*(1+len(pair.targets)),-1)),
             index=pd.MultiIndex.from_product([batch.keys(),["Total"]+pair.targets],names=["image_name","targets"]),
-            columns=pd.MultiIndex.from_product([params],names=["params"]))
+            columns=pd.MultiIndex.from_product(self.params,names=["params"]))
         to_excel_sheet(df,xls_file,pair.origin+"_sum")  # per whole image
 
 class ImageMaskPair:
@@ -201,8 +201,8 @@ class ImageMaskPair:
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
         self.is_train=is_train
-        self.img_set=ViewSet(cfg, wd, origin, is_train, channels=3, low_std_ex=False).prep_folder()
-        self.msk_set=None
+        self.img_set=ViewSet(cfg,wd,origin,channels=3,is_train=is_train,low_std_ex=False).prep_folder()
+        self.reg_set=None # region_set
 
     def train_generator(self):
         i=0; no=self.cfg.dep_out; nt=len(self.targets)
@@ -211,11 +211,11 @@ class ImageMaskPair:
             tr_view,val_view=set(self.img_set.tr_view),set(self.img_set.val_view)
             tr_view_ex,val_view_ex=None,None
             tgt_list=[]
-            self.msk_set=[]
+            self.reg_set=[]
             for t in self.targets[i:o]:
                 tgt_list.append(t)
-                msk=ViewSet(self.cfg, self.wd, t, is_train=True, channels=1, low_std_ex=True).prep_folder()
-                self.msk_set.append(msk)
+                msk=ViewSet(self.cfg,self.wd,t,channels=1,is_train=True,low_std_ex=True).prep_folder()
+                self.reg_set.append(msk)
                 tr_view=tr_view.intersection(msk.tr_view)
                 val_view=val_view.intersection(msk.val_view)
                 tr_view_ex=set(msk.tr_view_ex) if tr_view_ex is None else tr_view_ex.intersection(msk.tr_view_ex)
@@ -254,28 +254,28 @@ class ImageMaskGenerator(keras.utils.Sequence):
         self.on_epoch_end()
 
     def __len__(self):  # Denotes the number of batches per epoch
-        return int(np.ceil(len(self.view_coord) / self.cfg.batch_size))
+        return int(np.ceil(len(self.view_coord)/self.cfg.batch_size))
 
     def __getitem__(self, index):  # Generate one batch of data
-        indexes = self.indexes[index * self.cfg.batch_size:(index + 1) * self.cfg.batch_size]
+        indexes=self.indexes[index*self.cfg.batch_size:(index+1)*self.cfg.batch_size]
         # print(" getting index %d with %d batch size"%(index,self.batch_size))
         if self.pair.is_train:
-            _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
-            _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
-            for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = self.pair.img_set.get_image(vc)
+            _img=np.zeros((self.cfg.batch_size,self.cfg.row_in,self.cfg.col_in,self.cfg.dep_in),dtype=np.uint8)
+            _tgt=np.zeros((self.cfg.batch_size,self.cfg.row_out,self.cfg.col_out,self.cfg.dep_out),dtype=np.uint8)
+            for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
+                _img[vi,...]=self.pair.img_set.get_image(vc)
                 for ti,tgt in enumerate(self.target_list):
-                    _tgt[vi, ..., ti] = self.pair.msk_set[ti].get_mask(vc)
+                    _tgt[vi,...,ti]=self.pair.reg_set[ti].get_mask(vc,)
             # cv2.imwrite("pair_img_0.jpg",_img[0]); cv2.imwrite("pair_msk_0.jpg",_tgt[0,...,0:3])
-            _img, _tgt = self.aug.shift2_decor1(_img,_tgt)  # integer N: a <= N <= b.
+            _img,_tgt=self.aug.shift2_decor1(_img,_tgt)  # integer N: a <= N <= b.
             # cv2.imwrite("pair_img_1.jpg",_img[0]); cv2.imwrite("pair_msk_1.jpg",_tgt[0,...,0:3])
-            return prep_scale(_img, self.cfg.feed), prep_scale(_tgt, self.cfg.out)
+            return prep_scale(_img,self.cfg.feed),prep_scale(_tgt,self.cfg.out)
         else:
-            _img = np.zeros((self.cfg.batch_size, self.cfg.row_in, self.cfg.col_in, self.cfg.dep_in), dtype=np.uint8)
-            for vi, vc in enumerate([self.view_coord[k] for k in indexes]):
-                _img[vi, ...] = self.pair.img_set.get_image(vc)
+            _img=np.zeros((self.cfg.batch_size,self.cfg.row_in,self.cfg.col_in,self.cfg.dep_in),dtype=np.uint8)
+            for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
+                _img[vi,...]=self.pair.img_set.get_image(vc)
             # cv2.imwrite("pair_img.jpg",_img[0])
-            return prep_scale(_img, self.cfg.feed), None
+            return prep_scale(_img,self.cfg.feed),None
 
     def on_epoch_end(self):  # Updates indexes after each epoch
         self.indexes=np.arange(len(self.view_coord))

@@ -32,10 +32,9 @@ class MetaInfo:
         return str(self).__hash__()
 
 class ImageSet:
-    def __init__(self,cfg:Config,wd,sf,is_train,channels):
+    def __init__(self,cfg:Config,wd,sf,channels):
         self.work_directory=wd
         self.sub_category=sf
-        self.is_train=is_train
         self.channels=channels
         self.image_format=cfg.image_format if channels!=4 else '*.png' # jpg<=3 channels; png<=4 channels (alpha)
         self.image_val_format=cfg.image_val_format if channels!=4 else '*.png' # jpg<=3 channels; png<=4 channels (alpha)
@@ -112,9 +111,9 @@ class ImageSet:
         return view[...,3] if self.channels==4 else 255-view[...,1] if self.channels==3 else view[...,0] # 4: alpha 3: process further on green
 
 class ViewSet(ImageSet):
-    def __init__(self,cfg: Config,wd,sf,is_train,channels,low_std_ex):
-        super(ViewSet,self).__init__(cfg,wd,sf,is_train,channels)
-        self.coverage=cfg.coverage_train if self.is_train else cfg.coverage_predict
+    def __init__(self,cfg: Config,wd,sf,channels,is_train,low_std_ex):
+        super(ViewSet,self).__init__(cfg,wd,sf,channels)
+        self.coverage=cfg.coverage_train if is_train else cfg.coverage_predict
         self.list_to_view=self.list_to_view_with_overlap if self.coverage>0 else self.list_to_view_without_overlap
         self.train_step=cfg.train_step
         self.row,self.col=cfg.row_in,cfg.col_in
@@ -208,8 +207,8 @@ class ViewSet(ImageSet):
         return view_batch, view_name
 
 class PatchSet(ImageSet):
-    def __init__(self,cfg: Config,wd,sf,is_train,channels):
-        super(PatchSet,self).__init__(cfg,wd,sf,is_train,channels)
+    def __init__(self,cfg: Config,wd,sf,channels):
+        super(PatchSet,self).__init__(cfg,wd,sf,channels)
         self.tr_view,self.val_view=None,None  # lists -> views with specified size
         self.tr_view_ex,self.val_view_ex=None,None  # views with low contrast
 
@@ -232,7 +231,7 @@ class PatchSet(ImageSet):
         print("Images were divided into [%d] views"%(len(view_list)))
         return view_list
 
-    def get_mask(self,view,threshold=50):
-        msk=super(PatchSet,self).get_mask(view)
+    def get_mask(self,view:MetaInfo,threshold=50,**kwargs):
+        msk=super(PatchSet,self).get_mask(view,**kwargs)
         _,binary=cv2.threshold(gaussian_smooth(msk,3),threshold,255,cv2.THRESH_BINARY)
         return fill_contour(binary)
