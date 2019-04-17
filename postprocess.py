@@ -8,8 +8,8 @@ from a_config import get_proper_range
 from preprocess import prep_scale,rev_scale
 from math import floor,log,sqrt
 
-dark_text=(40,40,40)
-bright_text=(200,200,200)
+HEX_DARK_TEXT=(40,40,40)
+HEX_BRIGHT_TEXT=(200,200,200)
 
 def fill_contour(_img):
     contour,hier = cv2.findContours(_img,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
@@ -51,83 +51,51 @@ def cal_area_count_perc(rc1,div=1.0,area=None):
     return newres,labels
 
 def single_call(cfg,img,tgts,msk):  # sigmoid (r,c,1) blend, np result
-    row,col,_=img.shape; div=cfg.target_scale**2.0; sum_pixel=row*col/div
-    nt=len(tgts)
+    row,col,dep=img.shape; nt=len(tgts); div=cfg.target_scale**2.0; sum_pixel=row*col/div
     bw_mask=np.zeros((row,col,nt),dtype=np.uint8)
-    res,text_list=np.array([sum_pixel,1.0,1.0])[np.newaxis,...],["[  0: Total] ${:.0f} #{:.0f} {:.1%}".format(sum_pixel,1.0,1.0)]
+    res=np.array([sum_pixel,1.0,1.0])[np.newaxis,...]
     msk=np.rint(msk)  # sigmoid round to  0/1
-    for t,tgt in enumerate(tgts):
-        curr=msk[...,t][...,np.newaxis].astype(np.uint8)
-        newres,labels=cal_area_count_perc(curr,div,sum_pixel)
-        text_list.append("[  {:.0f}: {}] ${:.0f} #{:.0f} {:.1%}".format(t+1,tgt,newres[0],newres[1],newres[2]))
+    for t in range(nt):
+        boolarray=(msk[...,t]>=0.5)
+        newres,labels=cal_area_count_perc(boolarray.astype(np.uint8),div,sum_pixel)
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
-            img[...,c]=np.where(msk[...,t]>=0.5,img[...,c]*(1-cfg.overlay_opacity[t])+cfg.overlay_color(t/nt)[c]*cfg.overlay_opacity[t],img[...,c])  # weighted average
-            bw_mask[...,t]=np.where(msk[...,t]>=0.5,255,bw_mask[...,t])  # b/w mask maximum object masks
-    img=draw_text(cfg,img,text_list,col)
-    return res,img,bw_mask
-
-def single_brighten(cfg,img,tgts,msk):  # sigmoid (r,c,1) blend, np result
-    row,col,_=img.shape; div=cfg.target_scale**2.0; sum_pixel=row*col/div
-    nt=len(tgts)
-    bw_mask=np.zeros((row,col,nt))
-    res,text_list=np.array([sum_pixel,1.0,1.0])[np.newaxis,...],["[  0: Total] ${:.0f} #{:.0f} {:.1%}".format(sum_pixel,1.0,1.0)]
-    msk=np.rint(gaussian_smooth(msk))  # sigmoid round to  0/1
-    for t,tgt in enumerate(tgts):
-        curr=msk[...,t][...,np.newaxis].astype(np.uint8)
-        newres,labels=cal_area_count_perc(curr,div,sum_pixel)
-        text_list.append("[  {:.0f}: {}] ${:.0f} #{:.0f} {:.1%}".format(t+1,tgt,newres[0],newres[1],newres[2]))
-        res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
-        for c in range(3):
-            mskrev=rev_scale(morph_close(msk,6,6),'sigmoid')
-            # img[...,c]=np.where(mskrev[...,d]>=img[...,c],mskrev[...,d],img[...,c])  # weighted average
-            img[...,c]=np.maximum(mskrev[...,t],img[...,c])  # brighter area
-            bw_mask[...,t]=np.where(msk[...,t]>=0.5,255,bw_mask[...,t])  # b/w mask maximum object masks
-    img=draw_text(cfg,img,text_list,col)
+            img[...,c]=np.where(boolarray,img[...,c]*(1-cfg.overlay_opacity[t])+cfg.overlay_color(t/nt)[c]*cfg.overlay_opacity[t],img[...,c])
+        bw_mask[...,t]=np.where(boolarray,255,bw_mask[...,t])  # b/w mask maximum object masks
+    img=draw_text(cfg,img,tgts,res,col) if cfg.overlay_legend_instance_fill[0] else img
     return res,img,bw_mask
 
 def multi_call(cfg,img,tgts,msk):  # softmax (r,c,multi_label) blend, np result
-    row,col,_=img.shape; div=cfg.target_scale**2.0; sum_pixel=row*col/div
-    nt=len(tgts)
-    bw_mask=np.zeros((row,col,nt))
-    res,text_list=np.array([sum_pixel,1.0,1.0])[np.newaxis,...],["[  0: Total] ${:.0f} #{:.0f} {:.1%}".format(sum_pixel,1.0,1.0)]
-    msk=np.argmax(msk,axis=-1) # do argmax if predict categories covers all possibilities or consider them individually
-    # uni,count=np.unique(msk,return_counts=True)
-    # map_count=dict(zip(uni,count))
-    # count_vec=np.zeros(cfg.predict_size)
+    row,col,dep=img.shape; nt=len(tgts); div=cfg.target_scale**2.0; sum_pixel=row*col/div
+    bw_mask=np.zeros((row,col,nt),dtype=np.uint8)
+    res=np.array([sum_pixel,1.0,1.0])[np.newaxis,...]
+    msk=np.argmax(msk,axis=-1)
     for t in range(cfg.predict_size):
-        # curr=msk[..., d][..., np.newaxis].astype(np.uint8)
-        # count_vec[d]=map_count.get(d) or 0
-        curr=np.where(msk==t,1,0).astype(np.uint8)
-        newres,labels=cal_area_count_perc(curr,div,sum_pixel)
-        text_list.append("[  {:.0f}: {}] ${:.0f} #{:.0f} {:.1%}".format(t+1,tgts[t],newres[0],newres[1],newres[2]))
+        boolarray=(msk==t)
+        newres,labels=cal_area_count_perc(boolarray.astype(np.uint8),div,sum_pixel)
         res=newres[np.newaxis,...] if res is None else np.concatenate((res,newres[np.newaxis,...]))
         for c in range(3):
-            img[...,c]=np.where(msk==t,img[...,c]*(1-cfg.overlay_opacity[t])+cfg.overlay_color(t/nt)[c]*cfg.overlay_opacity[t],img[...,c])
-            bw_mask[...,t]=np.where(msk==t,255,bw_mask[...,t])  # b/w mask maximum object masks
-    img=draw_text(cfg,img,text_list,col)
+            img[...,c]=np.where(boolarray,img[...,c]*(1-cfg.overlay_opacity[t])+cfg.overlay_color(t/nt)[c]*cfg.overlay_opacity[t],img[...,c])
+        bw_mask[...,t]=np.where(boolarray,255,bw_mask[...,t]) # b/w mask maximum object masks
+    img=draw_text(cfg,img,tgts,res,col) if cfg.overlay_legend_instance_fill[0] else img
     return res,img,bw_mask
 
-def draw_text(cfg,img,text_list,width):
-    black,white,_,_ =cfg.overlay_textshape_bwif
-    nt=len(text_list)-1
-    if black or white:
-        font="arial.ttf"  #times.ttf
-        size=max(10,int(width/50)) # fontsize at least 12
-        off=max(1, size//15)  # text offset
-        origin=Image.fromarray(img.astype(np.uint8),'RGB')  # L RGB
-        draw=ImageDraw.Draw(origin)
-        txtblk='\n'.join(text_list)
-        if white: draw.text((0,0),txtblk,bright_text,ImageFont.truetype(font,size))
-        if black: draw.text((off,off),txtblk,dark_text,ImageFont.truetype(font,size))
-        for i in range(len(text_list)):
-            txtcrs=' \n'*i+' X'
-            if white: draw.text((0,0),txtcrs,cfg.overlay_bright((i-1)/nt),ImageFont.truetype(font,size))
-            if black and i!=0: draw.text((off,off),txtcrs,cfg.overlay_dark((i-1)/nt),ImageFont.truetype(font,size))
-        return np.array(origin)
-    else:
-        return img
-
+def draw_text(cfg,img,tgts,res,width=None):
+    width=width or img.shape[1]
+    nt=len(tgts)
+    font,size="arial.ttf",max(10,int(width/50))  #times.ttf
+    off=max(1, size//15)  # text offset
+    fontsize=ImageFont.truetype(font,size)
+    origin=Image.fromarray(img.astype(np.uint8),'RGB')  # L RGB
+    draw=ImageDraw.Draw(origin)
+    for ri in range(1+nt):
+        txt="\n"*ri+"[  {:.0f}: {}] ${:.0f} #{:.0f} {:.1%}".format(ri,"Total" if ri==0 else tgts[ri-1],res[ri-1,0],res[ri-1,1],res[ri-1,2])
+        draw.text((0,0),txt,HEX_BRIGHT_TEXT,)
+        draw.text((off,off),txt,HEX_DARK_TEXT,fontsize)
+        sym=' \n'*ri+' X'
+        draw.text((0,0),sym,HEX_BRIGHT_TEXT if ri==0 else cfg.overlay_bright((ri-1)/nt),fontsize)
+        draw.text((off,off),sym,HEX_DARK_TEXT if ri==0 else cfg.overlay_dark((ri-1)/nt),fontsize)
+    return np.array(origin)
 
 def draw_detection(cfg,image,tgts,box,cls,scr,msk,reg=None):
     ori_row,ori_col,_=image.shape
@@ -197,8 +165,8 @@ def draw_detection(cfg,image,tgts,box,cls,scr,msk,reg=None):
                         res[r,t,3]=1000000.0*res[r,t,1]/sum_reg # 1/mm2
                     txt+=' #{:.0f}  {:.1f} |'.format(res[r,t,1],res[r,t,3])
                 if r==0:
-                    if white: draw.text((0,0),'  '*(chars+3)*(t+1)+tgt,cfg.overlay_bright((t-1)/nt) if t!=0 else bright_text,ImageFont.truetype(font,size))
-                    if black: draw.text((offset,offset),'  '*(chars+3)*(t+1)+tgt,cfg.overlay_dark((t-1)/nt) if t!=0 else dark_text,ImageFont.truetype(font,size))
-            if white: draw.text((0,0),txt,cfg.overlay_bright((r-1)/nreg) if r!=0 else bright_text,ImageFont.truetype(font,size))
-            if black: draw.text((offset,offset),txt,cfg.overlay_dark((r-1)/nreg) if r!=0 else dark_text,ImageFont.truetype(font,size))
+                    if white: draw.text((0,0),'  '*(chars+3)*(t+1)+tgt,cfg.overlay_bright((t-1)/nt) if t!=0 else HEX_BRIGHT_TEXT,ImageFont.truetype(font,size))
+                    if black: draw.text((offset,offset),'  '*(chars+3)*(t+1)+tgt,cfg.overlay_dark((t-1)/nt) if t!=0 else HEX_DARK_TEXT,ImageFont.truetype(font,size))
+            if white: draw.text((0,0),txt,cfg.overlay_bright((r-1)/nreg) if r!=0 else HEX_BRIGHT_TEXT,ImageFont.truetype(font,size))
+            if black: draw.text((offset,offset),txt,cfg.overlay_dark((r-1)/nreg) if r!=0 else HEX_DARK_TEXT,ImageFont.truetype(font,size))
     return res,np.array(origin),bw_mask
