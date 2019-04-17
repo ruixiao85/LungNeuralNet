@@ -23,9 +23,9 @@ class Config:
         self.coverage_predict=kwargs.get('coverage_predict', 2.0)
         self.predict_size=kwargs.get('predict_size', self.num_targets) # output each target invididually or grouped
         self.call_hardness=kwargs.get('call_hardness', 1.0)  # 0-smooth 1-hard binary call
-        self.overlay_dark=kwargs.get('overlay_dark', lambda h : tuple((255*np.array(colorsys.hsv_to_rgb(h, 0.6, 0.4))[::-1]).astype(np.uint8)))
+        self.overlay_dark=kwargs.get('overlay_dark', lambda h : tuple((255*np.array(colorsys.hsv_to_rgb(h, 0.6, 0.5))[::-1]).astype(np.uint8)))
         self.overlay_color=kwargs.get('overlay_color', lambda h : tuple((255*np.array(colorsys.hsv_to_rgb(h, 0.9, 0.9))[::-1]).astype(np.uint8)))
-        self.overlay_bright=kwargs.get('overlay_bright', lambda h : tuple((255*np.array(colorsys.hsv_to_rgb(h, 0.6, 0.9))[::-1]).astype(np.uint8)))
+        self.overlay_bright=kwargs.get('overlay_bright', lambda h : tuple((255*np.array(colorsys.hsv_to_rgb(h, 0.6, 1.0))[::-1]).astype(np.uint8)))
         self.overlay_opacity=kwargs.get('overlay_opacity', [0.2]*self.num_targets)
         self.overlay_legend_instance_fill=kwargs.get('overlay_legend_instance_fill', (True,False,False)) # dark/bright_legends, color_instance_text, fill_shape
         self.save_ind_raw_msk=kwargs.get('save_ind_raw_msk', (True,True,True)) # (ind@cnn output/not, output grp @raw/cnn scale, grp_msk output/not)

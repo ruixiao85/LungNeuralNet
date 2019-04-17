@@ -44,6 +44,7 @@ class BaseNetU(Config):
         from postprocess import single_call,multi_call
         self.predict_proc=kwargs.get('predict_proc', single_call)
         self.filename=kwargs.get('filename', None)
+        self.region0="Total"
         self.params=["Area","Count","AreaPercentage"]
         self.net=None # abstract -> instatiate in subclass
 
@@ -185,34 +186,35 @@ class BaseNetU(Config):
             res_ind=res_i if res_ind is None else np.hstack((res_ind,res_i))
             res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
         if save_ind:
-            df=pd.DataFrame(res_ind.reshape((len(view_name)*(1+len(pair.targets)),-1)),
-                index=pd.MultiIndex.from_product([view_name,["Total"]+pair.targets],names=["view_name","targets"]),
+            df=pd.DataFrame(res_ind.reshape((len(view_name)*(1+len(pair.regions)),-1)),
+                index=pd.MultiIndex.from_product([view_name,[self.region0]+pair.regions],names=["view_name","regions"]),
                 columns=pd.MultiIndex.from_product([self.params],names=["params"]))
             to_excel_sheet(df,xls_file,pair.origin)  # per slice
-        df=pd.DataFrame(res_grp.reshape((len(batch)*(1+len(pair.targets)),-1)),
-            index=pd.MultiIndex.from_product([batch.keys(),["Total"]+pair.targets],names=["image_name","targets"]),
+        df=pd.DataFrame(res_grp.reshape((len(batch)*(1+len(pair.regions)),-1)),
+            index=pd.MultiIndex.from_product([batch.keys(),[self.region0]+pair.regions],names=["image_name","regions"]),
             columns=pd.MultiIndex.from_product([self.params],names=["params"]))
         to_excel_sheet(df,xls_file,pair.origin+"_sum")  # per whole image
 
 class ImageMaskPair:
-    def __init__(self,cfg:BaseNetU,wd,origin,targets,is_train):
+    def __init__(self,cfg:BaseNetU,wd,origin,regions,is_train):
         self.cfg=cfg
         self.wd=wd
         self.origin=origin
-        self.targets=targets if isinstance(targets,list) else [targets]
+        self.region0="Total"
+        self.regions=regions if isinstance(regions,list) else [regions]
         self.is_train=is_train
         self.img_set=ViewSet(cfg,wd,origin,channels=3,is_train=is_train,low_std_ex=False).prep_folder()
         self.reg_set=None # region_set
 
     def train_generator(self):
-        i=0; no=self.cfg.dep_out; nt=len(self.targets)
+        i=0; no=self.cfg.dep_out; nt=len(self.regions)
         while i < nt:
             o=min(i+no, nt)
             tr_view,val_view=set(self.img_set.tr_view),set(self.img_set.val_view)
             tr_view_ex,val_view_ex=None,None
             tgt_list=[]
             self.reg_set=[]
-            for t in self.targets[i:o]:
+            for t in self.regions[i:o]:
                 tgt_list.append(t)
                 msk=ViewSet(self.cfg,self.wd,t,channels=1,is_train=True,low_std_ex=True).prep_folder()
                 self.reg_set.append(msk)
@@ -227,19 +229,19 @@ class ImageMaskPair:
                   (len(tr_view_ex),len(val_view_ex),len(tr_view),len(val_view),len(tr_view_filtered),len(val_view_filtered)))
             yield (ImageMaskGenerator(self,tgt_list,tr_view_filtered,self.cfg.train_val_aug[0]),
                    ImageMaskGenerator(self,tgt_list,val_view_filtered,self.cfg.train_val_aug[1]),
-                   self.img_set.label_scale_res(self.cfg.join_targets(tgt_list),self.cfg.target_scale,self.cfg.row_out,self.cfg.col_out))
+                   self.img_set.label_scale_res(self.cfg.join_regions(tgt_list),self.cfg.target_scale,self.cfg.row_out,self.cfg.col_out))
             i=o
 
     def predict_generator_note(self):
-        i = 0; nt = len(self.targets)
+        i = 0; nt = len(self.regions)
         while i < nt:
             o = min(i + self.cfg.predict_size, nt)
-            tgt_list=self.targets[i:o]
-            yield (self.cfg.join_targets(tgt_list), tgt_list)
+            tgt_list=self.regions[i:o]
+            yield (self.cfg.join_regions(tgt_list), tgt_list)
             i = o
 
     def predict_generator_partial(self,subset,view):
-        return ImageMaskGenerator(self,subset,view,0),self.cfg.join_targets(subset)
+        return ImageMaskGenerator(self,subset,view,0),self.cfg.join_regions(subset)
 
 
 class ImageMaskGenerator(keras.utils.Sequence):

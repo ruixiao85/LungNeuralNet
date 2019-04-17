@@ -78,6 +78,8 @@ class BaseNetM(Config):
         self.gpu_count=kwargs.get('gpu_count', 1)
         self.images_per_gpu=kwargs.get('image_per_gpu', 1)
         self.filename=kwargs.get('filename', None)
+        self.target0="ALL"
+        self.region0="Total"
         self.params=["Area","Count","AreaPercentage","CountDensity"]
         self.ntop=15 # override parent class to keep more top networks for further MRCNN evaluation
         self.net=None
@@ -344,8 +346,6 @@ class BaseNetM(Config):
     def predict(self,pair,pred_dir):
         self.build_net(is_train=False)
         xls_file,cfg=os.path.join(pred_dir,"%s_%s_%s.xlsx"%(pair.origin,pred_dir.split(os.path.sep)[-1],repr(self))),str(self)
-        regions=["WholeArea","Background","ConductingAirway","RespiratoryAirway","ConnectiveTissue","LargeBloodVessel","SmallBloodVessel"]
-        # msks=[ImageSet(self,pair.wd,r,is_train=False,channels=1).prep_folder() for r in regions]
         batch,view_name=pair.img_set.view_coord_batch()  # image/1batch -> view_coord
         save_ind,save_raw,save_msk=pair.cfg.save_ind_raw_msk
         save_raw,out_scale=(True,pair.img_set.raw_scale) if (save_raw and pair.img_set.resize_ratio!=1.0) else (False,pair.img_set.target_scale)
@@ -358,8 +358,6 @@ class BaseNetM(Config):
             mask_dirs=[mkdir_dir(os.path.join(pred_dir,"%s_%s"%(tgt,out_scale))) for tgt in tgt_list] if save_msk else None  # b/w masks
             for grp,view in batch.items():
                 grp_box,grp_cls,grp_scr,grp_msk=None,None,None,None
-                regmap={rn:read_mask_default_zeros(os.path.join(pred_dir,pair.img_set.label_scale(rn,out_scale),view[0].image_name),self.row_out,self.col_out)
-                    for rn in regions if rn!="WholeArea"}
                 prd,tgt_name=pair.predict_generator_partial(tgt_list,view)
                 weight_file=None
                 for pat in ["%s_%s_%s^*^.h5"%(tgt_name,scale_res,cfg) for scale_res in [pair.img_set.scale_res(),pair.img_set.scale_allres()]]:
@@ -392,7 +390,9 @@ class BaseNetM(Config):
                 if save_raw:
                     mrg_in=read_image(os.path.join(pred_dir,pair.img_set.raw_folder,view[0].image_name))
                     grp_box=(grp_box.astype(np.float32)/pair.img_set.resize_ratio).astype(np.int32)
-                r_g,blend,bw=self.predict_proc(self,mrg_in,tgt_list,grp_box,grp_cls,grp_scr,grp_msk,reg=regmap)
+                r_g,blend,bw=self.predict_proc(self,mrg_in,tgt_list,grp_box,grp_cls,grp_scr,grp_msk,reg={
+                    rn:read_mask_default_zeros(os.path.join(pred_dir,pair.img_set.label_scale(rn,out_scale),view[0].image_name),self.row_out,self.col_out)
+                    for rn in pair.regions})
                 res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
                 cv2.imwrite(mkdirs_dir(os.path.join(grp_dir,view[0].image_name)),blend)
                 if save_msk:
@@ -401,10 +401,11 @@ class BaseNetM(Config):
             res_grp=res_g if res_grp is None else np.hstack((res_grp,res_g))
         if save_ind:
             df=pd.DataFrame(res_ind.reshape(len(view_name),-1),index=pd.MultiIndex.from_product([view_name],names=["view_name"]),
-                columns=pd.MultiIndex.from_product([["ALL"]+pair.targets,self.params],names=["targets","params"]))
+                columns=pd.MultiIndex.from_product([[self.target0]+pair.targets,self.params],names=["targets","params"]))
             to_excel_sheet(df,xls_file,pair.origin) # per slice
-        df=pd.DataFrame(res_grp.reshape((len(batch)*len(regions),-1)),index=pd.MultiIndex.from_product([batch.keys(),regions],names=["image_name","regions"]),
-            columns=pd.MultiIndex.from_product([["ALL"]+pair.targets,self.params],names=["targets","params"]))
+        df=pd.DataFrame(res_grp.reshape((len(batch)*(1+len(pair.regions)),-1)),
+            index=pd.MultiIndex.from_product([batch.keys(),[self.region0]+pair.regions],names=["image_name","regions"]),
+            columns=pd.MultiIndex.from_product([[self.target0]+pair.targets,self.params],names=["targets","params"]))
         to_excel_sheet(df,xls_file,pair.origin+"_sum") # per whole image
 
 class ImagePatchPair:
@@ -413,9 +414,10 @@ class ImagePatchPair:
         self.wd=wd
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
+        self.region0="Total"
         self.regions=regions if isinstance(regions,list) else [regions]
         self.img_set=ViewSet(cfg,wd,origin,channels=3,is_train=is_train,low_std_ex=False).prep_folder()
-        self.reg_set=None # region_set (Conducting Airway,...)
+        # self.reg_set=None # region_set (Conducting Airway,...)
         self.obj_set=None # object_set (LYM,... annotated matching img_set)
         self.pch_set=None # patch_set (LYM,... insertable rep image)
 
@@ -430,7 +432,6 @@ class ImagePatchPair:
         yield (self.cfg.join_targets(self.targets),self.targets)
 
     def predict_generator_partial(self,subset,view):
-        self.reg_set=[ImageSet(self.cfg,self.wd,r,1).prep_folder() for r in self.regions]
         return ImagePatchGenerator(self,subset,view_coord=view,aug_value=0),self.cfg.join_targets(subset)
 
 
