@@ -187,11 +187,11 @@ class BaseNetU(Config):
         if save_ind:
             df=pd.DataFrame(res_ind.reshape((len(view_name)*(1+len(pair.targets)),-1)),
                 index=pd.MultiIndex.from_product([view_name,["Total"]+pair.targets],names=["view_name","targets"]),
-                columns=pd.MultiIndex.from_product(self.params,names=["params"]))
+                columns=pd.MultiIndex.from_product([self.params],names=["params"]))
             to_excel_sheet(df,xls_file,pair.origin)  # per slice
         df=pd.DataFrame(res_grp.reshape((len(batch)*(1+len(pair.targets)),-1)),
             index=pd.MultiIndex.from_product([batch.keys(),["Total"]+pair.targets],names=["image_name","targets"]),
-            columns=pd.MultiIndex.from_product(self.params,names=["params"]))
+            columns=pd.MultiIndex.from_product([self.params],names=["params"]))
         to_excel_sheet(df,xls_file,pair.origin+"_sum")  # per whole image
 
 class ImageMaskPair:
