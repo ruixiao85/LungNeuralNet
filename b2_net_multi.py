@@ -426,13 +426,13 @@ class ImagePatchPair:
         self.pch_set=[PatchSet(self.cfg,self.wd,t+'+',3).prep_folder() for t in self.targets]
         yield(ImagePatchGenerator(self,self.targets,view_coord=self.img_set.tr_view,aug_value=self.cfg.train_val_aug[0]),
               ImagePatchGenerator(self,self.targets,view_coord=self.img_set.val_view,aug_value=self.cfg.train_val_aug[1]),
-              self.img_set.label_scale_res(self.cfg.join_targets(self.targets)))
+              self.img_set.label_scale_res(self.cfg.join_names(self.targets)))
 
     def predict_generator_note(self):
-        yield (self.cfg.join_targets(self.targets),self.targets)
+        yield (self.cfg.join_names(self.targets),self.targets)
 
     def predict_generator_partial(self,subset,view):
-        return ImagePatchGenerator(self,subset,view_coord=view,aug_value=0),self.cfg.join_targets(subset)
+        return ImagePatchGenerator(self,subset,view_coord=view,aug_value=0),self.cfg.join_names(subset)
 
 
 class ImagePatchGenerator(keras.utils.Sequence): # TODO enable both object and patch modes

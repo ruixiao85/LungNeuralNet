@@ -229,7 +229,7 @@ class ImageMaskPair:
                   (len(tr_view_ex),len(val_view_ex),len(tr_view),len(val_view),len(tr_view_filtered),len(val_view_filtered)))
             yield (ImageMaskGenerator(self,tgt_list,tr_view_filtered,self.cfg.train_val_aug[0]),
                    ImageMaskGenerator(self,tgt_list,val_view_filtered,self.cfg.train_val_aug[1]),
-                   self.img_set.label_scale_res(self.cfg.join_regions(tgt_list),self.cfg.target_scale,self.cfg.row_out,self.cfg.col_out))
+                   self.img_set.label_scale_res(self.cfg.join_names(tgt_list),self.cfg.target_scale,self.cfg.row_out,self.cfg.col_out))
             i=o
 
     def predict_generator_note(self):
@@ -237,11 +237,11 @@ class ImageMaskPair:
         while i < nt:
             o = min(i + self.cfg.predict_size, nt)
             tgt_list=self.regions[i:o]
-            yield (self.cfg.join_regions(tgt_list), tgt_list)
+            yield (self.cfg.join_names(tgt_list), tgt_list)
             i = o
 
     def predict_generator_partial(self,subset,view):
-        return ImageMaskGenerator(self,subset,view,0),self.cfg.join_regions(subset)
+        return ImageMaskGenerator(self,subset,view,0),self.cfg.join_names(subset)
 
 
 class ImageMaskGenerator(keras.utils.Sequence):

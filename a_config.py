@@ -28,7 +28,7 @@ class Config:
         self.overlay_bright=kwargs.get('overlay_bright', lambda h : tuple((255*np.array(colorsys.hsv_to_rgb(h, 0.6, 1.0))[::-1]).astype(np.uint8)))
         self.overlay_opacity=kwargs.get('overlay_opacity', [0.2]*self.num_targets)
         self.overlay_legend_instance_fill=kwargs.get('overlay_legend_instance_fill', (True,False,False)) # dark/bright_legends, color_instance_text, fill_shape
-        self.save_ind_raw_msk=kwargs.get('save_ind_raw_msk', (True,True,True)) # (ind@cnn output/not, output grp @raw/cnn scale, grp_msk output/not)
+        self.save_ind_raw_msk=kwargs.get('save_ind_raw_msk', (False,True,True)) # (ind@cnn output/not, output grp @raw/cnn scale, grp_msk output/not)
         self.ntop=kwargs.get('ntop', 1) # numbers of top networks to keep, delete the networks that are less than ideal
         self.batch_size=kwargs.get('batch_size', 1)
         self.pre_trained=kwargs.get('pre_trained', True) # True: load weights pre-trained on imagenet; False: init with random weights
@@ -77,7 +77,7 @@ class Config:
             return None
 
     @staticmethod
-    def join_targets(tgt_list) :
+    def join_names(tgt_list) :
         # return ','.join(tgt_list)
         # return ','.join(tgt_list[:max(1, int(24 / len(tgt_list)))]) #shorter but >= 1 char, may have error if categories share same leading chars
         maxchar=max(1, int(28 / len(tgt_list))) # clip to fewer leading chars
