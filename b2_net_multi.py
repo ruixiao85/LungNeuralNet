@@ -22,7 +22,7 @@ from c2_mrcnn_matterport import norm_boxes_graph,parse_image_meta_graph,Detectio
 from image_set import ImageSet,ViewSet,PatchSet
 from osio import mkdir_ifexist,to_excel_sheet,mkdir_dir,mkdirs_dir
 from postprocess import g_kern_rect,draw_text,draw_detection,morph_close
-from preprocess import prep_scale,read_image,read_resize,AugPatchMask,read_mask_default_zeros
+from preprocess import prep_scale,read_image,read_resize,AugImageMask,AugPatchMask,read_mask_default_zeros
 
 
 class BaseNetM(Config):
@@ -333,13 +333,13 @@ class BaseNetM(Config):
                         while steps_done<steps:
                             img,gt=next(valiter)
                             detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=self.net.predict_on_batch(img)
-                            for i in range(np.shape(detections)[0]):
-                                final_rois,final_class_ids,final_scores,final_masks=parse_detections(detections[i],mrcnn_mask[i],self.dim_in,full_mask=True) # first element
+                            for i in range(np.shape(detections)[0]): # first element only support batch size = 1
+                                final_rois,final_class_ids,final_scores,final_masks=parse_detections(detections[i],mrcnn_mask[i],self.dim_in,full_mask=True)
                                 AP,precisions,recalls,overlaps=compute_ap(gt[1][i],gt[0][i],gt[2][i],final_rois,final_class_ids,final_scores,
                                     np.transpose(final_masks,(1,2,0)))
                                 APs.append(AP); print(' %.2f'%AP,end='',flush=True)
                             steps_done+=1
-                        mAP=np.mean(APs)
+                        mAP=np.mean(APs) # TODO get AP for each category
                         print("\nmAP: ",mAP); log.write(str(mAP)+',')
                     print(); log.write('\n')
 
@@ -408,39 +408,50 @@ class BaseNetM(Config):
             columns=pd.MultiIndex.from_product([[self.target0]+pair.targets,self.params],names=["targets","params"]))
         to_excel_sheet(df,xls_file,pair.origin+"_sum") # per whole image
 
-class ImagePatchPair:
-    def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train,regions=None):
+class ImageObjectPatchPair:
+    def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train,regions=None,use_obj=True,use_pch=True):
         self.cfg=cfg
         self.wd=wd
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
         self.region0="Total"
         self.regions=regions if isinstance(regions,list) else [regions]
+        self.use_obj=use_obj or True
+        self.use_pch=use_pch or True
+        assert(self.use_obj and self.use_pch, "At least one of object or patch set needs to be enabled.")
         self.img_set=ViewSet(cfg,wd,origin,channels=3,is_train=is_train,low_std_ex=False).prep_folder()
         # self.reg_set=None # region_set (Conducting Airway,...)
         self.obj_set=None # object_set (LYM,... annotated matching img_set)
         self.pch_set=None # patch_set (LYM,... insertable rep image)
 
     def train_generator(self):
-        # self.obj_set=[ViewSet(self.cfg,self.wd,t,3,is_train=True,low_std_ex=False).prep_folder() for t in self.targets] # todo enable this functionality
-        self.pch_set=[PatchSet(self.cfg,self.wd,t+'+',3).prep_folder() for t in self.targets]
-        yield(ImagePatchGenerator(self,self.targets,view_coord=self.img_set.tr_view,aug_value=self.cfg.train_val_aug[0]),
-              ImagePatchGenerator(self,self.targets,view_coord=self.img_set.val_view,aug_value=self.cfg.train_val_aug[1]),
+        self.obj_set=[ViewSet(self.cfg,self.wd,t,3,is_train=True,low_std_ex=False).prep_folder() for t in self.targets] if self.use_obj else None
+        self.pch_set=[PatchSet(self.cfg,self.wd,t+'+',3).prep_folder() for t in self.targets] if self.use_pch else None
+        yield(ImageDetectGenerator(self,self.targets,view_coord=self.img_set.tr_view,aug_value=self.cfg.train_val_aug[0]),
+              ImageDetectGenerator(self,self.targets,view_coord=self.img_set.val_view,aug_value=self.cfg.train_val_aug[1]),
               self.img_set.label_scale_res(self.cfg.join_names(self.targets)))
 
     def predict_generator_note(self):
         yield (self.cfg.join_names(self.targets),self.targets)
 
     def predict_generator_partial(self,subset,view):
-        return ImagePatchGenerator(self,subset,view_coord=view,aug_value=0),self.cfg.join_names(subset)
+        return ImageDetectGenerator(self,subset,view_coord=view,aug_value=0),self.cfg.join_names(subset)
 
 
-class ImagePatchGenerator(keras.utils.Sequence): # TODO enable both object and patch modes
-    def __init__(self,pair: ImagePatchPair,tgt_list,view_coord,aug_value):
+class ImageObjectPair(ImageObjectPatchPair):
+    def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train,regions=None):
+        super(ImageObjectPair,self).__init__(cfg,wd,origin,targets,is_train,regions,use_obj=True,use_pch=False)
+
+class ImagePatchPair(ImageObjectPatchPair):
+    def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train,regions=None):
+        super(ImagePatchPair,self).__init__(cfg,wd,origin,targets,is_train,regions,use_obj=False,use_pch=True)
+
+class ImageDetectGenerator(keras.utils.Sequence):
+    def __init__(self,pair:ImageObjectPatchPair,tgt_list,view_coord,aug_value):
         self.pair=pair
         self.cfg=pair.cfg
         self.getitemfun,self._active_class_ids,self._anchors=None,None,None
-        self.aug=AugPatchMask(aug_value)
+        self.pch_aug=AugPatchMask(aug_value)
         self.target_list=tgt_list
         self.view_coord=view_coord
         self.is_val=view_coord[0] in pair.img_set.val_view
@@ -469,28 +480,39 @@ class ImagePatchGenerator(keras.utils.Sequence): # TODO enable both object and p
         _img_meta,_rpn_match,_rpn_bbox=None,None,None
         # _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
-            this_img,this_cls,this_msk=self.blend_image_patch(vc,verbose=1) # always regenerate
-            # this_img,this_cls,this_msk=vc.data=vc.data or self.blend_image_patch(vc) # reuse previously generated
-            # cv2.imwrite("mult_pre_img.jpg",this_img); cv2.imwrite("mult_pre_msk.jpg",this_msk[...,0:3])
-            this_img=self.aug.decor1(this_img)  # integer N: a <= N <= b.
-            # cv2.imwrite("mult_post_img.jpg",this_img); cv2.imwrite("mult_post_msk.jpg",this_msk[...,0:3])
-            this_bbox=extract_bboxes(this_msk)
+            vc.data=vc.data or self.parse_image_object(vc,self.pair.use_obj) # cached, obj or new
+            img,cls,msk=vc.data  # load cached data
+            cv2.imwrite("multi_%s_img0.jpg"%vc.file_name,img)
+            if msk:
+                cv2.imwrite("multi_%s_msks0.jpg"%vc.file_name,msk[...,0:3])
+                img,msk=self.pch_aug.shift2(img,msk)
+                cv2.imwrite("multi_%s_msks1.jpg"%vc.file_name,msk[...,0:3])
+            else:
+                img=self.pch_aug.shift1(img)
+            cv2.imwrite("multi_%s_img1.jpg"%vc.file_name,img)
+            if self.pair.pch_set:
+                img,cls,msk=self.add_image_patch(vc,img,cls,msk,verbose=1)
+            cv2.imwrite("multi_%s_img2.jpg"%vc.file_name,img)
+            cv2.imwrite("multi_%s_msk2.jpg"%vc.file_name,msk[...,0:3])
+            img=self.pch_aug.decor1(img)
+            cv2.imwrite("multi_%s_img3.jpg"%vc.file_name,img)
+            cls,box=np.array(cls,dtype=np.uint8),extract_bboxes(msk)
             if self.cfg.mini_mask_shape is not None:
-                this_msk=minimize_mask(this_bbox,this_msk,tuple(self.cfg.mini_mask_shape[0:2]))
-            if this_bbox.shape[0]>self.cfg.max_gt_instance:
-                ids=np.random.choice(np.arange(this_bbox.shape[0]),self.cfg.max_gt_instance,replace=False)
-                this_cls,this_bbox,this_msk=this_cls[ids],this_bbox[ids],this_msk[:,:,ids]
+                msk=minimize_mask(box,msk,tuple(self.cfg.mini_mask_shape[0:2]))
+            if box.shape[0]>self.cfg.max_gt_instance:
+                ids=np.random.choice(np.arange(box.shape[0]),self.cfg.max_gt_instance,replace=False)
+                cls,box,msk=cls[ids],box[ids],msk[:,:,ids]
             this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
-            this_rpn_match,this_rpn_bbox=build_rpn_targets(self.cfg.dim_in,self._anchors,this_cls,this_bbox,self.cfg.rpn_train_anchors_per_image,
+            this_rpn_match,this_rpn_bbox=build_rpn_targets(self.cfg.dim_in,self._anchors,cls,box,self.cfg.rpn_train_anchors_per_image,
                 self.cfg.rpn_bbox_stdev)
-            this_img,this_msk=this_img[np.newaxis,...],this_msk[np.newaxis,...]
-            this_cls,this_bbox=this_cls[np.newaxis,...],this_bbox[np.newaxis,...]
+            img,msk=img[np.newaxis,...],msk[np.newaxis,...]
+            cls,box=cls[np.newaxis,...],box[np.newaxis,...]
             this_img_meta=this_img_meta[np.newaxis,...]
             this_rpn_match,this_rpn_bbox=this_rpn_match[np.newaxis,...,np.newaxis],this_rpn_bbox[np.newaxis,...]
-            _img=this_img if _img is None else np.concatenate((_img,this_img),axis=0)
-            _msk=this_msk if _msk is None else np.concatenate((_msk,this_msk),axis=0)
-            _cls=this_cls if _cls is None else np.concatenate((_cls,this_cls),axis=0)
-            _bbox=this_bbox if _bbox is None else np.concatenate((_bbox,this_bbox),axis=0)
+            _img=img if _img is None else np.concatenate((_img,img),axis=0)
+            _msk=msk if _msk is None else np.concatenate((_msk,msk),axis=0)
+            _cls=cls if _cls is None else np.concatenate((_cls,cls),axis=0)
+            _bbox=box if _bbox is None else np.concatenate((_bbox,box),axis=0)
             _img_meta=this_img_meta if _img_meta is None else np.concatenate((_img_meta,this_img_meta),axis=0)
             _rpn_match=this_rpn_match if _rpn_match is None else np.concatenate((_rpn_match,this_rpn_match),axis=0)
             _rpn_bbox=this_rpn_bbox if _rpn_bbox is None else np.concatenate((_rpn_bbox,this_rpn_bbox),axis=0)
@@ -502,7 +524,7 @@ class ImagePatchGenerator(keras.utils.Sequence): # TODO enable both object and p
         _cls,_bbox,_msk=None,None,None
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
             # this_img,this_cls,this_msk=self.blend_image_patch(vc)  # always regenerate
-            this_img,this_cls,this_msk=vc.data=vc.data or self.blend_image_patch(vc,verbose=0)  # reuse previously generated
+            this_img,this_cls,this_msk=vc.data=vc.data or self.add_image_patch(vc,verbose=0)  # reuse previously generated
             this_bbox=extract_bboxes(this_msk)
             this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
             this_img=this_img[np.newaxis,...]
@@ -534,17 +556,27 @@ class ImagePatchGenerator(keras.utils.Sequence): # TODO enable both object and p
             _img=prep_scale(_img,self.cfg.feed)
         return [_img,_img_meta,_anc],[]
 
-    def blend_image_patch(self,view,verbose,**kwargs): # return img,cls,msk for each view, verbose 0:none 1:+ 2:details
+    def parse_image_object(self,view, use_obj):
+        img,cls,msk=np.copy(self.pair.img_set.get_image(view)),[],None
+        row,col,_=img.shape
+        if use_obj:
+            for no,obj in enumerate(self.pair.obj_set):
+                ret,thresh=cv2.threshold(obj.get_mask(view),127,255,0) # mask to b/w
+                num,labels=cv2.connectedComponents(thresh,connectivity=4) # numbers of labels including background
+                _msk=np.zeros((row,col,num-1),dtype=np.uint8)
+                for i in range(num-1):
+                    _msk[...,i]=np.where(labels==i+1,255,0)
+                    cls.append(no+1) # 0:background, 1,2,3,... categories
+                msk=_msk if msk is None else np.concatenate((msk,_msk),axis=-1)
+        return img,cls,msk
+
+    def add_image_patch(self,view,img,clss,msks,verbose,**kwargs): # return img,cls,msk for each view, verbose 0:none 1:+ 2:details
         random_weight=kwargs.get('random_weight',6) # random weight for each category will be added
         patch_per_area=kwargs.get('patch_per_area',6000)  # divided by area, larger number -> fewer patches/smaller density
         max_instance=kwargs.get('max_instance',30)  # break out condition: >? patches inserted in any category
         ave_diff=kwargs.get('ave_diff',10)  # original area should be brighter (spot_ave-brightness-patch_ave-brightness>diff), neg-val: accept dim images
         min_diff=kwargs.get('min_diff',0)  # original area should be brighter (spot_min-brightness-patch_min-brightness>diff), neg-val: accept dim images
         std_diff=kwargs.get('std_diff',10)  # original area should be cleaner, lower std (spot_std-patch_std<diff), pos-val: accept contrasty background
-        img=np.copy(self.pair.img_set.get_image(view))
-        # cv2.imwrite("multi_%s_pre.jpg"%view.file_name,img)
-        img=self.aug.shift1(img)
-        # cv2.imwrite("multi_%s_shift.jpg"%view.file_name,img)
         area=int(self.cfg.row_in*self.cfg.col_in/self.cfg.target_scale)
         pool=list(range(0,self.cfg.num_targets+1)) # equal chance
         for _ in range(random_weight): pool.append(random.randint(0,self.cfg.num_targets)) # +random weight
@@ -552,15 +584,13 @@ class ImagePatchGenerator(keras.utils.Sequence): # TODO enable both object and p
             inserted=[0]*self.cfg.num_targets  # track # of inserts per category
             nexample=max(3,area//random.randint(patch_per_area//2,patch_per_area*2))
             labels=random.choices([p for p in pool if p!=0],k=nexample)  # 0background 1,2,...foreground
-            clss,msks=[],None
             for li in labels:
                 the_pch_set=self.pair.pch_set[li-1]
                 pch_view=random.choice(the_pch_set.val_view) if self.is_val else random.choice(the_pch_set.tr_view)
-                rowpos=random.uniform(0,1)
-                colpos=random.uniform(0,1)
+                rowpos,colpos=random.uniform(0,1),random.uniform(0,1)
                 pat_img,pat_msk=the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view,)[...,np.newaxis]
                 # cv2.imwrite(pch_view.image_name+"_pimg_0.jpg",pat_img);cv2.imwrite(pch_view.image_name+"_pmsk_0.jpg",pat_msk)
-                pat_img,pat_msk=self.aug.shift2_decor1(pat_img,pat_msk) # only allow minimal augmentation, preverse [H,W,C]
+                pat_img,pat_msk=self.pch_aug.shift2_decor1(pat_img,pat_msk) # only allow minimal augmentation, preverse [H,W,C]
                 # cv2.imwrite(pch_view.image_name+"_pimg_%d.jpg"%self.aug_value,pat_img);cv2.imwrite(pch_view.image_name+"_pmsk_%d.jpg"%self.aug_value,pat_msk)
                 p_row,p_col,_=pat_img.shape # insure fit may change image size, so get the updated size
                 p_gray=np.mean(pat_img,axis=-1,keepdims=True)  # stats based on grayscale
@@ -594,7 +624,7 @@ class ImagePatchGenerator(keras.utils.Sequence): # TODO enable both object and p
                 # cv2.imwrite("multi_"+view.file_name,img,[int(cv2.IMWRITE_JPEG_QUALITY),100])
                 # for i in range(0,6,3):
                 #     cv2.imwrite("multi_%s_mask%d_%s.jpg"%(view.file_name,i,clss[i:i+3]),msks[...,i:i+3],[int(cv2.IMWRITE_JPEG_QUALITY),100])
-                return img,np.array(clss,dtype=np.uint8),msks
+                return img,clss,msks
 
 
     def __len__(self):  # Denotes the number of batches per epoch
