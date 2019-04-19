@@ -91,7 +91,7 @@ def draw_text(cfg,img,tgts,res,sep='\n',fsize=None):
         sym=sep*ri+' X'
         draw.text((0,0),sym,HEX_BRIGHT_TEXT if ri==0 else cfg.overlay_bright((ri-1)/nt),fontsize)
         draw.text((off,off),sym,HEX_DARK_TEXT if ri==0 else cfg.overlay_dark((ri-1)/nt),fontsize)
-        txt=sep*ri+"[  {:.0f}: {}] ${:.0f} #{:.0f} {:.1%}".format(ri,cfg.region0 if ri==0 else tgts[ri-1],res[ri-1,0],res[ri-1,1],res[ri-1,2])
+        txt=sep*ri+"[  {:.0f}: {}] ${:.0f} #{:.0f} {:.1%}".format(ri,cfg.region0 if ri==0 else tgts[ri-1],res[ri,0],res[ri,1],res[ri,2])
         draw.text((0,0),txt,HEX_BRIGHT_TEXT,)
         draw.text((off,off),txt,HEX_DARK_TEXT,fontsize)
     return np.array(origin)
@@ -101,7 +101,7 @@ def draw_detection(cfg,img,tgts,box,cls,scr,msk,reg=None):
     row,col,_=img.shape; div=cfg.target_scale**2.0
     fsize=max(10, col//50) # fontsize at least 10
     off=max(1,fsize//15) # offset for bright/dark text0
-    lwd=max(3, fsize//12) # line width if outline not fill
+    lwd=max(3,(6+fsize//12)//3) # line width if outline not fill
     fontsize=ImageFont.truetype(FONT,fsize)
     nreg,sum_pixels=1,[row*col/div] # default only consider whole image
     name_reg,len_reg=[cfg.region0],5
