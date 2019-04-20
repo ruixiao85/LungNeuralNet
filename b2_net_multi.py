@@ -16,9 +16,10 @@ import keras.models as KM
 from keras.engine.saving import model_from_json,load_model
 
 from a_config import Config,get_proper_range
-from c2_mrcnn_matterport import norm_boxes_graph,parse_image_meta_graph,DetectionTargetLayer,fpn_classifier_graph,rpn_class_loss_graph,rpn_bbox_loss_graph,\
-    mrcnn_class_loss_graph,mrcnn_bbox_loss_graph,mrcnn_mask_loss_graph,ProposalLayer,build_fpn_mask_graph,DetectionLayer,generate_pyramid_anchors,\
-    parse_detections,compose_image_meta,build_rpn_targets,norm_boxes,compute_ap,non_max_suppression,extract_bboxes,minimize_mask
+from c2_mrcnn_matterport import norm_boxes_graph,parse_image_meta_graph,DetectionTargetLayer,fpn_classifier_graph,\
+    rpn_class_loss_graph,rpn_bbox_loss_graph,mrcnn_class_loss_graph,mrcnn_bbox_loss_graph,mrcnn_mask_loss_graph,\
+    ProposalLayer,build_fpn_mask_graph,DetectionLayer,generate_pyramid_anchors, parse_detections,\
+    compose_image_meta,build_rpn_targets,norm_boxes,compute_ap,non_max_suppression,extract_bboxes,minimize_mask
 from image_set import ImageSet,ViewSet,PatchSet
 from osio import mkdir_ifexist,to_excel_sheet,mkdir_dir,mkdirs_dir
 from postprocess import g_kern_rect,draw_text,draw_detection,morph_close
@@ -30,51 +31,50 @@ class BaseNetM(Config):
         super(BaseNetM,self).__init__(**kwargs)
         from c0_backbones import v16, v19
         self.backbone=kwargs.get('backbone', v16) # default backbone
-        self.learning_rate=kwargs.get('learning_rate', 1e-3 if self.backbone in [v16,v19] else 1e-2) # initial learning rate
+        self.learning_rate=kwargs.get('learning_rate', 1e-3 if self.backbone in [v16,v19] else 1e-2)
         self.learning_decay=kwargs.get('learning_decay', 0.3)
         from keras.optimizers import SGD
         self.optimizer=kwargs.get('optimizer', SGD(lr=self.learning_rate, momentum=0.9, clipnorm=5.0))
         self.loss_weight=kwargs.get('loss_weight', { "rpn_class_loss":1., "rpn_bbox_loss":1.,
-                "mrcnn_class_loss":1., "mrcnn_bbox_loss":1., "mrcnn_mask_loss":1.}) # Loss weights for more precise optimization.
+                "mrcnn_class_loss":1., "mrcnn_bbox_loss":1., "mrcnn_mask_loss":1.}) # weights more precise optimization
         self.indicator=kwargs.get('indicator', 'val_loss')
         self.indicator_trend=kwargs.get('indicator_trend', 'min')
         from postprocess import draw_detection
         self.predict_proc=kwargs.get('predict_proc', draw_detection)
         self.coverage_predict=-1 # do not allow overlap during prediction/inference
-        self.trainlayer_regex=kwargs.get('trainlayer_regex', ".*") # all
-        # self.trainlayer_regex=kwargs.get('trainlayer_regex', r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)")  # head
-        # self.trainlayer_regex=kwargs.get('trainlayer_regex', r"# (res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 3+
-        # self.trainlayer_regex=kwargs.get('trainlayer_regex', r"# (res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 4+
-        # self.trainlayer_regex=kwargs.get('trainlayer_regex', r"# (res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 5+
+        self.train_regex=kwargs.get('train_regex', ".*") # all layers trainable
+        # self.train_regex=kwargs.get('train_regex', r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)")  # head
+        # self.train_regex=kwargs.get('train_regex', r"# (res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 3+
+        # self.train_regex=kwargs.get('train_regex', r"# (res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 4+
+        # self.train_regex=kwargs.get('train_regex', r"# (res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 5+
         self.num_class=1+self.num_targets # plus background
         self.meta_shape=[1+3+3+4+1+self.num_class] # last number is NUM_CLASS
         self.batch_norm=kwargs.get('batch_norm', True) # images in small batches also benefit from batchnorm
         self.backbone_strides=kwargs.get('backbone_stride', [4,8,16,32,64]) # strides of the FPN Pyramid
-        self.pyramid_size=kwargs.get('pyramid_size', 512) # Size of the top-down layers used to build the feature pyramid
-        self.fc_layers_size=kwargs.get('fc_layers_size', 1024) # Size of the fully-connected layers in the classification graph
-        self.rpn_anchor_scales=kwargs.get('rpn_anchor_scales', (8,16,32,64,128)) # Length of square anchor side in pixels
-        # self.rpn_anchor_scales=kwargs.get('rpn_anchor_scales', (16,32,64,128,256)) # Length of square anchor side in pixels
-        # self.rpn_anchor_scales=kwargs.get('rpn_anchor_scales', (32,64,128,256,512)) # Length of square anchor side in pixels
-        self.rpn_train_anchors_per_image=kwargs.get('rpn_train_anchors_per_image', 512) # How many anchors per image to use for RPN training
-        self.rpn_anchor_ratios=kwargs.get('rpn_anchor_ratio', [0.75,1,1.33]) # Ratios of anchors at each cell (width/height) 1=square 0.5=wide
-        # self.rpn_anchor_ratios=kwargs.get('rpn_anchor_ratio', [0.5,1,2]) # Ratios of anchors at each cell (width/height) 1=square 0.5=wide
+        self.pyramid_size=kwargs.get('pyramid_size', 512) # size of the top-down layers used to build the feature pyramid
+        self.fc_layers_size=kwargs.get('fc_layers_size', 1024) # size of the fully-connected layers in the classification graph
+        self.rpn_anchor_scales=kwargs.get('rpn_anchor_scales', (8,16,32,64,128)) # length of square anchor side in pixels
+        # self.rpn_anchor_scales=kwargs.get('rpn_anchor_scales', (16,32,64,128,256)) # length of square anchor side in pixels
+        # self.rpn_anchor_scales=kwargs.get('rpn_anchor_scales', (32,64,128,256,512)) # length of square anchor side in pixels
+        self.rpn_train_anchors_per_image=kwargs.get('rpn_train_anchors_per_image', 512) # how many anchors per image to use for RPN training
+        self.rpn_anchor_ratios=kwargs.get('rpn_anchor_ratio', [0.75,1,1.33]) # ratios of anchors at each cell (width/height) 1=square 0.5=wide
+        # self.rpn_anchor_ratios=kwargs.get('rpn_anchor_ratio', [0.5,1,2]) # ratios of anchors at each cell (width/height) 1=square 0.5=wide
         self.rpn_anchor_stride=kwargs.get('rpn_anchor_stride', 1) # 1=no-skip cell 2=skip-one
-        self.rpn_nms_threshold=kwargs.get('rpn_nms_threshold', 0.9) # Non-max suppression threshold to filter RPN proposals. larger=more propsals.
-        self.rpn_bbox_stdev=kwargs.get('rpn_bbox_stdev', np.array([0.1,0.1,0.2,0.2])) # Bounding box refinement standard deviation for RPN and final detections.
+        self.rpn_nms_threshold=kwargs.get('rpn_nms_threshold', 0.9) # non-max suppression threshold to filter RPN proposals. larger=more propsals.
+        self.rpn_bbox_stdev=kwargs.get('rpn_bbox_stdev', np.array([0.1,0.1,0.2,0.2])) # bbox refinement std for RPN and final detections.
         self.pre_nms_limit=kwargs.get('pre_nms_limit', 6000) # ROIs kept after tf.nn.top_k and before non-maximum suppression
         self.post_mns_train=kwargs.get('post_mns_train', 2000) # ROIs kept after non-maximum suppression for train
         self.post_nms_predict=kwargs.get('post_nms_predict', 1000) # ROIs kept after non-maximum suppression for predict
-        self.pool_size=kwargs.get('pool_size', 7) # Pooled ROIs
-        self.mask_pool_size=kwargs.get('mask_pool_size', 14) # Pooled ROIs for mask
+        self.pool_size=kwargs.get('pool_size', 7) # pooled ROIs
+        self.mask_pool_size=kwargs.get('mask_pool_size', 14) # pooled ROIs for mask
         self.mini_mask_shape=kwargs.get('mini_mask_shape', [28,28,None]) # target shape (downsized) of instance masks to reduce memory load.
-        self.train_rois_per_image=kwargs.get('train_rois_per_image', 256) # Number of ROIs per image to feed to classifier/mask heads (MRCNN paper 512)
-        self.train_roi_positive_ratio=kwargs.get('train_roi_positive_ratio', 0.33) # Percent of positive ROIs used to train classifier/mask heads
-        self.max_gt_instance=kwargs.get('max_gt_instance', 200) # Maximum number of ground truth instances to use in one image
-        self.detection_max_instances=kwargs.get('detection_max_instances', 400) # Max number of final detections
-        self.detection_min_confidence=kwargs.get('detection_min_confidence', 0.7) # Minimum probability to accept a detected instance, skip ROIs if below this threshold
-        # self.detection_min_confidence=kwargs.get('detection_min_confidence', 0.0) # Minimum probability to accept a detected instance, skip ROIs if below this threshold, lower if fewer classes
-        self.detection_nms_threshold=kwargs.get('detection_nms_threshold', 0.3) # Non-maximum suppression threshold for detection
-        self.detection_mask_threshold=kwargs.get('detection_mask_threshold', 0.5) # threshold to determine fore/back-ground
+        self.train_rois_per_image=kwargs.get('train_rois_per_image', 256) # ROIs per image to feed to classifier/mask heads (MRCNN paper 512)
+        self.train_roi_positive_ratio=kwargs.get('train_roi_positive_ratio', 0.33) # % positive ROIs used to train classifier/mask heads
+        self.max_gt_instance=kwargs.get('max_gt_instance', 200) # max number of ground truth instances to use in one image
+        self.detect_max_instances=kwargs.get('detect_max_instances',400) # max number of final detections
+        self.detect_min_confidence=kwargs.get('detect_min_confidence',0.7) # min confidence to accept a detected instance
+        self.detect_nms_threshold=kwargs.get('detect_nms_threshold',0.3) # non-maximum suppression threshold for detection
+        self.detect_mask_threshold=kwargs.get('detect_mask_threshold',0.5) # threshold to determine fore/back-ground
         self.gpu_count=kwargs.get('gpu_count', 1)
         self.images_per_gpu=kwargs.get('image_per_gpu', 1)
         self.filename=kwargs.get('filename', None)
@@ -91,19 +91,19 @@ class BaseNetM(Config):
         for layer in layers:
             if layer.__class__.__name__=='Model':
                 print("In model: ",layer.name)
-                print(self.trainlayer_regex)
+                print(self.train_regex)
                 self.set_trainable(layer,indent=indent+4)
                 continue
             if not layer.weights:
                 continue
-            trainable=bool(re.fullmatch(self.trainlayer_regex,layer.name))
+            trainable=bool(re.fullmatch(self.train_regex,layer.name))
             text='+' if trainable else '-'
             class_name=layer.__class__.__name__
             if class_name=='BatchNormalization':
                 trainable=self.batch_norm # override for BatchNorm
                 text='B' if trainable else 'b'
             elif class_name=='Conv2D':
-                # trainable=not (layer.kernel_size==(7,7) and layer.strides==(2,2) and layer.filters==64) # train all conv filters except first conv7x7
+                # trainable=not (layer.kernel_size==(7,7) and layer.strides==(2,2)) # not training the first conv7x7
                 # trainable=True # force train all conv filters
                 text='C' if trainable else 'c'
             elif class_name=='TimeDistributed': # set trainable deeper if TimeDistributed
@@ -119,27 +119,28 @@ class BaseNetM(Config):
         input_image=KL.Input(shape=[None,None,self.dep_in],name="input_image")
         input_image_meta=KL.Input(shape=self.meta_shape,name="input_image_meta")
         if self.is_train:
-            input_gt_class_ids=KL.Input(shape=[None],name="input_gt_class_ids",dtype=tf.int32)  # GT Class IDs (zero padded)
-            input_gt_boxes=KL.Input(shape=[None,4],name="input_gt_boxes",dtype=tf.float32)  # GT Boxes in pixels (zero padded)  (y1, x1, y2, x2)
-            input_gt_masks=KL.Input(shape=self.mini_mask_shape,name="input_gt_masks",dtype=bool)  # GT Masks
+            input_gt_class_ids=KL.Input(shape=[None],name="input_gt_class_ids",dtype=tf.int32) # gt class IDs (zero padded)
+            input_gt_boxes=KL.Input(shape=[None,4],name="input_gt_boxes",dtype=tf.float32) # gt boxes (y1,x1,y2,x2) pixels (zero padded)
+            input_gt_masks=KL.Input(shape=self.mini_mask_shape,name="input_gt_masks",dtype=bool) # gt masks
             input_rpn_match=KL.Input(shape=[None,1],name="input_rpn_match",dtype=tf.int32)
             input_rpn_bbox=KL.Input(shape=[None,4],name="input_rpn_bbox",dtype=tf.float32)
-            gt_boxes=KL.Lambda(lambda x:norm_boxes_graph(x,K.shape(input_image)[1:3]))(input_gt_boxes)  # Normalize coordinates
-            mrcnn_feature_maps,rpn_feature_maps=self.cnn_fpn_feature_maps(input_image)  # same train/predict
+            gt_boxes=KL.Lambda(lambda x:norm_boxes_graph(x,K.shape(input_image)[1:3]))(input_gt_boxes) # normalize coordinates
+            mrcnn_feature_maps,rpn_feature_maps=self.cnn_fpn_feature_maps(input_image) # same train/predict
             anchors=self.get_anchors_norm()[1]
             anchors=np.broadcast_to(anchors,(self.batch_size,)+anchors.shape)
             anchors=KL.Lambda(lambda x:tf.Variable(anchors),name="anchors")(input_image)
-            rpn_bbox,rpn_class,rpn_class_logits,rpn_rois=self.rpn_outputs(anchors,rpn_feature_maps)  # same train/predict
-            active_class_ids=KL.Lambda(lambda x:parse_image_meta_graph(x)["active_class_ids"])(input_image_meta)  # Class ID mask to mark available class IDs
+            rpn_bbox,rpn_class,rpn_class_logits,rpn_rois=self.rpn_outputs(anchors,rpn_feature_maps) # same train/predict
+            active_class_ids=KL.Lambda(lambda x:parse_image_meta_graph(x)["active_class_ids"])(input_image_meta) # class ID mask to mark available class IDs
             # Generate detection targets Subsamples proposals and generates target outputs for training
             # Note that proposal class IDs, gt_boxes, and gt_masks are zero padded. Equally, returned rois and targets are zero padded.
-            rois,target_class_ids,target_bbox,target_mask=DetectionTargetLayer(self.images_per_gpu,self.train_rois_per_image,self.train_roi_positive_ratio,
-                                                                               self.mini_mask_shape,self.rpn_bbox_stdev,name="proposal_targets")(
-                [rpn_rois,input_gt_class_ids,gt_boxes,input_gt_masks])
+            rois,target_class_ids,target_bbox,target_mask=DetectionTargetLayer(self.images_per_gpu,
+                self.train_rois_per_image,self.train_roi_positive_ratio,self.mini_mask_shape,self.rpn_bbox_stdev,
+                name="proposal_targets")([rpn_rois,input_gt_class_ids,gt_boxes,input_gt_masks])
             # Network Heads
-            mrcnn_class_logits,mrcnn_class,mrcnn_bbox=fpn_classifier_graph(rois,mrcnn_feature_maps,input_image_meta,self.pool_size,self.num_class,
-                                                                           train_bn=self.batch_norm,fc_layers_size=self.fc_layers_size)
-            mrcnn_mask=build_fpn_mask_graph(rois,mrcnn_feature_maps,input_image_meta,self.mask_pool_size,self.num_class,train_bn=self.batch_norm)
+            mrcnn_class_logits,mrcnn_class,mrcnn_bbox=fpn_classifier_graph(rois,mrcnn_feature_maps,input_image_meta,
+                self.pool_size,self.num_class,train_bn=self.batch_norm,fc_layers_size=self.fc_layers_size)
+            mrcnn_mask=build_fpn_mask_graph(rois,mrcnn_feature_maps,input_image_meta,self.mask_pool_size,
+                                            self.num_class,train_bn=self.batch_norm)
             output_rois=KL.Lambda(lambda x:x*1,name="output_rois")(rois)
             # Losses
             rpn_class_loss=KL.Lambda(lambda x:rpn_class_loss_graph(*x),name="rpn_class_loss")([input_rpn_match,rpn_class_logits])
@@ -159,8 +160,8 @@ class BaseNetM(Config):
             mrcnn_class_logits,mrcnn_class,mrcnn_bbox=fpn_classifier_graph(rpn_rois,mrcnn_feature_maps,input_image_meta,self.pool_size,self.num_class,
                                                                            train_bn=self.batch_norm,fc_layers_size=self.fc_layers_size)
             # Detections [batch, num_detections, (y1, x1, y2, x2, class_id, score)] in normalized coordinates
-            detections=DetectionLayer(self.rpn_bbox_stdev,self.detection_min_confidence,self.detection_max_instances,self.
-                                      detection_nms_threshold,self.gpu_count,self.images_per_gpu,name="mrcnn_detection")(
+            detections=DetectionLayer(self.rpn_bbox_stdev,self.detect_min_confidence,self.detect_max_instances,self.
+                                      detect_nms_threshold,self.gpu_count,self.images_per_gpu,name="mrcnn_detection")(
                 [rpn_rois,mrcnn_class,mrcnn_bbox,input_image_meta])
             # Create masks for detections
             detection_boxes=KL.Lambda(lambda x:x[...,:4])(detections)
@@ -183,9 +184,12 @@ class BaseNetM(Config):
         c1,c2,c3,c4,c5=self.backbone(input_image, weights='imagenet' if self.pre_trained else None) # Bottom-up Layers (convolutional neural network backbone)
 
         p5=KL.Conv2D(self.pyramid_size,(1,1),name='fpn_c5p5')(c5) # Top-down Layers (feature pyramid network)
-        p4=KL.Add(name="fpn_p4add")([KL.UpSampling2D(size=(2,2),name="fpn_p5upsampled")(p5),KL.Conv2D(self.pyramid_size,(1,1),name='fpn_c4p4')(c4)])
-        p3=KL.Add(name="fpn_p3add")([KL.UpSampling2D(size=(2,2),name="fpn_p4upsampled")(p4),KL.Conv2D(self.pyramid_size,(1,1),name='fpn_c3p3')(c3)])
-        p2=KL.Add(name="fpn_p2add")([KL.UpSampling2D(size=(2,2),name="fpn_p3upsampled")(p3),KL.Conv2D(self.pyramid_size,(1,1),name='fpn_c2p2')(c2)])
+        p4=KL.Add(name="fpn_p4add")([KL.UpSampling2D(size=(2,2),name="fpn_p5upsampled")(p5),
+                                     KL.Conv2D(self.pyramid_size,(1,1),name='fpn_c4p4')(c4)])
+        p3=KL.Add(name="fpn_p3add")([KL.UpSampling2D(size=(2,2),name="fpn_p4upsampled")(p4),
+                                     KL.Conv2D(self.pyramid_size,(1,1),name='fpn_c3p3')(c3)])
+        p2=KL.Add(name="fpn_p2add")([KL.UpSampling2D(size=(2,2),name="fpn_p3upsampled")(p3),
+                                     KL.Conv2D(self.pyramid_size,(1,1),name='fpn_c2p2')(c2)])
         # Attach 3x3 conv to all P layers to get the final feature maps.
         p2=KL.Conv2D(self.pyramid_size,(3,3),padding="SAME",name="fpn_p2")(p2)
         p3=KL.Conv2D(self.pyramid_size,(3,3),padding="SAME",name="fpn_p3")(p3)
@@ -199,7 +203,8 @@ class BaseNetM(Config):
 
     def rpn_outputs(self,anchors,rpn_feature_maps):
         feature_map=KL.Input(shape=[None,None,self.pyramid_size],name="input_rpn_feature_map")  # region proposal network model
-        shared=KL.Conv2D(512,(3,3),padding='same',activation='relu',strides=self.rpn_anchor_stride,name='rpn_conv_shared')(feature_map)
+        shared=KL.Conv2D(512,(3,3),padding='same',activation='relu',strides=self.rpn_anchor_stride,
+                         name='rpn_conv_shared')(feature_map)
         # Anchor Score. [batch, height, width, anchors per location * 2].
         x=KL.Conv2D(2*len(self.rpn_anchor_ratios),(1,1),padding='valid',activation='linear',name='rpn_class_raw')(shared)
         # Reshape to [batch, anchors, 2]
@@ -217,9 +222,9 @@ class BaseNetM(Config):
         output_names=["rpn_class_logits","rpn_class","rpn_bbox"]
         rpn_class_logits,rpn_class,rpn_bbox=[KL.Concatenate(axis=1,name=n)(list(o)) for o,n in zip(outputs,output_names)]
         # Generate proposals [batch, N, (y1, x1, y2, x2)] in normalized coordinates and zero padded.
-        rpn_rois=ProposalLayer(proposal_count=(self.post_mns_train if self.is_train else self.post_nms_predict),rpn_nms_threshold=self.rpn_nms_threshold,
-                               rpn_bbox_stdev=self.rpn_bbox_stdev,pre_nms_limit=self.pre_nms_limit,images_per_gpu=self.images_per_gpu,name="ROI")(
-            [rpn_class,rpn_bbox,anchors])
+        rpn_rois=ProposalLayer(proposal_count=(self.post_mns_train if self.is_train else self.post_nms_predict),
+           rpn_nms_threshold=self.rpn_nms_threshold,rpn_bbox_stdev=self.rpn_bbox_stdev,pre_nms_limit=self.pre_nms_limit,
+           images_per_gpu=self.images_per_gpu,name="ROI")([rpn_class,rpn_bbox,anchors])
         return rpn_bbox,rpn_class,rpn_class_logits,rpn_rois
 
     @classmethod
@@ -243,7 +248,7 @@ class BaseNetM(Config):
                 loss_fun=(tf.reduce_mean(layer.output,keepdims=True)*self.loss_weight.get(loss,1.))
                 self.net.add_loss(loss_fun)
         reg_losses=[keras.regularizers.l2(0.001)(w)/tf.cast(tf.size(w),tf.float32) for w in self.net.trainable_weights
-            if 'gamma' not in w.name and 'beta' not in w.name] # L2 Regularization but skip gamma and beta weights of batch normalization layers.
+            if 'gamma' not in w.name and 'beta' not in w.name] # l2 regularization but skip gamma and beta weights of batchnorm layers.
         self.net.add_loss(tf.add_n(reg_losses))
         self.net.compile(optimizer=self.optimizer, loss=[None]*len(self.net.outputs))
         for loss in self.loss_weight.keys():
@@ -288,7 +293,7 @@ class BaseNetM(Config):
                     print("Continue from previous weights.")
                     self.net.load_weights(last_best,by_name=True)
                     # print("Continue from previous model with weights & optimizer")
-                    # self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
+                    # self.net=load_model(last_best,custom_objects=custom_function_dict()) # good with custom func
                 else:
                     print("Train with some random weights."); init_epoch=0
             if not os.path.exists(self.filename+".txt"):
@@ -298,10 +303,10 @@ class BaseNetM(Config):
             from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau,LearningRateScheduler
             from callbacks import TensorBoardTrainVal, ModelCheckpointCustom
             history=self.net.fit_generator(tr,validation_data=val,verbose=1,
-                                           steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
-                                           validation_steps=min(self.train_val_step,len(val.view_coord)) if isinstance(self.train_val_step,int) else len(val.view_coord),
-                                           epochs=self.train_epoch,max_queue_size=5,workers=1,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
-                                           callbacks=[
+               steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
+               validation_steps=min(self.train_val_step,len(val.view_coord)) if isinstance(self.train_val_step,int) else len(val.view_coord),
+               epochs=self.train_epoch,max_queue_size=5,workers=1,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
+               callbacks=[
                    ModelCheckpointCustom(self.filename,monitor=self.indicator,mode=self.indicator_trend,hist_best=best_value,
                                  save_weights_only=True,save_mode=self.save_mode,lr_decay=self.learning_decay,sig_digits=self.sig_digits,verbose=1),
                    EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=2,verbose=1),
@@ -450,8 +455,8 @@ class ImageDetectGenerator(keras.utils.Sequence):
     def __init__(self,pair:ImageObjectPatchPair,tgt_list,view_coord,aug_value):
         self.pair=pair
         self.cfg=pair.cfg
-        self.getitemfun,self._active_class_ids,self._anchors=None,None,None
-        self.pch_aug=AugPatchMask(aug_value)
+        self.get_item,self._active_class_ids,self._anchors=None,None,None
+        self.aug=AugPatchMask(aug_value)
         self.target_list=tgt_list
         self.view_coord=view_coord
         self.is_val=view_coord[0] in pair.img_set.val_view
@@ -463,96 +468,96 @@ class ImageDetectGenerator(keras.utils.Sequence):
         self.on_epoch_end()
 
     def set_train(self):
-        self.getitemfun=self.get_train_item
+        self.get_item=self.get_train_item
         self._active_class_ids=np.ones([self.cfg.num_class],dtype=np.int32)
         self._anchors=self.cfg.get_anchors_norm()[0]
     def set_eval(self):
-        self.getitemfun=self.get_eval_item
+        self.get_item=self.get_eval_item
         self._active_class_ids=np.zeros([self.cfg.num_class],dtype=np.int32)
         self._anchors=self.cfg.get_anchors_norm()[1]
     def set_pred(self):
-        self.getitemfun=self.get_pred_item
+        self.get_item=self.get_pred_item
         self._active_class_ids=np.zeros([self.cfg.num_class],dtype=np.int32)
         self._anchors=self.cfg.get_anchors_norm()[1]
+
+    def prep_data(self,vc):
+        vc.data=vc.data or self.parse_image_object(vc,self.pair.use_obj)  # cached, obj or new
+        img,cls,msk=vc.data  # load cached data
+        cv2.imwrite("multi_%s_img0.jpg"%vc.file_name,img)
+        if msk:
+            cv2.imwrite("multi_%s_msks0.jpg"%vc.file_name,msk[...,0:3])
+            img,msk=self.aug.shift2(img,msk)
+            cv2.imwrite("multi_%s_msks1.jpg"%vc.file_name,msk[...,0:3])
+        else:
+            img=self.aug.shift1(img)
+        cv2.imwrite("multi_%s_img1.jpg"%vc.file_name,img)
+        if self.pair.pch_set:
+            img,cls,msk=self.add_image_patch(vc,img,cls,msk,verbose=1)
+        cv2.imwrite("multi_%s_img2.jpg"%vc.file_name,img)
+        cv2.imwrite("multi_%s_msk2.jpg"%vc.file_name,msk[...,0:3])
+        img=self.aug.decor1(img)
+        cv2.imwrite("multi_%s_img3.jpg"%vc.file_name,img)
+        cls,box=np.array(cls,dtype=np.uint8),extract_bboxes(msk)
+        return img,msk,cls,box
 
     def get_train_item(self,indexes):
         _img,_msk,_cls,_bbox=None,None,None,None
         _img_meta,_rpn_match,_rpn_bbox=None,None,None
         # _tgt = np.zeros((self.cfg.batch_size, self.cfg.row_out, self.cfg.col_out, self.cfg.dep_out), dtype=np.uint8)
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
-            vc.data=vc.data or self.parse_image_object(vc,self.pair.use_obj) # cached, obj or new
-            img,cls,msk=vc.data  # load cached data
-            cv2.imwrite("multi_%s_img0.jpg"%vc.file_name,img)
-            if msk:
-                cv2.imwrite("multi_%s_msks0.jpg"%vc.file_name,msk[...,0:3])
-                img,msk=self.pch_aug.shift2(img,msk)
-                cv2.imwrite("multi_%s_msks1.jpg"%vc.file_name,msk[...,0:3])
-            else:
-                img=self.pch_aug.shift1(img)
-            cv2.imwrite("multi_%s_img1.jpg"%vc.file_name,img)
-            if self.pair.pch_set:
-                img,cls,msk=self.add_image_patch(vc,img,cls,msk,verbose=1)
-            cv2.imwrite("multi_%s_img2.jpg"%vc.file_name,img)
-            cv2.imwrite("multi_%s_msk2.jpg"%vc.file_name,msk[...,0:3])
-            img=self.pch_aug.decor1(img)
-            cv2.imwrite("multi_%s_img3.jpg"%vc.file_name,img)
-            cls,box=np.array(cls,dtype=np.uint8),extract_bboxes(msk)
+            img,msk,cls,box=self.prep_data(vc)
             if self.cfg.mini_mask_shape is not None:
                 msk=minimize_mask(box,msk,tuple(self.cfg.mini_mask_shape[0:2]))
             if box.shape[0]>self.cfg.max_gt_instance:
                 ids=np.random.choice(np.arange(box.shape[0]),self.cfg.max_gt_instance,replace=False)
                 cls,box,msk=cls[ids],box[ids],msk[:,:,ids]
-            this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
-            this_rpn_match,this_rpn_bbox=build_rpn_targets(self.cfg.dim_in,self._anchors,cls,box,self.cfg.rpn_train_anchors_per_image,
+            img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
+            rpn_match,rpn_bbox=build_rpn_targets(self.cfg.dim_in,self._anchors,cls,box,self.cfg.rpn_train_anchors_per_image,
                 self.cfg.rpn_bbox_stdev)
             img,msk=img[np.newaxis,...],msk[np.newaxis,...]
             cls,box=cls[np.newaxis,...],box[np.newaxis,...]
-            this_img_meta=this_img_meta[np.newaxis,...]
-            this_rpn_match,this_rpn_bbox=this_rpn_match[np.newaxis,...,np.newaxis],this_rpn_bbox[np.newaxis,...]
+            img_meta=img_meta[np.newaxis,...]
+            rpn_match,rpn_bbox=rpn_match[np.newaxis,...,np.newaxis],rpn_bbox[np.newaxis,...]
             _img=img if _img is None else np.concatenate((_img,img),axis=0)
             _msk=msk if _msk is None else np.concatenate((_msk,msk),axis=0)
             _cls=cls if _cls is None else np.concatenate((_cls,cls),axis=0)
             _bbox=box if _bbox is None else np.concatenate((_bbox,box),axis=0)
-            _img_meta=this_img_meta if _img_meta is None else np.concatenate((_img_meta,this_img_meta),axis=0)
-            _rpn_match=this_rpn_match if _rpn_match is None else np.concatenate((_rpn_match,this_rpn_match),axis=0)
-            _rpn_bbox=this_rpn_bbox if _rpn_bbox is None else np.concatenate((_rpn_bbox,this_rpn_bbox),axis=0)
+            _img_meta=img_meta if _img_meta is None else np.concatenate((_img_meta,img_meta),axis=0)
+            _rpn_match=rpn_match if _rpn_match is None else np.concatenate((_rpn_match,rpn_match),axis=0)
+            _rpn_bbox=rpn_bbox if _rpn_bbox is None else np.concatenate((_rpn_bbox,rpn_bbox),axis=0)
             _img=prep_scale(_img,self.cfg.feed)
         return [_img,_img_meta,_rpn_match,_rpn_bbox,_cls,_bbox,_msk],[]
 
     def get_eval_item(self,indexes):
         _img,_img_meta,_anc=None,None,None
-        _cls,_bbox,_msk=None,None,None
+        _cls,_box,_msk=None,None,None
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
-            # this_img,this_cls,this_msk=self.blend_image_patch(vc)  # always regenerate
-            this_img,this_cls,this_msk=vc.data=vc.data or self.add_image_patch(vc,verbose=0)  # reuse previously generated
-            this_bbox=extract_bboxes(this_msk)
-            this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
-            this_img=this_img[np.newaxis,...]
-            this_img_meta=this_img_meta[np.newaxis,...]
-            this_anchors=self._anchors[np.newaxis,...]
-            _img=this_img if _img is None else np.concatenate((_img,this_img),axis=0)
-            _img_meta=this_img_meta if _img_meta is None else np.concatenate((_img_meta,this_img_meta),axis=0)
-            _anc=this_anchors if _anc is None else np.concatenate((_anc,this_anchors),axis=0)
+            img,msk,cls,box=self.prep_data(vc)
+            img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
+            img,msk=img[np.newaxis,...],msk[np.newaxis,...]
+            cls,box=cls[np.newaxis,...],box[np.newaxis,...]
+            img_meta=img_meta[np.newaxis,...]
+            anchors=self._anchors[np.newaxis,...]
+            _img=img if _img is None else np.concatenate((_img,img),axis=0)
+            _img_meta=img_meta if _img_meta is None else np.concatenate((_img_meta,img_meta),axis=0)
+            _anc=anchors if _anc is None else np.concatenate((_anc,anchors),axis=0)
+            _cls=cls if _cls is None else np.concatenate((_cls,cls),axis=0)
+            _box=box if _box is None else np.concatenate((_box,box),axis=0)
+            _msk=msk if _msk is None else np.concatenate((_msk,msk),axis=0)
             _img=prep_scale(_img,self.cfg.feed)
-            this_cls=this_cls[np.newaxis,...]
-            this_bbox=this_bbox[np.newaxis,...]
-            this_msk=this_msk[np.newaxis,...]
-            _cls=this_cls if _cls is None else np.concatenate((_cls,this_cls),axis=0)
-            _bbox=this_bbox if _bbox is None else np.concatenate((_bbox,this_bbox),axis=0)
-            _msk=this_msk if _msk is None else np.concatenate((_msk,this_msk),axis=0)
-        return [_img,_img_meta,_anc], [_cls,_bbox,_msk]
+        return [_img,_img_meta,_anc], [_cls,_box,_msk]
 
     def get_pred_item(self,indexes):
         _img,_img_meta,_anc=None,None,None
         for vi,vc in enumerate([self.view_coord[k] for k in indexes]):
-            this_img=self.pair.img_set.get_image(vc)
-            this_img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
-            this_img=this_img[np.newaxis,...]
-            this_img_meta=this_img_meta[np.newaxis,...]
-            this_anchors=self._anchors[np.newaxis,...]
-            _img=this_img if _img is None else np.concatenate((_img,this_img),axis=0)
-            _img_meta=this_img_meta if _img_meta is None else np.concatenate((_img_meta,this_img_meta),axis=0)
-            _anc=this_anchors if _anc is None else np.concatenate((_anc,this_anchors),axis=0)
+            img=self.pair.img_set.get_image(vc)
+            img_meta=compose_image_meta(indexes[vi],self.cfg.dim_in,self.cfg.dim_in,(0,0,self.cfg.row_in,self.cfg.col_in),1.0,self._active_class_ids)
+            img=img[np.newaxis,...]
+            img_meta=img_meta[np.newaxis,...]
+            anchors=self._anchors[np.newaxis,...]
+            _img=img if _img is None else np.concatenate((_img,img),axis=0)
+            _img_meta=img_meta if _img_meta is None else np.concatenate((_img_meta,img_meta),axis=0)
+            _anc=anchors if _anc is None else np.concatenate((_anc,anchors),axis=0)
             _img=prep_scale(_img,self.cfg.feed)
         return [_img,_img_meta,_anc],[]
 
@@ -574,9 +579,9 @@ class ImageDetectGenerator(keras.utils.Sequence):
         random_weight=kwargs.get('random_weight',6) # random weight for each category will be added
         patch_per_area=kwargs.get('patch_per_area',6000)  # divided by area, larger number -> fewer patches/smaller density
         max_instance=kwargs.get('max_instance',30)  # break out condition: >? patches inserted in any category
-        ave_diff=kwargs.get('ave_diff',10)  # original area should be brighter (spot_ave-brightness-patch_ave-brightness>diff), neg-val: accept dim images
-        min_diff=kwargs.get('min_diff',0)  # original area should be brighter (spot_min-brightness-patch_min-brightness>diff), neg-val: accept dim images
-        std_diff=kwargs.get('std_diff',10)  # original area should be cleaner, lower std (spot_std-patch_std<diff), pos-val: accept contrasty background
+        ave_diff=kwargs.get('ave_diff',10)  # bright original area (spot_ave-brightness-patch_ave-brightness>diff), neg-val: accept dim images
+        min_diff=kwargs.get('min_diff',0)  # bright original area (spot_min-brightness-patch_min-brightness>diff), neg-val: accept dim images
+        std_diff=kwargs.get('std_diff',10)  # clean original area, lower std (spot_std-patch_std<diff), pos-val: accept contrasty background
         area=int(self.cfg.row_in*self.cfg.col_in/self.cfg.target_scale)
         pool=list(range(0,self.cfg.num_targets+1)) # equal chance
         for _ in range(random_weight): pool.append(random.randint(0,self.cfg.num_targets)) # +random weight
@@ -590,7 +595,7 @@ class ImageDetectGenerator(keras.utils.Sequence):
                 rowpos,colpos=random.uniform(0,1),random.uniform(0,1)
                 pat_img,pat_msk=the_pch_set.get_image(pch_view),the_pch_set.get_mask(pch_view,)[...,np.newaxis]
                 # cv2.imwrite(pch_view.image_name+"_pimg_0.jpg",pat_img);cv2.imwrite(pch_view.image_name+"_pmsk_0.jpg",pat_msk)
-                pat_img,pat_msk=self.pch_aug.shift2_decor1(pat_img,pat_msk) # only allow minimal augmentation, preverse [H,W,C]
+                pat_img,pat_msk=self.aug.shift2_decor1(pat_img,pat_msk) # only allow minimal augmentation, preverse [H,W,C]
                 # cv2.imwrite(pch_view.image_name+"_pimg_%d.jpg"%self.aug_value,pat_img);cv2.imwrite(pch_view.image_name+"_pmsk_%d.jpg"%self.aug_value,pat_msk)
                 p_row,p_col,_=pat_img.shape # insure fit may change image size, so get the updated size
                 p_gray=np.mean(pat_img,axis=-1,keepdims=True)  # stats based on grayscale
@@ -633,7 +638,7 @@ class ImageDetectGenerator(keras.utils.Sequence):
     def __getitem__(self, index):  # Generate one batch of data
         indexes=self.indexes[index*self.cfg.batch_size:(index+1)*self.cfg.batch_size]
         # print(" getting index %d with %d batch size"%(index,self.batch_size))
-        return self.getitemfun(indexes)
+        return self.get_item(indexes)
 
     def on_epoch_end(self):  # Updates indexes after each epoch
         self.indexes=np.arange(len(self.view_coord))

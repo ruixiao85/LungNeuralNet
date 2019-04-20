@@ -16,12 +16,12 @@ from preprocess import prep_scale,read_image,AugImageMask
 from postprocess import g_kern_rect,draw_text
 
 class BaseNetU(Config):
-    # 'relu6'  # min(max(features, 0), 6)
-    # 'crelu'  # Concatenates ReLU (only positive part) with ReLU (only the negative part). Note that this non-linearity doubles the depth of the activations
-    # 'elu'  # Exponential Linear Units exp(features)-1, if <0, features
-    # 'selu'  # Scaled Exponential Linear Rectifier: scale * alpha * (exp(features) - 1) if < 0, scale * features otherwise.
-    # 'softplus'  # log(exp(features)+1)
-    # 'softsign' features / (abs(features) + 1)
+    # 'relu6' # min(max(features, 0), 6)
+    # 'crelu' # Concatenates ReLU (positive part) with ReLU (negative part), which doubles the depth of the activations
+    # 'elu' # Exponential Linear Units exp(features)-1, if <0, features
+    # 'selu' # Scaled Exponential Linear Rectifier: scale * alpha * (exp(features) - 1) if < 0, scale * features otherwise.
+    # 'softplus' # log(exp(features)+1)
+    # 'softsign' # features / (abs(features) + 1)
 
     # 'mean_squared_error' 'mean_absolute_error'
     # 'binary_crossentropy'
@@ -101,7 +101,7 @@ class BaseNetU(Config):
                     print("Continue from previous weights.")
                     self.net.load_weights(last_best)
                     # print("Continue from previous model with weights & optimizer")
-                    # self.net=load_model(last_best,custom_objects=custom_function_dict())  # does not work well with custom act, loss func
+                    # self.net=load_model(last_best,custom_objects=custom_function_dict()) # good with custom func
                 else:
                     print("Train with some random weights."); init_epoch=0
             if not os.path.exists(self.filename+".txt"):
@@ -112,10 +112,10 @@ class BaseNetU(Config):
             from keras.callbacks import ModelCheckpoint,EarlyStopping,ReduceLROnPlateau,LearningRateScheduler
             from callbacks import TensorBoardTrainVal,ModelCheckpointCustom
             history=self.net.fit_generator(tr,validation_data=val,verbose=1,
-                                           steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
-                                           validation_steps=min(self.train_val_step,len(val.view_coord)) if isinstance(self.train_val_step,int) else len(val.view_coord),
-                                           epochs=self.train_epoch,max_queue_size=5,workers=1,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
-                                           callbacks=[
+               steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
+               validation_steps=min(self.train_val_step,len(val.view_coord)) if isinstance(self.train_val_step,int) else len(val.view_coord),
+               epochs=self.train_epoch,max_queue_size=5,workers=1,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
+               callbacks=[
                    ModelCheckpointCustom(self.filename,monitor=self.indicator,mode=self.indicator_trend,hist_best=best_value,
                                 save_weights_only=True,save_mode=self.save_mode,lr_decay=self.learning_decay,sig_digits=self.sig_digits,verbose=1),
                    EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=self.indicator_patience,verbose=1),
