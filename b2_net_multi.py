@@ -414,15 +414,15 @@ class BaseNetM(Config):
         to_excel_sheet(df,xls_file,pair.origin+"_sum") # per whole image
 
 class ImageObjectPatchPair:
-    def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train,regions=None,use_obj=True,use_pch=True):
+    def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train,regions=None,use_obj=None,use_pch=None):
         self.cfg=cfg
         self.wd=wd
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
         self.region0="Total"
         self.regions=regions if isinstance(regions,list) else [regions]
-        self.use_obj=use_obj or True
-        self.use_pch=use_pch or True
+        self.use_obj=use_obj if use_obj is not None else True
+        self.use_pch=use_pch if use_pch is not None else True
         assert(self.use_obj and self.use_pch, "At least one of object or patch set needs to be enabled.")
         self.img_set=ViewSet(cfg,wd,origin,channels=3,is_train=is_train,low_std_ex=False).prep_folder()
         # self.reg_set=None # region_set (Conducting Airway,...)
@@ -483,20 +483,20 @@ class ImageDetectGenerator(keras.utils.Sequence):
     def prep_data(self,vc):
         vc.data=vc.data or self.parse_image_object(vc,self.pair.use_obj)  # cached, obj or new
         img,cls,msk=vc.data  # load cached data
-        cv2.imwrite("multi_%s_img0.jpg"%vc.file_name,img)
-        if msk:
-            cv2.imwrite("multi_%s_msks0.jpg"%vc.file_name,msk[...,0:3])
-            img,msk=self.aug.shift2(img,msk)
-            cv2.imwrite("multi_%s_msks1.jpg"%vc.file_name,msk[...,0:3])
-        else:
+        # cv2.imwrite("multi_%s_img0.jpg"%vc.file_name,img)
+        if msk is None:
             img=self.aug.shift1(img)
-        cv2.imwrite("multi_%s_img1.jpg"%vc.file_name,img)
+        else:
+            # cv2.imwrite("multi_%s_msks0.jpg"%vc.file_name,msk[...,0:3])
+            img,msk=self.aug.shift2(img,msk)
+            # cv2.imwrite("multi_%s_msks1.jpg"%vc.file_name,msk[...,0:3])
+        # cv2.imwrite("multi_%s_img1.jpg"%vc.file_name,img)
         if self.pair.pch_set:
             img,cls,msk=self.add_image_patch(vc,img,cls,msk,verbose=1)
-        cv2.imwrite("multi_%s_img2.jpg"%vc.file_name,img)
-        cv2.imwrite("multi_%s_msk2.jpg"%vc.file_name,msk[...,0:3])
+        # cv2.imwrite("multi_%s_img2.jpg"%vc.file_name,img)
+        # cv2.imwrite("multi_%s_msk2.jpg"%vc.file_name,msk[...,0:3])
         img=self.aug.decor1(img)
-        cv2.imwrite("multi_%s_img3.jpg"%vc.file_name,img)
+        # cv2.imwrite("multi_%s_img3.jpg"%vc.file_name,img)
         cls,box=np.array(cls,dtype=np.uint8),extract_bboxes(msk)
         return img,msk,cls,box
 
