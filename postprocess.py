@@ -103,15 +103,17 @@ def draw_detection(cfg,img,tgts,box,cls,scr,msk,reg=None):
     off=max(1,fsize//15) # offset for bright/dark text0
     lwd=max(3,(6+fsize//12)//3) # line width if outline not fill
     fontsize=ImageFont.truetype(FONT,fsize)
-    nreg,sum_pixels=1,[row*col/div] # default only consider whole image
-    name_reg,len_reg=[cfg.region0],5
+    sum_pixels,nrl=[row*col/div],5 # default only consider whole image
+    regs,nreg=[cfg.region0],1
+    opacity=0.2 # if overlay color needed
     if reg:
-        nr=len(reg); opacity=0.2
+        nreg+=len(reg)
         for ri,(rname,mask) in enumerate(reg.items()):  # add more specified regions
-            nreg,sum_pixels=nreg+1,sum_pixels+[np.sum(mask,keepdims=False)/div] # green channel as mask
-            name_reg,len_reg=name_reg+[rname],max(len_reg,len(rname))
+            sum_pixels=sum_pixels+[np.sum(mask,keepdims=False)/div] # green channel as mask
+            regs,nrl=regs+[rname],max(nrl,len(rname))
+            rc=ri/nreg
             for c in range(3):
-                img[...,c]=np.where(mask>0.5,img[...,c]*(1-opacity)+cfg.overlay_bright(ri/nr)[c]*opacity,img[...,c])
+                img[...,c]=np.where(mask>0.5,img[...,c]*(1-opacity)+cfg.overlay_bright(rc)[c]*opacity,img[...,c])
     ni,nt=len(box),len(tgts) # number of instances, targets
     tgts_1=[cfg.target0]+tgts
     res=np.zeros((nreg,1+nt,4),dtype=np.float32) # 0region:total/parenchyma/... 1target:TotalArea/LYM/MONO/PMN/...  2param:area/count/area_pct/count_density
@@ -135,7 +137,7 @@ def draw_detection(cfg,img,tgts,box,cls,scr,msk,reg=None):
                 # img[:,:,c]=np.where(boolarray,img[:,:,c]*(1-cfg.overlay_opacity[t-1])+color_t[c]*cfg.overlay_opacity[t-1],img[:,:,c]) # blend color
                 img[:,:,c]=np.where(boolarray,color_t[c],img[:,:,c]) # pure color
             patch_area=np.sum(patch,keepdims=False)/div
-            for r,rname in enumerate(name_reg):
+            for r,rname in enumerate(regs):
                 if r==0: # default Total
                     res[r,t,0]+=patch_area; res[r,t,1]+=1.0
                 else: # When regions are specified
@@ -149,9 +151,9 @@ def draw_detection(cfg,img,tgts,box,cls,scr,msk,reg=None):
             draw=ImageDraw.Draw(origin)
             if legend:
                 len_tgt=max([len(t) for t in tgts_1])  # length of the longest target
-                for r,rname in enumerate(name_reg):
+                for r,rname in enumerate(regs):
                     rc=(r-1)/nreg
-                    txt='\n'*(r+1)+'[  {:.0f}: {:<{}}]'.format(r,rname,len_reg)
+                    txt='\n'*(r+1)+'[  {:.0f}: {:<{}}]'.format(r,rname,nrl)
                     for t,tgt in enumerate(tgts_1):
                         if t==0:
                             txt+=' ${:,.0f}  {:.1%} |'.format(res[r,t,0],res[r,t,2])
@@ -179,5 +181,6 @@ def draw_detection(cfg,img,tgts,box,cls,scr,msk,reg=None):
             img=np.array(origin)
     else:
         print("\n*** No instances to display *** \n")
-        img=draw_text(cfg,img,tgts,res[:,0,:],fsize=max(10,int(col/50))) if legend else img
+        img=draw_text(cfg,img,tgts,regs,res[:,0,:],fsize=max(10,int(col/50))) if legend else img
+    print('Instances Legendes [%d] drawn.'%ni)
     return res,img,bw_mask

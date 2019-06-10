@@ -44,7 +44,6 @@ class BaseNetU(Config):
         from postprocess import single_call,multi_call
         self.predict_proc=kwargs.get('predict_proc', single_call)
         self.filename=kwargs.get('filename', None)
-        self.region0="Total"
         self.params=["Area","Count","AreaPercentage"]
         self.net=None # abstract -> instatiate in subclass
 
@@ -200,7 +199,6 @@ class ImageMaskPair:
         self.cfg=cfg
         self.wd=wd
         self.origin=origin
-        self.region0="Total"
         self.regions=regions if isinstance(regions,list) else [regions]
         self.is_train=is_train
         self.img_set=ViewSet(cfg,wd,origin,channels=3,is_train=is_train,low_std_ex=False).prep_folder()

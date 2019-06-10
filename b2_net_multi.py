@@ -78,8 +78,6 @@ class BaseNetM(Config):
         self.gpu_count=kwargs.get('gpu_count', 1)
         self.images_per_gpu=kwargs.get('image_per_gpu', 1)
         self.filename=kwargs.get('filename', None)
-        self.target0="ALL"
-        self.region0="Total"
         self.params=["Area","Count","AreaPercentage","CountDensity"]
         self.ntop=15 # override parent class to keep more top networks for further MRCNN evaluation
         self.net=None
@@ -397,7 +395,7 @@ class BaseNetM(Config):
                     grp_box=(grp_box.astype(np.float32)/pair.img_set.resize_ratio).astype(np.int32)
                 r_g,blend,bw=self.predict_proc(self,mrg_in,tgt_list,grp_box,grp_cls,grp_scr,grp_msk,reg={
                     rn:read_mask_default_zeros(os.path.join(pred_dir,pair.img_set.label_scale(rn,out_scale),view[0].image_name),self.row_out,self.col_out)
-                    for rn in pair.regions})
+                    for rn in pair.regions} if pair.regions else None)
                 res_g=r_g[np.newaxis,...] if res_g is None else np.concatenate((res_g,r_g[np.newaxis,...]))
                 cv2.imwrite(mkdirs_dir(os.path.join(grp_dir,view[0].image_name)),blend)
                 if save_msk:
@@ -419,7 +417,6 @@ class ImageObjectPatchPair:
         self.wd=wd
         self.origin=origin
         self.targets=targets if isinstance(targets,list) else [targets]
-        self.region0="Total"
         self.regions=regions if isinstance(regions,list) else [regions]
         self.use_obj=use_obj if use_obj is not None else True
         self.use_pch=use_pch if use_pch is not None else True

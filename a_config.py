@@ -6,6 +6,8 @@ import numpy as np
 from osio import find_file_pattern,find_file_pattern_rel
 
 class Config:
+    target0='ALL'
+    region0='Total'
     def __init__(self,num_targets,target_scale,**kwargs,):
         self.num_targets=num_targets
         self.target_scale=target_scale or 1.0 # pixel scale to target default to 10X=1px/µm (e.g., 40X=4px/µm)
