@@ -30,8 +30,8 @@ if __name__ == '__main__':
     else:
         os.chdir(script_dir)
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
-    origins = args.input.split(',')
-    targets = args.output.split(',')
+    origins = [x for x in args.input.split(',') if x]
+    targets = [x for x in args.output.split(',') if x]
     from c1_unet import UNet2S, UNet2, UNet2m, UNet2M, UNet
     from postprocess import multi_call
     from module import ca3, ca33, sk, ac3, ac33, bac3, bac33, cba3, cba33, aca3, aca33, ct

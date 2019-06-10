@@ -29,8 +29,9 @@ if __name__ == '__main__':
     else:
         os.chdir(script_dir)
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
-    origins = args.input.split(',')
-    targets = args.output.split(',')
+    origins = [x for x in args.input.split(',') if x]
+    targets = [x for x in args.output.split(',') if x]
+    regions = [x for x in args.region.split(',') if x]
     from c2_backbones import  MRCNN_Vgg16,MRCNN_Vgg19,MRCNN_Res50,MRCNN_Dense121,MRCNN_Dense169,MRCNN_Dense201,MRCNN_Mobile
 
     nets = [

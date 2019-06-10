@@ -28,8 +28,8 @@ if __name__ == '__main__':
     else:
         os.chdir(script_dir)
     # os.environ["CUDA_VISIBLE_DEVICES"] = '-1'  # force cpu
-    origins = args.input.split(',')
-    targets = args.output.split(',')
+    origins = [x for x in args.input.split(',') if x]
+    targets = [x for x in args.output.split(',') if x]
     from c1_unet import SegNet,UNet,UNet2
     from c1_resnet import NetU_ResNet
     from c1_vgg import NetU_Vgg
