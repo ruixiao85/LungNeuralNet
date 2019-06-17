@@ -123,6 +123,8 @@ class ViewSet(ImageSet):
 
     def res(self,rows=None,cols=None):
         return "%dx%d"%(rows or self.row, cols or self.col)
+    def labelres_scale(self,target=None,rows=None,cols=None,scale=None):
+        return "%s%s_%s"%(target or self.sub_category, self.res(rows,cols), scale or self.target_scale)
     def label_scale_res(self,target=None,scale=None,rows=None,cols=None):
         return "%s_%s"%(self.label_scale(target,scale), self.res(rows,cols))
     def scale_res(self,scale=None,rows=None,cols=None):

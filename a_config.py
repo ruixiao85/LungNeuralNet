@@ -1,9 +1,12 @@
 import colorsys
 import os
 import random
+
+import cv2
 import numpy as np
 
-from osio import find_file_pattern,find_file_pattern_rel
+from osio import find_file_pattern,find_file_pattern_rel,mkdir_dir
+
 
 class Config:
     target0='ALL'
@@ -49,10 +52,17 @@ class Config:
         self.sig_digits=kwargs.get('sig_digits', 3) # significant digits for indicator/score
         self._model_cache={}
 
-    @staticmethod
-    def parse_saved_model(filename):
-        parts=filename.split('^')
-        return int(parts[1]),float(parts[2]) # epoch, last_best
+    def size(self,pair):
+        ori=pair.img_set
+        wd=mkdir_dir(os.path.join(ori.work_directory,ori.labelres_scale()))
+        for sname,views,views_ex in [("train",ori.tr_view,ori.tr_view.ex),("validation",ori.val_view,ori.val_view.ex)]:
+            print("Export images from %s set"%sname)
+            for v in views:
+                if v not in views_ex:
+                    img=ori.get_image(v,whole=False,pad_value=255)
+                    fn=v.file_name # detailed file, e.g., "image-#r#c#r1#r2#c1#c2#.jpg"
+                    sec=fn.split('#'); fn=sec[0]+sec[3]+','+sec[4]+sec[7] # shorten to "image_r1,c1,jpg"
+                    cv2.imwrite(os.path.join(wd,fn),img,[int(cv2.IMWRITE_JPEG_QUALITY), 90])
 
     def find_best_models(self, pattern, allow_cache=False):
         cwd=os.getcwd()
@@ -77,6 +87,11 @@ class Config:
         else:
             print('No previus model found, starting fresh')
             return None
+
+    @staticmethod
+    def parse_saved_model(filename):
+        parts=filename.split('^')
+        return int(parts[1]),float(parts[2]) # epoch, last_best
 
     @staticmethod
     def join_names(tgt_list) :
