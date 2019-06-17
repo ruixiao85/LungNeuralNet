@@ -41,7 +41,6 @@ class BaseNetM(Config):
         self.indicator_trend=kwargs.get('indicator_trend', 'min')
         from postprocess import draw_detection
         self.predict_proc=kwargs.get('predict_proc', draw_detection)
-        self.coverage_predict=-1 # do not allow overlap during prediction/inference
         self.train_regex=kwargs.get('train_regex', ".*") # all layers trainable
         # self.train_regex=kwargs.get('train_regex', r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)")  # head
         # self.train_regex=kwargs.get('train_regex', r"# (res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 3+
@@ -307,7 +306,7 @@ class BaseNetM(Config):
                callbacks=[
                    ModelCheckpointCustom(self.filename,monitor=self.indicator,mode=self.indicator_trend,hist_best=best_value,
                                  save_weights_only=True,save_mode=self.save_mode,lr_decay=self.learning_decay,sig_digits=self.sig_digits,verbose=1),
-                   EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=2,verbose=1),
+                   EarlyStopping(monitor=self.indicator,mode=self.indicator_trend,patience=self.indicator_patience,verbose=1),
                    # LearningRateScheduler(lambda x: learning_rate*(self.learning_decay**x),verbose=1),
                    # ReduceLROnPlateau(monitor=self.indicator, mode='min', factor=0.5, patience=1, min_delta=1e-8, cooldown=0, min_lr=0, verbose=1),
                    # TensorBoardTrainVal(log_dir=os.path.join("log", self.filename), write_graph=True, write_grads=False, write_images=True),
@@ -412,7 +411,7 @@ class BaseNetM(Config):
         to_excel_sheet(df,xls_file,pair.origin+"_sum") # per whole image
 
 class ImageObjectPatchPair:
-    def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train,regions=None,use_obj=None,use_pch=None):
+    def __init__(self,cfg:BaseNetM,wd,origin,targets,low_std_ex,is_train,regions=None,use_obj=None,use_pch=None):
         self.cfg=cfg
         self.wd=wd
         self.origin=origin
@@ -420,14 +419,13 @@ class ImageObjectPatchPair:
         self.regions=regions if isinstance(regions,list) else [regions]
         self.use_obj=use_obj if use_obj is not None else True
         self.use_pch=use_pch if use_pch is not None else True
-        assert(self.use_obj and self.use_pch, "At least one of object or patch set needs to be enabled.")
-        self.img_set=ViewSet(cfg,wd,origin,channels=3,is_train=is_train,low_std_ex=False).prep_folder()
+        self.img_set=ViewSet(cfg,wd,origin,3,low_std_ex,is_train).prep_folder()
         # self.reg_set=None # region_set (Conducting Airway,...)
         self.obj_set=None # object_set (LYM,... annotated matching img_set)
         self.pch_set=None # patch_set (LYM,... insertable rep image)
 
     def train_generator(self):
-        self.obj_set=[ViewSet(self.cfg,self.wd,t,3,is_train=True,low_std_ex=False).prep_folder() for t in self.targets] if self.use_obj else None
+        self.obj_set=[ViewSet(self.cfg,self.wd,t,3,low_std_ex=False,is_train=True).prep_folder() for t in self.targets] if self.use_obj else None
         self.pch_set=[PatchSet(self.cfg,self.wd,t+'+',3).prep_folder() for t in self.targets] if self.use_pch else None
         yield(ImageDetectGenerator(self,self.targets,view_coord=self.img_set.tr_view,aug_value=self.cfg.train_val_aug[0]),
               ImageDetectGenerator(self,self.targets,view_coord=self.img_set.val_view,aug_value=self.cfg.train_val_aug[1]),
@@ -440,13 +438,17 @@ class ImageObjectPatchPair:
         return ImageDetectGenerator(self,subset,view_coord=view,aug_value=0),self.cfg.join_names(subset)
 
 
+class ImageNullPair(ImageObjectPatchPair):
+    def __init__(self,cfg:BaseNetM,wd,origin,targets,low_std_ex,is_train,regions=None):
+        super(ImageNullPair,self).__init__(cfg,wd,origin,targets,low_std_ex,is_train,regions,use_obj=False,use_pch=False)
+
 class ImageObjectPair(ImageObjectPatchPair):
-    def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train,regions=None):
-        super(ImageObjectPair,self).__init__(cfg,wd,origin,targets,is_train,regions,use_obj=True,use_pch=False)
+    def __init__(self,cfg:BaseNetM,wd,origin,targets,low_std_ex,is_train,regions=None):
+        super(ImageObjectPair,self).__init__(cfg,wd,origin,targets,low_std_ex,is_train,regions,use_obj=True,use_pch=False)
 
 class ImagePatchPair(ImageObjectPatchPair):
-    def __init__(self,cfg:BaseNetM,wd,origin,targets,is_train,regions=None):
-        super(ImagePatchPair,self).__init__(cfg,wd,origin,targets,is_train,regions,use_obj=False,use_pch=True)
+    def __init__(self,cfg:BaseNetM,wd,origin,targets,low_std_ex,is_train,regions=None):
+        super(ImagePatchPair,self).__init__(cfg,wd,origin,targets,low_std_ex,is_train,regions,use_obj=False,use_pch=True)
 
 class ImageDetectGenerator(keras.utils.Sequence):
     def __init__(self,pair:ImageObjectPatchPair,tgt_list,view_coord,aug_value):

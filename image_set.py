@@ -10,22 +10,21 @@ from postprocess import morph_close,morph_open,gaussian_smooth,fill_contour
 from preprocess import read_image,read_resize,read_resize_pad,read_resize_fit,extract_pad_image
 
 class MetaInfo:
-    def __init__(self, file, image, ori_row, ori_col, ri, ro, ci, co):
-        self.file_name = file  # direct file can be a slice
-        self.image_name = image # can be name of the whole image, can different from file_name (slice)
-        self.ori_row = ori_row
-        self.ori_col = ori_col
-        self.row_start = ri
-        self.row_end = ro
-        self.col_start = ci
-        self.col_end = co
-
-        self.data=None
+    def __init__(self,file,image,ori_row,ori_col,ri,ro,ci,co):
+        self.file_name=file  # direct file can be a slice
+        self.image_name=image  # can be name of the whole image, can different from file_name (slice)
+        self.ori_row=ori_row
+        self.ori_col=ori_col
+        self.row_start=ri
+        self.row_end=ro
+        self.col_start=ci
+        self.col_end=co
+        self.data=None # store reusable data
 
     def __str__(self):
         return self.file_name
 
-    def __eq__(self, other):
+    def __eq__(self,other):
         return str(self)==str(other)
 
     def __hash__(self):
@@ -97,7 +96,6 @@ class ImageSet:
     def adapt_channel(self,img,channels=None):
         return np.mean(img,axis=-1,keepdims=True) if (channels or self.channels)==1 else img
 
-
     def get_raw_image(self,view:MetaInfo):
         return self.adapt_channel(read_image(os.path.join(self.work_directory,self.raw_folder,view.image_name)))
 
@@ -111,10 +109,10 @@ class ImageSet:
         return view[...,3] if self.channels==4 else 255-view[...,1] if self.channels==3 else view[...,0] # 4: alpha 3: process further on green
 
 class ViewSet(ImageSet):
-    def __init__(self,cfg: Config,wd,sf,channels,is_train,low_std_ex):
+    def __init__(self,cfg: Config,wd,sf,channels,low_std_ex,is_train):
         super(ViewSet,self).__init__(cfg,wd,sf,channels)
         self.coverage=cfg.coverage_train if is_train else cfg.coverage_predict
-        self.list_to_view=self.list_to_view_with_overlap if self.coverage>0 else self.list_to_view_without_overlap
+        self.list_to_view=self.list_to_view_with_overlap if self.coverage>1.0 else self.list_to_view_without_overlap
         self.train_step=cfg.train_step
         self.row,self.col=cfg.row_in,cfg.col_in
         self.low_std_ex=low_std_ex
@@ -190,13 +188,13 @@ class ViewSet(ImageSet):
         return view_list
 
     def low_std_exclusion(self,view_list):
-        ex_list=[]
+        ex_set=set()
         for view in view_list:
             img=self.get_image(view)
             stdnp=np.std(img,axis=(0,1))
-            if np.max(stdnp)<8:
-                ex_list.append(view)
-        return ex_list
+            if np.mean(stdnp)<20:
+                ex_set.add(view)
+        return ex_set
 
     def view_coord_batch(self):
         view_batch={}

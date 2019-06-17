@@ -195,13 +195,13 @@ class BaseNetU(Config):
         to_excel_sheet(df,xls_file,pair.origin+"_sum")  # per whole image
 
 class ImageMaskPair:
-    def __init__(self,cfg:BaseNetU,wd,origin,regions,is_train):
+    def __init__(self,cfg:BaseNetU,wd,origin,regions,low_std_ex,is_train):
         self.cfg=cfg
         self.wd=wd
         self.origin=origin
         self.regions=regions if isinstance(regions,list) else [regions]
         self.is_train=is_train
-        self.img_set=ViewSet(cfg,wd,origin,channels=3,is_train=is_train,low_std_ex=False).prep_folder()
+        self.img_set=ViewSet(cfg,wd,origin,3,low_std_ex,is_train).prep_folder()
         self.reg_set=None # region_set
 
     def train_generator(self):
@@ -214,7 +214,7 @@ class ImageMaskPair:
             self.reg_set=[]
             for t in self.regions[i:o]:
                 tgt_list.append(t)
-                msk=ViewSet(self.cfg,self.wd,t,channels=1,is_train=True,low_std_ex=True).prep_folder()
+                msk=ViewSet(self.cfg,self.wd,t,channels=1,low_std_ex=True,is_train=True).prep_folder()
                 self.reg_set.append(msk)
                 tr_view=tr_view.intersection(msk.tr_view)
                 val_view=val_view.intersection(msk.val_view)

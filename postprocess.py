@@ -82,7 +82,7 @@ def multi_call(cfg,img,tgts,msk):  # softmax (r,c,multi_label) blend, np result
     return res,img,bw_mask
 
 def draw_text(cfg,img,tgts,res,sep='\n',fsize=None):
-    fsize=fsize or max(10,int(img.shape[1]/50)); off=max(1, fsize//15)  # text offset
+    fsize=fsize or max(12,int(img.shape[1]/48)); off=max(1, fsize//15)  # text offset
     nt=len(tgts)
     fontsize=ImageFont.truetype(FONT,fsize)
     origin=Image.fromarray(img.astype(np.uint8),'RGB')  # L RGB
@@ -99,7 +99,7 @@ def draw_text(cfg,img,tgts,res,sep='\n',fsize=None):
 def draw_detection(cfg,img,tgts,box,cls,scr,msk,reg=None):
     legend, instance, fill=cfg.overlay_legend_instance_fill
     row,col,_=img.shape; div=cfg.target_scale**2.0
-    fsize=max(10, col//50) # fontsize at least 10
+    fsize=max(12, col//48) # fontsize at least 10
     off=max(1,fsize//15) # offset for bright/dark text0
     lwd=max(3,(6+fsize//12)//3) # line width if outline not fill
     fontsize=ImageFont.truetype(FONT,fsize)

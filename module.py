@@ -1,6 +1,6 @@
 from keras import backend as K
-from keras.layers import Concatenate, Activation, BatchNormalization, Conv2DTranspose, MaxPooling2D, AveragePooling2D, UpSampling2D, Conv2D, Dropout, Add
-
+from keras.layers import Concatenate,Activation,BatchNormalization,Conv2DTranspose,MaxPooling2D,AveragePooling2D,\
+    UpSampling2D,Conv2D,Dropout,Add,SeparableConv2D
 
 K.set_image_data_format('channels_last')
 # concat_axis = 3
@@ -43,6 +43,12 @@ def bnaccv(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, d
     x=bnac(in_layer,name+'_ba',idx,fs,act,size,stride,dilation)
     return cv(x, name, idx, fs, act, size, stride, dilation)
 
+def ev(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilation=1):
+    return SeparableConv2D(fs, (size,size), strides=(stride,stride), dilation_rate=(dilation,dilation), padding='same', kernel_initializer=init, name=name)(in_layer)
+def evac(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilation=1):
+    x=ev(in_layer,name+'_cv',idx,fs,act,size,stride,dilation)
+    return Activation(activation=act,name=name)(x)
+
 def tr(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilation=1):
     return Conv2DTranspose(fs, (size, size), strides=(stride, stride), dilation_rate=(dilation,dilation), kernel_initializer=init, padding='same', name=name)(in_layer)
 def trac(in_layer, name=None, idx=None, fs=None, act=None, size=3, stride=1, dilation=1):
@@ -70,11 +76,16 @@ def step2kern(step):
 def dca(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
     return cvac(in_layer, name, idx, fs, act, size=size or step2kern(rate), stride=rate)
 
+def dea(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
+    return evac(in_layer, name, idx, fs, act, size=size or step2kern(rate), stride=rate)
+
 def dcba(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
     return cvbnac(in_layer, name, idx, fs, act, size=size or step2kern(rate), stride=rate)
 
 def dmp(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
     return mp(in_layer, name, idx, fs, act, size=size or step2kern(rate), stride=rate)
+def dap(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
+    return ap(in_layer, name, idx, fs, act, size=size or step2kern(rate), stride=rate)
 
 def uu(in_layer, rate, name=None, idx=None, fs=None, act=None, size=None):
     return us(in_layer, name, idx, fs, act, size=size or step2kern(rate), stride=rate)
@@ -107,6 +118,21 @@ def ca2(in_layer, name=None, idx=None, fs=None, act=None):
     return x
 def ca3(in_layer, name=None, idx=None, fs=None, act=None):
     x=cvac(in_layer, name, idx, fs, act, size=3)
+    return x
+def ca5(in_layer, name=None, idx=None, fs=None, act=None):
+    x=cvac(in_layer, name, idx, fs, act, size=5)
+    return x
+def ea1(in_layer, name=None, idx=None, fs=None, act=None):
+    x=evac(in_layer, name, idx, fs*3, act, size=1) # if concat 2 times
+    return x
+def ea2(in_layer, name=None, idx=None, fs=None, act=None):
+    x=evac(in_layer, name, idx, fs, act, size=2)
+    return x
+def ea3(in_layer, name=None, idx=None, fs=None, act=None):
+    x=evac(in_layer, name, idx, fs, act, size=3)
+    return x
+def ea5(in_layer, name=None, idx=None, fs=None, act=None):
+    x=evac(in_layer, name, idx, fs, act, size=5)
     return x
 def ca3h(in_layer, name=None, idx=None, fs=None, act=None):
     x=cvac(in_layer, name, idx, int(fs/2), act, size=3)
