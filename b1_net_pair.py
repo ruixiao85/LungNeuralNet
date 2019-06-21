@@ -113,7 +113,7 @@ class BaseNetU(Config):
             history=self.net.fit_generator(tr,validation_data=val,verbose=1,
                steps_per_epoch=min(self.train_step,len(tr.view_coord)) if isinstance(self.train_step,int) else len(tr.view_coord),
                validation_steps=min(self.train_val_step,len(val.view_coord)) if isinstance(self.train_val_step,int) else len(val.view_coord),
-               epochs=self.train_epoch,max_queue_size=5,workers=1,use_multiprocessing=False,shuffle=False,initial_epoch=init_epoch,
+               epochs=self.train_epoch,max_queue_size=5,workers=1,use_multiprocessing=False,initial_epoch=init_epoch,
                callbacks=[
                    ModelCheckpointCustom(self.filename,monitor=self.indicator,mode=self.indicator_trend,hist_best=best_value,
                                 save_weights_only=True,save_mode=self.save_mode,lr_decay=self.learning_decay,sig_digits=self.sig_digits,verbose=1),
@@ -250,7 +250,7 @@ class ImageMaskGenerator(keras.utils.Sequence):
         self.is_train=self.cfg.is_train
         self.aug=AugImageMask(aug_value)
         self.view_coord=view_coord
-        self.indexes=None
+        self.indexes=np.arange(len(self.view_coord))
         self.on_epoch_end()
 
     def __len__(self):  # Denotes the number of batches per epoch
@@ -277,7 +277,6 @@ class ImageMaskGenerator(keras.utils.Sequence):
             # cv2.imwrite("pair_img.jpg",_img[0])
             return prep_scale(_img,self.cfg.feed),None
 
-    def on_epoch_end(self):  # Updates indexes after each epoch
-        self.indexes=np.arange(len(self.view_coord))
+    def on_epoch_end(self):  # Updates indexes after each epoch # MAY NOT BE CALLED
         if self.pair.is_train and self.cfg.train_shuffle:
             np.random.shuffle(self.indexes)
