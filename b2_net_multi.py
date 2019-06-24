@@ -43,9 +43,9 @@ class BaseNetM(Config):
         self.predict_proc=kwargs.get('predict_proc', draw_detection)
         self.train_regex=kwargs.get('train_regex', ".*") # all layers trainable
         # self.train_regex=kwargs.get('train_regex', r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)")  # head
-        # self.train_regex=kwargs.get('train_regex', r"# (res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 3+
-        # self.train_regex=kwargs.get('train_regex', r"# (res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 4+
-        # self.train_regex=kwargs.get('train_regex', r"# (res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 5+
+        # self.train_regex=kwargs.get('train_regex', r"(res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 3+
+        # self.train_regex=kwargs.get('train_regex', r"(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 4+
+        # self.train_regex=kwargs.get('train_regex', r"(res5.*)|(bn5.*)|(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)") # 5+
         self.num_class=1+self.num_targets # plus background
         self.meta_shape=[1+3+3+4+1+self.num_class] # last number is NUM_CLASS
         self.batch_norm=kwargs.get('batch_norm', True) # images in small batches also benefit from batchnorm
@@ -329,20 +329,29 @@ class BaseNetM(Config):
                     for part in [tr,val]:
                         part.set_eval()
                         steps_done,steps=0,min(48,len(part)) # limit number of evaluation images
-                        print("[%s] is_val=%r running %d/%d steps:\nAP:"%(weight_file,part.is_val,steps,len(part)),end='')
-                        part.on_epoch_end() #initialize
-                        valiter=iter(part); APs=[]
+                        print("[%s] is_val=%r running %d/%d steps:\nAP:\n"%(weight_file,part.is_val,steps,len(part)),end='')
+                        valiter=iter(part); APs={}
+                        # classes=[None] # overall mAP
+                        classes=range(1,1+self.num_targets) # mAP for each class
                         while steps_done<steps:
                             img,gt=next(valiter)
                             detections,mrcnn_class,mrcnn_bbox,mrcnn_mask,rpn_rois,rpn_class,rpn_bbox=self.net.predict_on_batch(img)
                             for i in range(np.shape(detections)[0]): # first element only support batch size = 1
                                 final_rois,final_class_ids,final_scores,final_masks=parse_detections(detections[i],mrcnn_mask[i],self.dim_in,full_mask=True)
-                                AP,precisions,recalls,overlaps=compute_ap(gt[1][i],gt[0][i],gt[2][i],final_rois,final_class_ids,final_scores,
-                                    np.transpose(final_masks,(1,2,0)))
-                                APs.append(AP); print(' %.2f'%AP,end='',flush=True)
+                                for cls_id in classes:
+                                    AP=APs.get(cls_id,[])
+                                    ap,precisions,recalls,overlaps=compute_ap(gt[1][i],gt[0][i],gt[2][i],final_rois,final_class_ids,final_scores,
+                                        np.transpose(final_masks,(1,2,0)),class_id=cls_id)
+                                    print(' #%d (%s) = %.2f'%(cls_id,pair.targets[cls_id-1],ap) if cls_id else \
+                                          ' All = %.2f'%ap, end='')
+                                    if not math.isnan(ap): AP.append(ap)
+                                    APs[cls_id]=AP
+                                print()
                             steps_done+=1
-                        mAP=np.mean(APs) # TODO get AP for each category
-                        print("\nmAP: ",mAP); log.write(str(mAP)+',')
+                        for cls_id in classes:
+                            mAP=np.mean(APs[cls_id])
+                            print(pair.targets[cls_id-1] if cls_id else "All","mAP:",mAP)
+                            log.write(str(mAP)+',')
                     print(); log.write('\n')
 
     def predict(self,pair,pred_dir):

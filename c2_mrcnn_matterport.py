@@ -106,15 +106,15 @@ def parse_detections(detections,mrcnn_mask,original_image_shape,full_mask=False,
 
     exclude_ix=np.where(
         np.logical_or((boxes[:,2]-boxes[:,0])*(boxes[:,3]-boxes[:,1])<=0, # remove zero area
-            # np.logical_or( # more than half outside the frame
-            #     np.logical_or(boxes[:,2]+boxes[:,0]>2*image_shape[0],boxes[:,2]+boxes[:,0]<0),
-            #     np.logical_or(boxes[:,3]+boxes[:,1]>2*image_shape[1],boxes[:,3]+boxes[:,1]<0)
-            # )
+            np.logical_or( # more than half outside the frame
+                np.logical_or(boxes[:,2]+boxes[:,0]>2*image_shape[0],boxes[:,2]+boxes[:,0]<0),
+                np.logical_or(boxes[:,3]+boxes[:,1]>2*image_shape[1],boxes[:,3]+boxes[:,1]<0)
+            )
             # np.logical_or(  # even touching the frame
             #     np.logical_or(boxes[:,2]>=image_shape[0],boxes[:,0]<=0),
             #     np.logical_or(boxes[:,3]>=image_shape[1],boxes[:,1]<=0)
             # )
-            np.logical_or((boxes[:,2]-boxes[:,0])/(boxes[:,3]-boxes[:,1])>2.0,(boxes[:,2]-boxes[:,0])/(boxes[:,3]-boxes[:,1])<0.5)
+            # np.logical_or((boxes[:,2]-boxes[:,0])/(boxes[:,3]-boxes[:,1])>2.0,(boxes[:,2]-boxes[:,0])/(boxes[:,3]-boxes[:,1])<0.5)
     ))[0] # also filter boxes have more than half outside the window
 
     if exclude_ix.shape[0]>0:
@@ -1252,7 +1252,7 @@ def compute_matches(gt_boxes, gt_class_ids, gt_masks,
 
 def compute_ap(gt_boxes, gt_class_ids, gt_masks,
                pred_boxes, pred_class_ids, pred_scores, pred_masks,
-               iou_threshold=0.5):
+                class_id=None, iou_threshold=0.5):
     """Compute Average Precision at a set IoU threshold (default 0.5).
     Returns:
     mAP: Mean Average Precision
@@ -1260,11 +1260,19 @@ def compute_ap(gt_boxes, gt_class_ids, gt_masks,
     recalls: List of recall values at different class score thresholds.
     overlaps: [pred_boxes, gt_boxes] IoU overlaps.
     """
-    # Get matches and overlaps
-    gt_match, pred_match, overlaps = compute_matches(
-        gt_boxes, gt_class_ids, gt_masks,
-        pred_boxes, pred_class_ids, pred_scores, pred_masks,
-        iou_threshold)
+    if class_id: # filter if exist
+        gt_idx=np.where(gt_class_ids==class_id)[0]
+        pred_idx=np.where(pred_class_ids==class_id)[0]
+        # print(gt_boxes.shape,gt_class_ids.shape,gt_masks.shape)
+        # print(pred_boxes.shape,pred_class_ids.shape,pred_masks.shape,pred_scores.shape)
+        gt_match,pred_match,overlaps=compute_matches(gt_boxes[gt_idx],gt_class_ids[gt_idx],gt_masks[...,gt_idx],
+            pred_boxes[pred_idx],pred_class_ids[pred_idx],pred_scores[pred_idx],pred_masks[...,pred_idx],iou_threshold)
+    else:
+        # Get matches and overlaps
+        gt_match, pred_match, overlaps = compute_matches(
+            gt_boxes, gt_class_ids, gt_masks,
+            pred_boxes, pred_class_ids, pred_scores, pred_masks,
+            iou_threshold)
 
     # Compute precision and recall at each prediction box step
     precisions = np.cumsum(pred_match > -1) / (np.arange(len(pred_match)) + 1)
