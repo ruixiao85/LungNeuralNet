@@ -37,12 +37,12 @@ class ImageSet:
         self.channels=channels
         self.image_format=cfg.image_format if channels!=4 else '*.png' # jpg<=3 channels; png<=4 channels (alpha)
         self.image_val_format=cfg.image_val_format if channels!=4 else '*.png' # jpg<=3 channels; png<=4 channels (alpha)
-        self.target_scale=cfg.target_scale
-        self.train_val_split=cfg.train_val_split
-        self.target_folder=self.label_scale()
-        self.raw_folder,self.raw_scale,self.resize_ratio=None,None,None
-        self.image_data=None # dict RGB data
         self.tr_list,self.val_list=None,None
+        self.train_val_split=cfg.train_val_split
+        self.target_scale=cfg.target_scale
+        self.target_folder=self.label_scale()
+        self.raw_folder,self.raw_scale,self.resize_ratio,self.input_folder=None,None,None,None
+        self.image_data=None # dict RGB data
 
     def label_scale(self,target=None,scale=None):
         return "%s_%.1f"%(target or self.sub_category, scale or self.target_scale)
@@ -68,17 +68,17 @@ class ImageSet:
         self.raw_folder=sorted(folders,key=lambda t:float(t.split('_')[1]),reverse=True)[0]  # high-res first
         self.raw_scale=float(self.raw_folder.split('_')[1])
         self.resize_ratio=round(self.target_scale/self.raw_scale,2)
-        input_folder=self.target_folder if self.resize_ratio==1 else self.raw_folder
-        print("Processing images from folder [%s] with resize_ratio of %.1fx ..."%(input_folder,self.resize_ratio))
+        self.input_folder=self.target_folder if self.resize_ratio==1 else self.raw_folder
+        print("Processing images from folder [%s] with resize_ratio of %.1fx ..."%(self.input_folder,self.resize_ratio))
         if self.raw_scale<self.target_scale:
             print("Warning, upsampling from low-res raw images is not recommended!")
-        self.val_list=find_file_ext_recursive_rel(os.path.join(self.work_directory,input_folder),self.image_val_format) # may find explicit val files
+        self.val_list=find_file_ext_recursive_rel(os.path.join(self.work_directory,self.input_folder),self.image_val_format) # may find explicit val files
         if len(self.val_list)>0:
-            self.tr_list=find_file_ext_recursive_rel(os.path.join(self.work_directory,input_folder),self.image_format) # complete the training set
+            self.tr_list=find_file_ext_recursive_rel(os.path.join(self.work_directory,self.input_folder),self.image_format) # complete the training set
         else:
             print("No [%s] files found, splitting [%s] images with [%.2f] ratio."%(self.image_val_format,self.image_format,self.train_val_split))
             self.tr_list,self.val_list=[],[]
-            images=find_file_ext_recursive_rel(os.path.join(self.work_directory,input_folder),self.image_format) # need more splitting work
+            images=find_file_ext_recursive_rel(os.path.join(self.work_directory,self.input_folder),self.image_format) # need more splitting work
             for img in images:
                 if (len(self.val_list)+0.05)/(len(self.tr_list)+0.05)>self.train_val_split:
                     self.tr_list.append(img)
@@ -89,7 +89,7 @@ class ImageSet:
         self.image_data={}
         for sel_list in [self.tr_list,self.val_list]:
             for image in sel_list:
-                self.image_data[image]=self.adapt_channel(read_resize(os.path.join(self.work_directory,input_folder,image),self.resize_ratio))
+                self.image_data[image]=self.adapt_channel(read_resize(os.path.join(self.work_directory,self.input_folder,image),self.resize_ratio))
                 print("  "+image,end='')
             print()
 

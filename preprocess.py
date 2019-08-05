@@ -65,6 +65,8 @@ def reverse_minus1_plus1(_array):
 
 def read_image(_file):
     return cv2.imread(_file)
+    # from PIL import Image
+    # return np.asarray(Image.open(_file))
 
 def read_resize(_file, _resize=1.0):
     img=read_image(_file)

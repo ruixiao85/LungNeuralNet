@@ -55,7 +55,7 @@ class Config:
     def size(self,pair):
         ori=pair.img_set
         wd=mkdir_dir(os.path.join(ori.work_directory,ori.labelres_scale()))
-        for sname,views,views_ex in [("train",ori.tr_view,ori.tr_view.ex),("validation",ori.val_view,ori.val_view.ex)]:
+        for sname,views,views_ex in [("train",ori.tr_view,ori.tr_view_ex),("validation",ori.val_view,ori.val_view_ex)]:
             print("Export images from %s set"%sname)
             for v in views:
                 if v not in views_ex:
